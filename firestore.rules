@@ -1,0 +1,285 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDriver(driverId) {
+      return isAuthenticated() && request.auth.uid == driverId;
+    }
+    
+    function isRiderOrDriver(riderId, driverId) {
+      return isAuthenticated() && 
+        (request.auth.uid == riderId || request.auth.uid == driverId);
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      // Anyone authenticated can read user profiles (for display in rides)
+      allow read: if isAuthenticated();
+      
+      // Users can create their own profile
+      allow create: if isAuthenticated() && 
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasAll(['email', 'createdAt']);
+      
+      // Users can only update their own profile
+      allow update: if isOwner(userId) &&
+        // Prevent users from modifying critical fields
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'createdAt']);
+      
+      // Users can delete their own profile
+      allow delete: if isOwner(userId);
+    }
+    
+    // Drivers collection
+    match /drivers/{driverId} {
+      // Anyone authenticated can read driver profiles (for ride matching)
+      allow read: if isAuthenticated();
+      
+      // Only the authenticated user can create their driver profile
+      allow create: if isAuthenticated() && 
+        request.auth.uid == driverId &&
+        request.resource.data.keys().hasAll(['userId', 'vehicleType', 'licenseNumber']);
+      
+      // Only the driver can update their own profile and location
+      allow update: if isDriver(driverId) &&
+        // Prevent modification of critical verification fields
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['licenseNumber', 'createdAt']);
+      
+      // Only the driver can delete their profile
+      allow delete: if isDriver(driverId);
+    }
+    
+    // Rides collection
+    match /rides/{rideId} {
+      // Users can read their own rides
+      allow read: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.driverId);
+      
+      // Users can create ride requests
+      allow create: if isAuthenticated() && 
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasAll(['userId', 'pickupLocation', 'dropoffLocation', 'rideType']);
+      
+      // Both rider and driver can update the ride
+      allow update: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.driverId) &&
+        // Prevent unauthorized status changes
+        validateStatusChange();
+      
+      // Only the rider can cancel before driver accepts
+      allow delete: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId &&
+        resource.data.status == 'pending';
+      
+      function validateStatusChange() {
+        let oldStatus = resource.data.status;
+        let newStatus = request.resource.data.status;
+        
+        // Rider can cancel at any time
+        return (newStatus == 'cancelled' && request.auth.uid == resource.data.userId) ||
+          // Driver can accept pending rides
+          (oldStatus == 'pending' && newStatus == 'accepted' && request.auth.uid == request.resource.data.driverId) ||
+          // Driver can start accepted rides
+          (oldStatus == 'accepted' && newStatus == 'in-progress' && request.auth.uid == resource.data.driverId) ||
+          // Driver can complete in-progress rides
+          (oldStatus == 'in-progress' && newStatus == 'completed' && request.auth.uid == resource.data.driverId);
+      }
+    }
+    
+    // Conversations collection (Messaging)
+    match /conversations/{conversationId} {
+      // Only participants can read the conversation
+      allow read: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.driverId);
+      
+      // Both user and driver can create conversations
+      allow create: if isAuthenticated() && 
+        (request.auth.uid == request.resource.data.userId || 
+         request.auth.uid == request.resource.data.driverId) &&
+        request.resource.data.keys().hasAll(['userId', 'driverId', 'status']);
+      
+      // Only participants can update (for unread counts, last message)
+      allow update: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.driverId);
+      
+      // Participants can archive conversations
+      allow delete: if isAuthenticated() && 
+        (request.auth.uid == resource.data.userId || 
+         request.auth.uid == resource.data.driverId);
+    }
+    
+    // Messages collection
+    match /messages/{messageId} {
+      // Only conversation participants can read messages
+      allow read: if isAuthenticated() && 
+        conversationParticipant(resource.data.conversationId);
+      
+      // Only participants can send messages
+      allow create: if isAuthenticated() && 
+        conversationParticipant(request.resource.data.conversationId) &&
+        request.auth.uid == request.resource.data.senderId &&
+        request.resource.data.keys().hasAll(['conversationId', 'senderId', 'senderType', 'text']);
+      
+      // Participants can mark messages as read
+      allow update: if isAuthenticated() && 
+        conversationParticipant(resource.data.conversationId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      
+      // No deletion of messages
+      allow delete: if false;
+      
+      function conversationParticipant(conversationId) {
+        let conversation = get(/databases/$(database)/documents/conversations/$(conversationId));
+        return request.auth.uid == conversation.data.userId || 
+               request.auth.uid == conversation.data.driverId;
+      }
+    }
+    
+    // Ratings collection
+    match /ratings/{ratingId} {
+      // Anyone authenticated can read ratings
+      allow read: if isAuthenticated();
+      
+      // Only the rider can create a rating for their completed ride
+      allow create: if isAuthenticated() && 
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.keys().hasAll(['rideId', 'driverId', 'userId', 'rating']) &&
+        rideCompleted(request.resource.data.rideId);
+      
+      // Ratings cannot be updated or deleted
+      allow update, delete: if false;
+      
+      function rideCompleted(rideId) {
+        let ride = get(/databases/$(database)/documents/rides/$(rideId));
+        return ride.data.status == 'completed' && 
+               ride.data.userId == request.auth.uid;
+      }
+    }
+    
+    // Payments collection
+    match /payments/{paymentId} {
+      // Only the user can read their own payments
+      allow read: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId;
+      
+      // System creates payments (users cannot create directly)
+      // In production, use server-side functions or admin SDK
+      allow create: if isAuthenticated() && 
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.keys().hasAll(['userId', 'rideId', 'amount', 'status']);
+      
+      // Payments can be updated only to mark as completed
+      allow update: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        request.resource.data.status == 'completed';
+      
+      // No deletion of payment records
+      allow delete: if false;
+    }
+    
+    // Wallet transactions
+    match /walletTransactions/{transactionId} {
+      // Only the user can read their own transactions
+      allow read: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId;
+      
+      // Users can create wallet transactions (deposits/withdrawals)
+      allow create: if isAuthenticated() && 
+        request.auth.uid == request.resource.data.userId &&
+        request.resource.data.keys().hasAll(['userId', 'type', 'amount', 'status']);
+      
+      // Transactions can be updated (status changes)
+      allow update: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId;
+      
+      // No deletion of transaction history
+      allow delete: if false;
+    }
+    
+    // Device security (for first-time signup bonus)
+    match /devices/{deviceId} {
+      // Only system can read/write device records
+      // Users can check if device exists
+      allow read: if isAuthenticated();
+      
+      // Users can create device record on first signup
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['deviceId', 'firstUserId', 'signupCount', 'createdAt']);
+      
+      // System updates signup count
+      allow update: if isAuthenticated() &&
+        request.resource.data.signupCount > resource.data.signupCount;
+      
+      // No deletion of device records
+      allow delete: if false;
+    }
+    
+    // Promotions/Discover places (admin managed)
+    match /promotions/{promoId} {
+      // Anyone authenticated can read promotions
+      allow read: if isAuthenticated();
+      
+      // Only admins can create/update/delete (use admin SDK)
+      // For now, allow authenticated users in test mode
+      allow write: if isAuthenticated();
+    }
+    
+    // Discover places
+    match /discoverPlaces/{placeId} {
+      // Anyone authenticated can read discover places
+      allow read: if isAuthenticated();
+      
+      // Only admins can manage discover places (use admin SDK)
+      // For now, allow authenticated users in test mode
+      allow write: if isAuthenticated();
+    }
+    
+    // Admin-only collections
+    match /admin/{document=**} {
+      // Only specific admin users can access
+      // In production, add proper admin role checking
+      allow read, write: if isAuthenticated() && 
+        isAdmin();
+      
+      function isAdmin() {
+        // Add your admin UIDs here or use custom claims
+        return request.auth.token.admin == true ||
+               request.auth.uid in ['ADMIN_UID_1', 'ADMIN_UID_2'];
+      }
+    }
+    
+    // Notifications collection
+    match /notifications/{notificationId} {
+      // Users can read their own notifications
+      allow read: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId;
+      
+      // System creates notifications (use Cloud Functions)
+      allow create: if isAuthenticated();
+      
+      // Users can mark notifications as read
+      allow update: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      
+      // Users can delete their notifications
+      allow delete: if isAuthenticated() && 
+        request.auth.uid == resource.data.userId;
+    }
+  }
+}

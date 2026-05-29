@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RideApp Admin Panel</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1e293b;
+        }
+        
+        .logout-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .logout-btn:hover {
+            background: #dc2626;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            background: white;
+            padding: 8px;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .nav-tab {
+            padding: 12px 20px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        
+        .nav-tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .nav-tab:hover:not(.active) {
+            background: #f1f5f9;
+            color: #475569;
+        }
+        
+        .content {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 24px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .stat-card h3 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .stat-card p {
+            opacity: 0.9;
+            font-weight: 500;
+        }
+        
+        .table-container {
+            padding: 24px;
+        }
+        
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .table th,
+        .table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .table th {
+            background: #f8fafc;
+            font-weight: 600;
+            color: #475569;
+        }
+        
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-active {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .status-suspended {
+            background: #fef2f2;
+            color: #991b1b;
+        }
+        
+        .status-open {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .status-resolved {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .status-in_progress {
+            background: #dbeafe;
+            color: #1d4ed8;
+        }
+        
+        .status-completed {
+            background: #dcfce7;
+            color: #166534;
+        }
+        
+        .login-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .login-form {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        
+        .login-form h2 {
+            text-align: center;
+            margin-bottom: 32px;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .login-btn {
+            width: 100%;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .login-btn:hover {
+            background: #5a67d8;
+        }
+        
+        .error-message {
+            color: #ef4444;
+            text-align: center;
+            margin-top: 16px;
+            font-weight: 500;
+        }
+        
+        .campaign-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        
+        .campaign-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .campaign-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .campaign-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-top: 16px;
+        }
+        
+        .metric {
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #64748b;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+        
+        @media (max-width: 768px) {
+            .nav-tabs {
+                flex-wrap: wrap;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .campaign-metrics {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .table-container {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        
+        // Mock data
+        const mockUsers = [
+            {
+                id: '1',
+                name: 'John Doe',
+                email: 'john@example.com',
+                phone: '+1234567890',
+                rating: 4.8,
+                totalRides: 45,
+                isActive: true,
+                status: 'active',
+                totalSpent: 1250.50
+            },
+            {
+                id: '2',
+                name: 'Sarah Wilson',
+                email: 'sarah@example.com',
+                phone: '+1234567891',
+                rating: 4.9,
+                totalRides: 78,
+                isActive: true,
+                status: 'active',
+                totalSpent: 2100.75
+            },
+            {
+                id: '3',
+                name: 'Mike Johnson',
+                email: 'mike@example.com',
+                phone: '+1234567892',
+                rating: 3.2,
+                totalRides: 12,
+                isActive: false,
+                status: 'suspended',
+                totalSpent: 180.25
+            }
+        ];
+        
+        const mockStats = {
+            totalUsers: 15420,
+            totalDrivers: 2850,
+            activeRides: 127,
+            totalRevenue: 485750.50
+        };
+        
+        const mockSupportTickets = [
+            {
+                id: '1',
+                userId: '1',
+                type: 'payment',
+                priority: 'high',
+                status: 'open',
+                subject: 'Payment not processed',
+                createdAt: '2024-09-17'
+            },
+            {
+                id: '2',
+                userId: '2',
+                type: 'ride_issue',
+                priority: 'medium',
+                status: 'in_progress',
+                subject: 'Driver was rude',
+                createdAt: '2024-09-16'
+            },
+            {
+                id: '3',
+                userId: '3',
+                type: 'technical',
+                priority: 'low',
+                status: 'resolved',
+                subject: 'App crashes on startup',
+                createdAt: '2024-09-15'
+            }
+        ];
+        
+        const mockCampaigns = [
+            {
+                id: '1',
+                name: 'Welcome New Users',
+                type: 'acquisition',
+                status: 'active',
+                metrics: {
+                    sent: 1250,
+                    opened: 875,
+                    clicked: 420,
+                    converted: 180
+                }
+            },
+            {
+                id: '2',
+                name: 'Weekend Special',
+                type: 'promotion',
+                status: 'completed',
+                metrics: {
+                    sent: 8500,
+                    opened: 6200,
+                    clicked: 2100,
+                    converted: 850
+                }
+            }
+        ];
+        
+        // Components
+        function LoginForm({ onLogin }) {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [error, setError] = useState('');
+            
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (email === 'admin@rideapp.com' && password === 'admin123') {
+                    onLogin();
+                } else {
+                    setError('Invalid credentials');
+                }
+            };
+            
+            return (
+                <div className="login-container">
+                    <form className="login-form" onSubmit={handleSubmit}>
+                        <h2>Admin Login</h2>
+                        <div className="form-group">
+                            <label>Email</label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="admin@rideapp.com"
+                                required
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Password</label>
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Enter password"
+                                required
+                            />
+                        </div>
+                        <button type="submit" className="login-btn">
+                            Login
+                        </button>
+                        {error && <div className="error-message">{error}</div>}
+                        <div style={{ marginTop: '16px', textAlign: 'center', fontSize: '14px', color: '#64748b' }}>
+                            Demo credentials: admin@rideapp.com / admin123
+                        </div>
+                    </form>
+                </div>
+            );
+        }
+        
+        function Dashboard() {
+            return (
+                <div className="stats-grid">
+                    <div className="stat-card">
+                        <h3>{mockStats.totalUsers.toLocaleString()}</h3>
+                        <p>Total Users</p>
+                    </div>
+                    <div className="stat-card">
+                        <h3>{mockStats.totalDrivers.toLocaleString()}</h3>
+                        <p>Total Drivers</p>
+                    </div>
+                    <div className="stat-card">
+                        <h3>{mockStats.activeRides}</h3>
+                        <p>Active Rides</p>
+                    </div>
+                    <div className="stat-card">
+                        <h3>${mockStats.totalRevenue.toLocaleString()}</h3>
+                        <p>Total Revenue</p>
+                    </div>
+                </div>
+            );
+        }
+        
+        function Users() {
+            return (
+                <div className="table-container">
+                    <h3 style={{ marginBottom: '20px' }}>User Management</h3>
+                    <table className="table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Rating</th>
+                                <th>Rides</th>
+                                <th>Spent</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {mockUsers.map(user => (
+                                <tr key={user.id}>
+                                    <td>{user.name}</td>
+                                    <td>{user.email}</td>
+                                    <td>{user.phone}</td>
+                                    <td>{user.rating}</td>
+                                    <td>{user.totalRides}</td>
+                                    <td>${user.totalSpent}</td>
+                                    <td>
+                                        <span className={`status-badge status-${user.status}`}>
+                                            {user.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+        
+        function Support() {
+            return (
+                <div className="table-container">
+                    <h3 style={{ marginBottom: '20px' }}>Support Tickets</h3>
+                    <table className="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Subject</th>
+                                <th>Type</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {mockSupportTickets.map(ticket => (
+                                <tr key={ticket.id}>
+                                    <td>#{ticket.id}</td>
+                                    <td>{ticket.subject}</td>
+                                    <td>{ticket.type}</td>
+                                    <td>{ticket.priority}</td>
+                                    <td>
+                                        <span className={`status-badge status-${ticket.status}`}>
+                                            {ticket.status.replace('_', ' ')}
+                                        </span>
+                                    </td>
+                                    <td>{ticket.createdAt}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+        
+        function Marketing() {
+            return (
+                <div className="table-container">
+                    <h3 style={{ marginBottom: '20px' }}>Marketing Campaigns</h3>
+                    {mockCampaigns.map(campaign => (
+                        <div key={campaign.id} className="campaign-card">
+                            <div className="campaign-header">
+                                <div className="campaign-title">{campaign.name}</div>
+                                <span className={`status-badge status-${campaign.status}`}>
+                                    {campaign.status}
+                                </span>
+                            </div>
+                            <div className="campaign-metrics">
+                                <div className="metric">
+                                    <div className="metric-value">{campaign.metrics.sent.toLocaleString()}</div>
+                                    <div className="metric-label">Sent</div>
+                                </div>
+                                <div className="metric">
+                                    <div className="metric-value">{campaign.metrics.opened.toLocaleString()}</div>
+                                    <div className="metric-label">Opened</div>
+                                </div>
+                                <div className="metric">
+                                    <div className="metric-value">{campaign.metrics.clicked.toLocaleString()}</div>
+                                    <div className="metric-label">Clicked</div>
+                                </div>
+                                <div className="metric">
+                                    <div className="metric-value">{campaign.metrics.converted.toLocaleString()}</div>
+                                    <div className="metric-label">Converted</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+        
+        function Settings() {
+            return (
+                <div className="table-container">
+                    <h3 style={{ marginBottom: '20px' }}>System Settings</h3>
+                    <div style={{ padding: '20px', background: '#f8fafc', borderRadius: '8px' }}>
+                        <p>Settings panel coming soon...</p>
+                        <p style={{ marginTop: '8px', color: '#64748b' }}>Configure app settings, notifications, and system preferences.</p>
+                    </div>
+                </div>
+            );
+        }
+        
+        function AdminPanel() {
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            
+            const tabs = [
+                { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+                { id: 'users', label: 'Users', icon: '👥' },
+                { id: 'support', label: 'Support', icon: '💬' },
+                { id: 'marketing', label: 'Marketing', icon: '📈' },
+                { id: 'settings', label: 'Settings', icon: '⚙️' }
+            ];
+            
+            const renderContent = () => {
+                switch (activeTab) {
+                    case 'dashboard': return <Dashboard />;
+                    case 'users': return <Users />;
+                    case 'support': return <Support />;
+                    case 'marketing': return <Marketing />;
+                    case 'settings': return <Settings />;
+                    default: return <Dashboard />;
+                }
+            };
+            
+            if (!isLoggedIn) {
+                return <LoginForm onLogin={() => setIsLoggedIn(true)} />;
+            }
+            
+            return (
+                <div className="container">
+                    <div className="header">
+                        <h1>RideApp Admin Panel</h1>
+                        <button 
+                            className="logout-btn" 
+                            onClick={() => setIsLoggedIn(false)}
+                        >
+                            Logout
+                        </button>
+                    </div>
+                    
+                    <div className="nav-tabs">
+                        {tabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
+                                onClick={() => setActiveTab(tab.id)}
+                            >
+                                <span>{tab.icon}</span>
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                    
+                    <div className="content">
+                        {renderContent()}
+                    </div>
+                </div>
+            );
+        }
+        
+        // Render the app
+        ReactDOM.render(<AdminPanel />, document.getElementById('root'));
+    </script>
+</body>
+</html>
