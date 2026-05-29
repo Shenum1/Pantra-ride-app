@@ -13,6 +13,7 @@
     "test:integration": "vitest run testing/integration",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:maps": "node ./scripts/check-google-maps.mjs",
     "test:all": "npm run test && npm run test:e2e"
   },
   "dependencies": {

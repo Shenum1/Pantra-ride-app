@@ -56,7 +56,7 @@ export interface AutocompleteResult {
 interface DiagnosticResult {
   success: boolean;
   message: string;
-  apis: { places: boolean; autocomplete: boolean; directions: boolean };
+  apis: { places: boolean; autocomplete: boolean; directions: boolean; staticMap: boolean };
 }
 
 function normalizeLocation(latitude: number, longitude: number): Location {
@@ -107,6 +107,22 @@ function encodeStaticMarkers(markers: Array<{ location: Location; color: string;
     .join('');
 }
 
+async function isGoogleJsonApiOk(response: Response): Promise<boolean> {
+  if (!response.ok) return false;
+
+  try {
+    const data = await response.json() as GoogleApiResponse<unknown>;
+    return data.status === 'OK' || data.status === 'ZERO_RESULTS';
+  } catch {
+    return false;
+  }
+}
+
+function isStaticMapResponseOk(response: Response): boolean {
+  const contentType = response.headers.get('content-type') ?? '';
+  return response.ok && contentType.toLowerCase().startsWith('image/');
+}
+
 export class GoogleMapsService {
   static get apiKey(): string {
     return GOOGLE_MAPS_API_KEY;
@@ -139,22 +155,32 @@ export class GoogleMapsService {
   }
 
   static async testApiKey(): Promise<DiagnosticResult> {
-    const apis = { places: false, autocomplete: false, directions: false };
+    const apis = { places: false, autocomplete: false, directions: false, staticMap: false };
     if (!GOOGLE_MAPS_API_KEY) {
       return { success: false, message: 'Google Maps API key is missing.', apis };
     }
 
     try {
-      const [places, autocomplete, directions] = await Promise.all([
+      const [places, autocomplete, directions, staticMap] = await Promise.all([
         fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent('Shoprite Abuja Nigeria')}&key=${GOOGLE_MAPS_API_KEY}`),
         fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent('Kubwa')}&components=country:ng&key=${GOOGLE_MAPS_API_KEY}`),
         fetch(`https://maps.googleapis.com/maps/api/directions/json?origin=9.0820,7.4951&destination=9.0579,7.4951&key=${GOOGLE_MAPS_API_KEY}`),
+        fetch(`https://maps.googleapis.com/maps/api/staticmap?center=9.0765,7.3986&zoom=14&size=300x200&key=${GOOGLE_MAPS_API_KEY}`),
       ]);
-      apis.places = places.ok;
-      apis.autocomplete = autocomplete.ok;
-      apis.directions = directions.ok;
-      const success = apis.places && apis.autocomplete && apis.directions;
-      return { success, message: success ? 'Google Maps services are reachable.' : 'Some Google Maps services are unavailable.', apis };
+
+      apis.places = await isGoogleJsonApiOk(places);
+      apis.autocomplete = await isGoogleJsonApiOk(autocomplete);
+      apis.directions = await isGoogleJsonApiOk(directions);
+      apis.staticMap = isStaticMapResponseOk(staticMap);
+
+      const success = apis.places && apis.autocomplete && apis.directions && apis.staticMap;
+      return {
+        success,
+        message: success
+          ? 'Google Maps services are reachable.'
+          : 'Google Maps key is present, but one or more required APIs rejected the request. Check enabled APIs, billing, and key restrictions.',
+        apis,
+      };
     } catch (error) {
       console.error('Google Maps diagnostic error:', error);
       return { success: false, message: 'Failed to test Google Maps services.', apis };

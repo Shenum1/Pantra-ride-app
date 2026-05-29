@@ -46,4 +46,10 @@ Generate a coverage report:
 npm run test:coverage
 ```
 
+Check the Google Maps API key and required APIs without printing the key:
+
+```bash
+npm run test:maps
+```
+
 The E2E suite starts Expo web on `http://127.0.0.1:8081` automatically when needed.

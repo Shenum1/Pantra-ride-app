@@ -54,4 +54,61 @@ describe('GoogleMapsService', () => {
     expect(directions?.distance).toBeGreaterThan(0);
     expect(directions?.coordinates).toHaveLength(2);
   });
+
+  it('diagnoses rejected Google APIs even when JSON endpoints return HTTP 200', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'unit-test-key';
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'REQUEST_DENIED', error_message: 'API key invalid' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'REQUEST_DENIED', error_message: 'API key invalid' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'REQUEST_DENIED', error_message: 'API key invalid' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response('Forbidden', { status: 403 })));
+    const { GoogleMapsService } = await import('@/lib/google-maps-service');
+
+    const diagnostic = await GoogleMapsService.testApiKey();
+
+    expect(diagnostic.success).toBe(false);
+    expect(diagnostic.apis).toEqual({
+      places: false,
+      autocomplete: false,
+      directions: false,
+      staticMap: false,
+    });
+    expect(diagnostic.message).toContain('key is present');
+  });
+
+  it('passes diagnostics when required Google APIs and static map respond correctly', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'unit-test-key';
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'OK', results: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'OK', predictions: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'OK', routes: [] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response('image-bytes', {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      })));
+    const { GoogleMapsService } = await import('@/lib/google-maps-service');
+
+    const diagnostic = await GoogleMapsService.testApiKey();
+
+    expect(diagnostic.success).toBe(true);
+    expect(diagnostic.apis.staticMap).toBe(true);
+  });
 });

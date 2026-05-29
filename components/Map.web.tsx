@@ -64,7 +64,7 @@ const Map: React.FC<MapProps> = ({
             <View style={[styles.mapPin, styles.dropoffPin]} />
             <Text style={styles.webMapText}>Map preview unavailable</Text>
             <Text style={styles.webMapSubtext}>
-              Google Maps rejected the current API key. You can still continue testing the ride flow.
+              Check the Google Maps API key, Static Maps API, billing, and key restrictions. You can still continue testing the ride flow.
             </Text>
           </View>
         )}
