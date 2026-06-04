@@ -2,10 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useEffect, useState } from 'react';
 import { AuthService } from '@/lib/auth-service';
-import { auth } from '@/lib/firebase';
-import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { supabase } from '@/lib/supabase';
 import Toast from 'react-native-toast-message';
-import { parseFirebaseError } from '@/lib/auth-errors';
 import { DeviceSecurityService } from '@/lib/device-security-service';
 import { StorageService } from '@/lib/storage-service';
 
@@ -44,165 +42,106 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   useEffect(() => {
     loadStoredUser();
-    
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
-      console.log('Auth Store: Firebase auth state changed:', firebaseUser?.uid);
-      
-      if (!firebaseUser) {
-        const storedUser = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      console.log('Auth Store: Supabase auth state changed:', session?.user?.id);
+
+      if (!session?.user) {
+        const storedUser = await AsyncStorage.getItem(AUTH_STORAGE_KEY).catch(() => null);
         if (storedUser) {
-          const parsedUser = JSON.parse(storedUser) as User;
-          if (parsedUser.id === 'test-rider') {
-            setUser(parsedUser);
+          const parsed = JSON.parse(storedUser) as User;
+          if (parsed.id === 'test-rider') {
+            setUser(parsed);
             setIsLoading(false);
             return;
           }
         }
-
-        await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+        await AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {});
         setUser(null);
         setIsLoading(false);
         return;
       }
-      
+
       try {
-        const userProfile = await AuthService.getUserProfile(firebaseUser.uid);
-        if (userProfile) {
-          const userData: User = {
-            id: firebaseUser.uid,
-            name: userProfile.displayName,
-            email: firebaseUser.email || '',
-            phone: userProfile.phoneNumber || '',
-            rating: 5.0,
-            profileImage: userProfile.photoURL,
-            authProvider: 'email',
-          };
-          await saveUser(userData);
-        }
-      } catch (error) {
-        console.error('Auth Store: Error loading user profile:', error);
+        const profile = await AuthService.getUserProfile(session.user.id);
+        const userData: User = {
+          id: session.user.id,
+          name: profile?.displayName || session.user.email?.split('@')[0] || 'User',
+          email: session.user.email || '',
+          phone: profile?.phoneNumber || '',
+          rating: 5.0,
+          profileImage: profile?.photoURL,
+          authProvider: 'email',
+        };
+        await saveUser(userData);
+      } catch {
+        setIsLoading(false);
       }
     });
-    
-    return () => unsubscribe();
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const loadStoredUser = async () => {
     try {
       const storedUser = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
-      }
-    } catch (error) {
-      console.error('Error loading stored user:', error);
+      if (storedUser) setUser(JSON.parse(storedUser));
+    } catch {
+      // ignore
     } finally {
       setIsLoading(false);
     }
   };
 
   const saveUser = async (userData: User) => {
-    try {
-      await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
-      setUser(userData);
-    } catch (error) {
-      console.error('Error saving user:', error);
-      throw error;
-    }
+    await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(userData));
+    setUser(userData);
   };
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      console.log('Auth Store: Starting user login process');
-      
-      if (!email || !password) {
-        throw new Error('Please enter both email and password');
-      }
-      
+      if (!email || !password) throw new Error('Please enter both email and password');
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        throw new Error('Please enter a valid email address.');
-      }
-      
+      if (!emailRegex.test(email)) throw new Error('Please enter a valid email address.');
+
       await AsyncStorage.removeItem('driver_auth_user');
 
       const normalizedEmail = email.trim().toLowerCase();
       if (normalizedEmail === TEST_RIDER_EMAIL && password === TEST_RIDER_PASSWORD) {
         const testUserData: User = {
-          id: 'test-rider',
-          name: 'Test Rider',
-          email: TEST_RIDER_EMAIL,
-          phone: '+234 123 456 7890',
-          rating: 5.0,
-          authProvider: 'email',
+          id: 'test-rider', name: 'Test Rider', email: TEST_RIDER_EMAIL,
+          phone: '+234 123 456 7890', rating: 5.0, authProvider: 'email',
         };
-
         await saveUser(testUserData);
-        console.log('Auth Store: Test rider logged in successfully:', testUserData);
-        Toast.show({
-          type: 'success',
-          text1: 'Welcome back!',
-          text2: `Logged in as ${testUserData.name}`,
-          position: 'top',
-        });
+        Toast.show({ type: 'success', text1: 'Welcome back!', text2: 'Logged in as Test Rider', position: 'top' });
         return;
       }
-      
-      const firebaseUser = await AuthService.signInWithEmail(email, password);
-      let userProfile = await AuthService.getUserProfile(firebaseUser.uid);
-      
-      if (!userProfile) {
-        console.log('Auth Store: User profile not found in Firestore, creating one...');
-        try {
-          await AuthService.createMissingUserProfile(
-            firebaseUser.uid,
-            email,
-            firebaseUser.displayName || 'User',
-            'rider'
-          );
-          userProfile = await AuthService.getUserProfile(firebaseUser.uid);
-        } catch (profileError) {
-          console.error('Auth Store: Failed to create user profile:', profileError);
-        }
+
+      const supabaseUser = await AuthService.signInWithEmail(email, password);
+      if (!supabaseUser) throw new Error('Login failed — no user returned');
+
+      let profile = await AuthService.getUserProfile(supabaseUser.id);
+      if (!profile) {
+        await AuthService.createMissingUserProfile(supabaseUser.id, email, supabaseUser.email?.split('@')[0] || 'User', 'rider');
+        profile = await AuthService.getUserProfile(supabaseUser.id);
       }
-      
+
       const userData: User = {
-        id: firebaseUser.uid,
-        name: userProfile?.displayName || firebaseUser.displayName || 'User',
-        email: firebaseUser.email || email,
-        phone: userProfile?.phoneNumber || '',
+        id: supabaseUser.id,
+        name: profile?.displayName || supabaseUser.email?.split('@')[0] || 'User',
+        email: supabaseUser.email || email,
+        phone: profile?.phoneNumber || '',
         rating: 5.0,
-        profileImage: userProfile?.photoURL || undefined,
+        profileImage: profile?.photoURL,
         authProvider: 'email',
       };
-      
       await saveUser(userData);
-      console.log('Auth Store: User logged in successfully:', userData);
-      Toast.show({
-        type: 'success',
-        text1: 'Welcome back!',
-        text2: `Logged in as ${userData.name}`,
-        position: 'top',
-      });
+      Toast.show({ type: 'success', text1: 'Welcome back!', text2: `Logged in as ${userData.name}`, position: 'top' });
     } catch (error: any) {
-      console.error('Auth Store: Login error:', error);
-      const errorMessage = parseFirebaseError(error);
-      
-      const isInvalidCredential = error?.code === 'auth/invalid-credential' || 
-                                  errorMessage.includes('Invalid email or password');
-      
-      const displayMessage = isInvalidCredential 
-        ? 'Invalid email or password. Please check your credentials or sign up if you don\'t have an account.'
-        : errorMessage;
-      
-      Toast.show({
-        type: 'error',
-        text1: 'Login Failed',
-        text2: displayMessage,
-        position: 'top',
-        visibilityTime: 5000,
-      });
-      throw new Error(displayMessage);
+      const msg = error.message || 'Login failed. Please try again.';
+      Toast.show({ type: 'error', text1: 'Login Failed', text2: msg, position: 'top', visibilityTime: 5000 });
+      throw new Error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -211,68 +150,34 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const signup = async (name: string, email: string, phone: string, password: string, profileImage?: string) => {
     setIsLoading(true);
     try {
-      console.log('Auth Store: Starting signup process');
-      
       const deviceFingerprint = await DeviceSecurityService.generateDeviceFingerprint();
-      console.log('Auth Store: Device fingerprint generated:', deviceFingerprint.deviceId);
-      
-      const firebaseUser = await AuthService.signUpWithEmail(email, password, name, 'rider');
-      
+
+      const supabaseUser = await AuthService.signUpWithEmail(email, password, name, 'rider');
+
       try {
-        await DeviceSecurityService.registerDevice(deviceFingerprint, firebaseUser.uid);
-        console.log('Auth Store: Device registered for user:', firebaseUser.uid);
-      } catch (deviceError) {
-        console.warn('Auth Store: Device registration skipped:', deviceError);
+        await DeviceSecurityService.registerDevice(deviceFingerprint, supabaseUser.id);
+      } catch {
+        console.warn('Device registration skipped');
       }
-      
+
       let storedProfileImage = profileImage;
       if (profileImage && !profileImage.startsWith('http')) {
         const extension = profileImage.split('.').pop()?.split('?')[0] ?? 'jpg';
-        storedProfileImage = await StorageService.uploadImage(`users/${firebaseUser.uid}/profile.${extension}`, profileImage);
+        storedProfileImage = await StorageService.uploadImage(`users/${supabaseUser.id}/profile.${extension}`, profileImage);
       }
 
-      await AuthService.updateUserProfile(firebaseUser.uid, {
-        phoneNumber: phone,
-        photoURL: storedProfileImage,
-      } as any);
-      
+      await AuthService.updateUserProfile(supabaseUser.id, { phoneNumber: phone, photoURL: storedProfileImage } as any);
+
       const userData: User = {
-        id: firebaseUser.uid,
-        name,
-        email,
-        phone,
-        rating: 5.0,
-        profileImage: storedProfileImage,
-        authProvider: 'email',
+        id: supabaseUser.id, name, email, phone, rating: 5.0,
+        profileImage: storedProfileImage, authProvider: 'email',
       };
-      
       await saveUser(userData);
-      console.log('Auth Store: User signed up successfully:', userData);
-      Toast.show({
-        type: 'success',
-        text1: 'Account Created!',
-        text2: 'Welcome to the platform',
-        position: 'top',
-      });
+      Toast.show({ type: 'success', text1: 'Account Created!', text2: 'Welcome to the platform', position: 'top' });
     } catch (error: any) {
-      console.error('Signup error:', error);
-      
-      let errorMessage = error.message || 'An unexpected error occurred';
-      
-      if (errorMessage.includes('This email is already registered')) {
-        errorMessage = 'This email is already registered. Please log in instead.';
-      } else if (!errorMessage.includes('auth/') && !errorMessage.includes('Firebase') && !errorMessage.includes('device')) {
-        errorMessage = parseFirebaseError(error);
-      }
-      
-      Toast.show({
-        type: 'error',
-        text1: 'Signup Failed',
-        text2: errorMessage,
-        position: 'top',
-        visibilityTime: 4000,
-      });
-      throw new Error(errorMessage);
+      const msg = error.message || 'Signup failed. Please try again.';
+      Toast.show({ type: 'error', text1: 'Signup Failed', text2: msg, position: 'top', visibilityTime: 4000 });
+      throw new Error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -280,87 +185,52 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const logout = async () => {
     try {
-      console.log('Auth Store: Starting logout process');
       await AuthService.signOut();
       await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
       await AsyncStorage.removeItem('driver_auth_user');
       setUser(null);
-      console.log('Auth Store: Logout completed successfully');
-      Toast.show({
-        type: 'success',
-        text1: 'Logged Out',
-        text2: 'See you soon!',
-        position: 'top',
-      });
-    } catch (error) {
-      console.error('Auth Store: Logout error:', error);
-      const errorMessage = parseFirebaseError(error);
-      Toast.show({
-        type: 'error',
-        text1: 'Logout Failed',
-        text2: errorMessage,
-        position: 'top',
-      });
+      Toast.show({ type: 'success', text1: 'Logged Out', text2: 'See you soon!', position: 'top' });
+    } catch (error: any) {
+      Toast.show({ type: 'error', text1: 'Logout Failed', text2: error.message, position: 'top' });
       throw error;
     }
   };
 
   const updateProfile = async (updates: Partial<User>) => {
     if (!user) return;
-    
-    try {
-      if (user.id.startsWith('test-')) {
-        const updatedTestUser = { ...user, ...updates };
-        await saveUser(updatedTestUser);
-        return;
-      }
 
-      let nextProfileImage = updates.profileImage;
-      if (nextProfileImage && !nextProfileImage.startsWith('http')) {
-        const extension = nextProfileImage.split('.').pop()?.split('?')[0] ?? 'jpg';
-        nextProfileImage = await StorageService.uploadImage(`users/${user.id}/profile.${extension}`, nextProfileImage);
-      }
-      const updatedUser = { ...user, ...updates, profileImage: nextProfileImage ?? updates.profileImage ?? user.profileImage };
-      await AuthService.updateUserProfile(user.id, {
-        displayName: updatedUser.name,
-        phoneNumber: updatedUser.phone,
-        photoURL: updatedUser.profileImage,
-      } as any);
-      await saveUser(updatedUser);
-    } catch (error) {
-      console.error('Update profile error:', error);
-      throw error;
+    if (user.id.startsWith('test-')) {
+      await saveUser({ ...user, ...updates });
+      return;
     }
+
+    let nextProfileImage = updates.profileImage;
+    if (nextProfileImage && !nextProfileImage.startsWith('http')) {
+      const extension = nextProfileImage.split('.').pop()?.split('?')[0] ?? 'jpg';
+      nextProfileImage = await StorageService.uploadImage(`users/${user.id}/profile.${extension}`, nextProfileImage);
+    }
+
+    const updatedUser = { ...user, ...updates, profileImage: nextProfileImage ?? updates.profileImage ?? user.profileImage };
+    await AuthService.updateUserProfile(user.id, {
+      displayName: updatedUser.name,
+      phoneNumber: updatedUser.phone,
+      photoURL: updatedUser.profileImage,
+    } as any);
+    await saveUser(updatedUser);
   };
 
   const loginWithGoogle = async () => {
-    throw new Error('Google authentication has been temporarily disabled. Please use email/phone login instead.');
+    throw new Error('Google authentication is not yet configured. Please use email login instead.');
   };
 
   const loginWithPhone = async (phoneNumber: string) => {
     setIsLoading(true);
     try {
-      console.log('Auth Store: Sending verification code to:', phoneNumber);
-      
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((r) => setTimeout(r, 1000));
       setPendingPhoneNumber(phoneNumber);
-      console.log('Auth Store: Verification code sent');
-      Toast.show({
-        type: 'success',
-        text1: 'Verification Code Sent',
-        text2: 'Please check your phone',
-        position: 'top',
-      });
-    } catch (error) {
-      console.error('Auth Store: Phone login error:', error);
-      const errorMessage = parseFirebaseError(error);
-      Toast.show({
-        type: 'error',
-        text1: 'Phone Login Failed',
-        text2: errorMessage,
-        position: 'top',
-      });
+      Toast.show({ type: 'success', text1: 'Verification Code Sent', text2: 'Please check your phone', position: 'top' });
+    } catch (error: any) {
+      Toast.show({ type: 'error', text1: 'Phone Login Failed', text2: error.message, position: 'top' });
       throw error;
     } finally {
       setIsLoading(false);
@@ -368,47 +238,20 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   };
 
   const verifyPhoneCode = async (code: string) => {
-    if (!pendingPhoneNumber) {
-      throw new Error('No pending phone verification');
-    }
-    
+    if (!pendingPhoneNumber) throw new Error('No pending phone verification');
     setIsLoading(true);
     try {
-      console.log('Auth Store: Verifying code:', code);
-      
-      if (code !== '123456') {
-        throw new Error('Invalid verification code. In production, this would verify with Firebase.');
-      }
-      
+      if (code !== '123456') throw new Error('Invalid verification code.');
       await AsyncStorage.removeItem('driver_auth_user');
-      
       const userData: User = {
-        id: Date.now().toString(),
-        name: 'Phone User',
-        email: '',
-        phone: pendingPhoneNumber,
-        rating: 5.0,
-        authProvider: 'phone',
+        id: Date.now().toString(), name: 'Phone User', email: '',
+        phone: pendingPhoneNumber, rating: 5.0, authProvider: 'phone',
       };
-      
       await saveUser(userData);
       setPendingPhoneNumber(null);
-      console.log('Auth Store: Phone verification successful (demo mode)');
-      Toast.show({
-        type: 'success',
-        text1: 'Verification Successful',
-        text2: 'Welcome!',
-        position: 'top',
-      });
-    } catch (error) {
-      console.error('Auth Store: Phone verification error:', error);
-      const errorMessage = parseFirebaseError(error);
-      Toast.show({
-        type: 'error',
-        text1: 'Verification Failed',
-        text2: errorMessage,
-        position: 'top',
-      });
+      Toast.show({ type: 'success', text1: 'Verification Successful', text2: 'Welcome!', position: 'top' });
+    } catch (error: any) {
+      Toast.show({ type: 'error', text1: 'Verification Failed', text2: error.message, position: 'top' });
       throw error;
     } finally {
       setIsLoading(false);
@@ -416,16 +259,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   };
 
   return {
-    user,
-    isLoading,
-    isAuthenticated: !!user,
-    login,
-    signup,
-    loginWithGoogle,
-    loginWithPhone,
-    verifyPhoneCode,
-    logout,
-    updateProfile,
-    googlePromptAsync: null,
+    user, isLoading, isAuthenticated: !!user,
+    login, signup, loginWithGoogle, loginWithPhone, verifyPhoneCode,
+    logout, updateProfile, googlePromptAsync: null,
   };
 });

@@ -1,371 +1,205 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  onSnapshot,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { db } from './firebase';
+import { supabase } from './supabase';
 import { Driver, DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
 
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function coord(location: any, key: 'latitude' | 'longitude'): number {
+  const shortKey = key === 'latitude' ? 'lat' : 'lng';
+  const value = location?.[key] ?? location?.[shortKey];
+  return typeof value === 'number' ? value : 0;
+}
+
 export class FirebaseDriverService {
-  private static getCoordinate(location: any, key: 'latitude' | 'longitude'): number {
-    const shortKey = key === 'latitude' ? 'lat' : 'lng';
-    const value = location?.[key] ?? location?.[shortKey];
-    return typeof value === 'number' ? value : 0;
-  }
-
   static async createDriver(userId: string, driverData: Partial<DriverProfile>): Promise<string> {
-    try {
-      const driverRef = doc(db, 'drivers', userId);
-      const driverProfile: Partial<DriverProfile> = {
-        ...driverData,
-        id: userId,
-        rating: 5.0,
-        totalRides: 0,
-        isOnline: false,
-        isVerified: false,
-        earnings: {
-          today: 0,
-          thisWeek: 0,
-          thisMonth: 0,
-          total: 0,
-        },
-        createdAt: new Date(),
-        lastActiveAt: new Date(),
-      };
+    const profile = {
+      ...driverData,
+      userId,
+      rating: 5.0,
+      totalRides: 0,
+      isOnline: false,
+      isVerified: false,
+      earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
+      createdAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+    };
 
-      await setDoc(driverRef, {
-        ...driverProfile,
-        createdAt: serverTimestamp(),
-        lastActiveAt: serverTimestamp(),
-      });
-
-      return userId;
-    } catch (error) {
-      console.error('Error creating driver:', error);
-      throw error;
-    }
+    const { data, error } = await supabase.from('drivers').upsert(profile).select('id').single();
+    if (error) throw new Error(error.message);
+    return data?.id ?? userId;
   }
 
   static async getDriver(driverId: string): Promise<DriverProfile | null> {
-    try {
-      const driverRef = doc(db, 'drivers', driverId);
-      const driverSnap = await getDoc(driverRef);
-
-      if (driverSnap.exists()) {
-        const data = driverSnap.data();
-        return {
-          id: driverSnap.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.() || new Date(),
-          lastActiveAt: data.lastActiveAt?.toDate?.() || new Date(),
-        } as DriverProfile;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Error getting driver:', error);
-      return null;
-    }
+    const { data, error } = await supabase.from('drivers').select('*').eq('id', driverId).single();
+    if (error || !data) return null;
+    return data as DriverProfile;
   }
 
   static async updateDriver(driverId: string, updates: Partial<DriverProfile>): Promise<void> {
-    try {
-      const driverRef = doc(db, 'drivers', driverId);
-      await updateDoc(driverRef, {
-        ...updates,
-        lastActiveAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error('Error updating driver:', error);
-      throw error;
-    }
+    const { error } = await supabase
+      .from('drivers')
+      .update({ ...updates, lastActiveAt: new Date().toISOString() })
+      .eq('id', driverId);
+    if (error) throw new Error(error.message);
   }
 
-  static async updateDriverLocation(
-    driverId: string,
-    latitude: number,
-    longitude: number
-  ): Promise<void> {
-    try {
-      const driverRef = doc(db, 'drivers', driverId);
-      await updateDoc(driverRef, {
-        location: { latitude, longitude },
-        lastActiveAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error('Error updating driver location:', error);
-      throw error;
-    }
+  static async updateDriverLocation(driverId: string, latitude: number, longitude: number): Promise<void> {
+    const { error } = await supabase
+      .from('drivers')
+      .update({ location: { latitude, longitude }, lastActiveAt: new Date().toISOString() })
+      .eq('id', driverId);
+    if (error) throw new Error(error.message);
   }
 
   static async setDriverOnlineStatus(driverId: string, isOnline: boolean): Promise<void> {
-    try {
-      const driverRef = doc(db, 'drivers', driverId);
-      await updateDoc(driverRef, {
-        isOnline,
-        lastActiveAt: serverTimestamp(),
-      });
-    } catch (error) {
-      console.error('Error setting driver online status:', error);
-      throw error;
-    }
+    const { error } = await supabase
+      .from('drivers')
+      .update({ isOnline, lastActiveAt: new Date().toISOString() })
+      .eq('id', driverId);
+    if (error) throw new Error(error.message);
   }
 
-  static async getNearbyDrivers(
-    latitude: number,
-    longitude: number,
-    radiusKm: number = 10,
-    _rideType: string = 'standard'
-  ): Promise<Driver[]> {
-    try {
-      const driversQuery = query(
-        collection(db, 'drivers'),
-        where('isOnline', '==', true),
-        where('isVerified', '==', true)
-      );
+  static async getNearbyDrivers(latitude: number, longitude: number, radiusKm = 10): Promise<Driver[]> {
+    const { data, error } = await supabase
+      .from('drivers')
+      .select('*')
+      .eq('isOnline', true)
+      .eq('isVerified', true);
 
-      const snapshot = await getDocs(driversQuery);
-      const drivers: Driver[] = [];
+    if (error || !data) return [];
 
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.location) {
-          const distance = this.calculateDistance(
-            latitude,
-            longitude,
-            data.location.latitude,
-            data.location.longitude
-          );
-
-          if (distance <= radiusKm) {
-            drivers.push({
-              id: doc.id,
-              name: data.name || '',
-              rating: data.rating || 5.0,
-              location: {
-                latitude: data.location.latitude,
-                longitude: data.location.longitude,
-              },
-              carType: data.vehicle?.type || 'Standard',
-              carModel: `${data.vehicle?.make || ''} ${data.vehicle?.model || ''}`,
-              licensePlate: data.vehicle?.licensePlate || '',
-              eta: Math.ceil((distance / 30) * 60),
-              phone: data.phone || '',
-            });
-          }
-        }
-      });
-
-      return drivers.sort((a, b) => a.eta - b.eta);
-    } catch (error) {
-      console.error('Error getting nearby drivers:', error);
-      return [];
-    }
-  }
-
-  static calculateDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ): number {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    return data
+      .filter((d: any) => {
+        if (!d.location) return false;
+        return calculateDistance(latitude, longitude, d.location.latitude, d.location.longitude) <= radiusKm;
+      })
+      .map((d: any) => {
+        const distance = calculateDistance(latitude, longitude, d.location.latitude, d.location.longitude);
+        return {
+          id: d.id,
+          name: d.name || '',
+          rating: d.rating || 5.0,
+          location: { latitude: d.location.latitude, longitude: d.location.longitude },
+          carType: d.vehicle?.type || 'Standard',
+          carModel: `${d.vehicle?.make || ''} ${d.vehicle?.model || ''}`,
+          licensePlate: d.vehicle?.licensePlate || '',
+          eta: Math.ceil((distance / 30) * 60),
+          phone: d.phone || '',
+        };
+      })
+      .sort((a: any, b: any) => a.eta - b.eta);
   }
 
   static async getPendingRideRequests(driverId: string): Promise<RideRequestForDriver[]> {
-    try {
-      const driver = await this.getDriver(driverId);
-      if (!driver || !driver.location) {
-        return [];
-      }
+    const driver = await this.getDriver(driverId);
+    if (!driver?.location) return [];
 
-      const ridesQuery = query(
-        collection(db, 'rides'),
-        where('status', '==', 'pending'),
-        orderBy('createdAt', 'desc'),
-        limit(20)
-      );
+    const { data: rides, error } = await supabase
+      .from('rides')
+      .select('*, users!rides_userId_fkey(displayName, rating, phone, photoURL)')
+      .eq('status', 'pending')
+      .order('createdAt', { ascending: false })
+      .limit(20);
 
-      const snapshot = await getDocs(ridesQuery);
-      const requests: RideRequestForDriver[] = [];
-
-      for (const docSnap of snapshot.docs) {
-        const data = docSnap.data();
-
-        if (!data.pickupLocation || !data.dropoffLocation) continue;
-
-        const pickupLatitude = this.getCoordinate(data.pickupLocation, 'latitude');
-        const pickupLongitude = this.getCoordinate(data.pickupLocation, 'longitude');
-        const dropoffLatitude = this.getCoordinate(data.dropoffLocation, 'latitude');
-        const dropoffLongitude = this.getCoordinate(data.dropoffLocation, 'longitude');
-
-        const distanceToPickup = this.calculateDistance(
-          driver.location.latitude,
-          driver.location.longitude,
-          pickupLatitude,
-          pickupLongitude
-        );
-
-        if (distanceToPickup <= 10) {
-          const passengerSnap = await getDoc(doc(db, 'users', data.userId));
-          const passengerData = passengerSnap.exists() ? passengerSnap.data() : {};
-
-          requests.push({
-            id: docSnap.id,
-            pickupLocation: {
-              latitude: pickupLatitude,
-              longitude: pickupLongitude,
-            },
-            dropoffLocation: {
-              latitude: dropoffLatitude,
-              longitude: dropoffLongitude,
-            },
-            pickupAddress: data.pickupAddress || data.pickupLocation.address || '',
-            dropoffAddress: data.dropoffAddress || data.dropoffLocation.address || '',
-            rideType: data.rideType || 'standard',
-            price: data.fare || 0,
-            distance: data.distance || 0,
-            duration: data.duration || 0,
-            status: 'pending',
-            passenger: {
-              id: data.userId,
-              name: passengerData.name || 'Passenger',
-              rating: passengerData.rating || 5.0,
-              photo: passengerData.photo,
-              phone: passengerData.phone || '',
-            },
-            estimatedEarnings: (data.fare || 0) * 0.8,
-            distanceToPickup,
-            createdAt: data.createdAt?.toDate?.() || new Date(),
-          });
-        }
-      }
-
-      return requests.sort((a, b) => a.distanceToPickup - b.distanceToPickup);
-    } catch (error) {
-      console.error('Error getting pending ride requests:', error);
-      return [];
-    }
+    if (error || !rides) return [];
+    return this.mapRidesToRequests(rides, driver);
   }
 
   static subscribeToRideRequests(
     driverId: string,
     callback: (requests: RideRequestForDriver[]) => void
   ): () => void {
-    const ridesQuery = query(
-      collection(db, 'rides'),
-      where('status', '==', 'pending'),
-      orderBy('createdAt', 'desc'),
-      limit(20)
-    );
+    const channel = supabase
+      .channel('pending-rides')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rides', filter: 'status=eq.pending' },
+        async () => {
+          const driver = await this.getDriver(driverId);
+          if (!driver?.location) { callback([]); return; }
 
-    return onSnapshot(ridesQuery, async (snapshot) => {
-      const driver = await this.getDriver(driverId);
-      if (!driver || !driver.location) {
-        callback([]);
-        return;
-      }
+          const { data: rides } = await supabase
+            .from('rides')
+            .select('*')
+            .eq('status', 'pending')
+            .order('createdAt', { ascending: false })
+            .limit(20);
 
-      const requests: RideRequestForDriver[] = [];
-
-      for (const docSnap of snapshot.docs) {
-        const data = docSnap.data();
-
-        if (!data.pickupLocation || !data.dropoffLocation) continue;
-
-        const pickupLatitude = this.getCoordinate(data.pickupLocation, 'latitude');
-        const pickupLongitude = this.getCoordinate(data.pickupLocation, 'longitude');
-        const dropoffLatitude = this.getCoordinate(data.dropoffLocation, 'latitude');
-        const dropoffLongitude = this.getCoordinate(data.dropoffLocation, 'longitude');
-
-        const distanceToPickup = this.calculateDistance(
-          driver.location.latitude,
-          driver.location.longitude,
-          pickupLatitude,
-          pickupLongitude
-        );
-
-        if (distanceToPickup <= 10) {
-          const passengerSnap = await getDoc(doc(db, 'users', data.userId));
-          const passengerData = passengerSnap.exists() ? passengerSnap.data() : {};
-
-          requests.push({
-            id: docSnap.id,
-            pickupLocation: {
-              latitude: pickupLatitude,
-              longitude: pickupLongitude,
-            },
-            dropoffLocation: {
-              latitude: dropoffLatitude,
-              longitude: dropoffLongitude,
-            },
-            pickupAddress: data.pickupAddress || data.pickupLocation.address || '',
-            dropoffAddress: data.dropoffAddress || data.dropoffLocation.address || '',
-            rideType: data.rideType || 'standard',
-            price: data.fare || 0,
-            distance: data.distance || 0,
-            duration: data.duration || 0,
-            status: 'pending',
-            passenger: {
-              id: data.userId,
-              name: passengerData.name || 'Passenger',
-              rating: passengerData.rating || 5.0,
-              photo: passengerData.photo,
-              phone: passengerData.phone || '',
-            },
-            estimatedEarnings: (data.fare || 0) * 0.8,
-            distanceToPickup,
-            createdAt: data.createdAt?.toDate?.() || new Date(),
-          });
+          callback(this.mapRidesToRequests(rides ?? [], driver));
         }
-      }
+      )
+      .subscribe();
 
-      callback(requests.sort((a, b) => a.distanceToPickup - b.distanceToPickup));
-    });
+    return () => supabase.removeChannel(channel);
+  }
+
+  private static mapRidesToRequests(rides: any[], driver: DriverProfile): RideRequestForDriver[] {
+    const results: RideRequestForDriver[] = [];
+
+    for (const ride of rides) {
+      if (!ride.pickupLocation || !ride.dropoffLocation) continue;
+
+      const pickupLat = coord(ride.pickupLocation, 'latitude');
+      const pickupLng = coord(ride.pickupLocation, 'longitude');
+      const dropoffLat = coord(ride.dropoffLocation, 'latitude');
+      const dropoffLng = coord(ride.dropoffLocation, 'longitude');
+
+      if (!driver.location) continue;
+      const distanceToPickup = calculateDistance(
+        driver.location.latitude, driver.location.longitude, pickupLat, pickupLng
+      );
+
+      if (distanceToPickup > 10) continue;
+
+      const passenger = ride.users || {};
+      results.push({
+        id: ride.id,
+        pickupLocation: { latitude: pickupLat, longitude: pickupLng },
+        dropoffLocation: { latitude: dropoffLat, longitude: dropoffLng },
+        pickupAddress: ride.pickupAddress || '',
+        dropoffAddress: ride.dropoffAddress || '',
+        rideType: ride.rideType || 'standard',
+        price: ride.fare || 0,
+        distance: ride.distance || 0,
+        duration: ride.duration || 0,
+        status: 'pending',
+        passenger: {
+          id: ride.userId,
+          name: passenger.displayName || 'Passenger',
+          rating: passenger.rating || 5.0,
+          photo: passenger.photoURL,
+          phone: passenger.phone || '',
+        },
+        estimatedEarnings: (ride.fare || 0) * 0.8,
+        distanceToPickup,
+        createdAt: ride.createdAt ? new Date(ride.createdAt) : new Date(),
+      });
+    }
+
+    return results.sort((a, b) => a.distanceToPickup - b.distanceToPickup);
   }
 
   static async acceptRide(rideId: string, driverId: string): Promise<void> {
-    try {
-      const rideRef = doc(db, 'rides', rideId);
-      await updateDoc(rideRef, {
-        driverId,
-        status: 'accepted',
-        acceptedAt: serverTimestamp(),
-      });
-
-      await this.updateDriver(driverId, { isOnline: false } as any);
-    } catch (error) {
-      console.error('Error accepting ride:', error);
-      throw error;
-    }
+    const { error } = await supabase
+      .from('rides')
+      .update({ driverId, status: 'accepted', acceptedAt: new Date().toISOString() })
+      .eq('id', rideId);
+    if (error) throw new Error(error.message);
+    await this.setDriverOnlineStatus(driverId, false);
   }
 
-  static async declineRide(rideId: string): Promise<void> {
-    try {
-      console.log('Ride declined:', rideId);
-    } catch (error) {
-      console.error('Error declining ride:', error);
-      throw error;
-    }
+  static async declineRide(_rideId: string): Promise<void> {
+    // No-op: driver simply doesn't accept
   }
 
   static async updateRideStatus(
@@ -373,162 +207,118 @@ export class FirebaseDriverService {
     status: 'in_progress' | 'completed' | 'cancelled',
     driverId?: string
   ): Promise<void> {
-    try {
-      const rideRef = doc(db, 'rides', rideId);
-      const updates: any = {
-        status: status === 'in_progress' ? 'in-progress' : status,
-      };
+    const updates: any = { status: status === 'in_progress' ? 'in-progress' : status };
+    if (status === 'in_progress') updates.startedAt = new Date().toISOString();
+    else if (status === 'completed') updates.completedAt = new Date().toISOString();
+    else if (status === 'cancelled') updates.cancelledAt = new Date().toISOString();
 
-      if (status === 'in_progress') {
-        updates.startedAt = serverTimestamp();
-      } else if (status === 'completed') {
-        updates.completedAt = serverTimestamp();
-      } else if (status === 'cancelled') {
-        updates.cancelledAt = serverTimestamp();
-      }
+    const { error } = await supabase.from('rides').update(updates).eq('id', rideId);
+    if (error) throw new Error(error.message);
 
-      await updateDoc(rideRef, updates);
-
-      if ((status === 'completed' || status === 'cancelled') && driverId) {
-        await this.updateDriver(driverId, { isOnline: true } as any);
-      }
-    } catch (error) {
-      console.error('Error updating ride status:', error);
-      throw error;
+    if ((status === 'completed' || status === 'cancelled') && driverId) {
+      await this.setDriverOnlineStatus(driverId, true);
     }
   }
 
-  static async getDriverEarnings(
-    driverId: string,
-    limitCount: number = 50
-  ): Promise<DriverEarnings[]> {
-    try {
-      const ridesQuery = query(
-        collection(db, 'rides'),
-        where('driverId', '==', driverId),
-        where('status', '==', 'completed'),
-        orderBy('completedAt', 'desc'),
-        limit(limitCount)
-      );
+  static async getDriverEarnings(driverId: string, limitCount = 50): Promise<DriverEarnings[]> {
+    const { data, error } = await supabase
+      .from('rides')
+      .select('id, fare, completedAt, createdAt')
+      .eq('driverId', driverId)
+      .eq('status', 'completed')
+      .order('completedAt', { ascending: false })
+      .limit(limitCount);
 
-      const snapshot = await getDocs(ridesQuery);
-      const earnings: DriverEarnings[] = [];
+    if (error || !data) return [];
 
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const amount = data.fare || 0;
-        const commission = amount * 0.2;
-        const netAmount = amount - commission;
-
-        earnings.push({
-          id: docSnap.id,
-          driverId,
-          rideId: docSnap.id,
-          amount,
-          commission,
-          netAmount,
-          payoutStatus: 'completed',
-          payoutDate: data.completedAt?.toDate?.(),
-          createdAt: data.createdAt?.toDate?.() || new Date(),
-        });
-      });
-
-      return earnings;
-    } catch (error) {
-      console.error('Error getting driver earnings:', error);
-      return [];
-    }
+    return data.map((ride: any) => {
+      const amount = ride.fare || 0;
+      const commission = amount * 0.2;
+      return {
+        id: ride.id,
+        driverId,
+        rideId: ride.id,
+        amount,
+        commission,
+        netAmount: amount - commission,
+        payoutStatus: 'completed',
+        payoutDate: ride.completedAt ? new Date(ride.completedAt) : undefined,
+        createdAt: new Date(ride.createdAt),
+      };
+    });
   }
 
   static async getDriverStats(driverId: string): Promise<DriverStats> {
-    try {
-      const ridesQuery = query(
-        collection(db, 'rides'),
-        where('driverId', '==', driverId),
-        where('status', '==', 'completed')
-      );
+    const { data, error } = await supabase
+      .from('rides')
+      .select('fare, completedAt, driverRating')
+      .eq('driverId', driverId)
+      .eq('status', 'completed');
 
-      const snapshot = await getDocs(ridesQuery);
-      
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekStart = new Date(today);
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (error || !data) return defaultStats();
 
-      let totalRides = 0;
-      let totalEarnings = 0;
-      let totalRating = 0;
-      let todayEarnings = 0;
-      let weekEarnings = 0;
-      let monthEarnings = 0;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        const amount = (data.fare || 0) * 0.8;
-        const completedAt = data.completedAt?.toDate?.();
-        const rating = data.driverRating || 0;
+    let totalRides = 0, totalEarnings = 0, totalRating = 0;
+    let todayEarnings = 0, weekEarnings = 0, monthEarnings = 0;
 
-        totalRides++;
-        totalEarnings += amount;
-        if (rating > 0) totalRating += rating;
+    for (const ride of data) {
+      const amount = (ride.fare || 0) * 0.8;
+      const completedAt = ride.completedAt ? new Date(ride.completedAt) : null;
+      const rating = ride.driverRating || 0;
 
-        if (completedAt) {
-          if (completedAt >= today) todayEarnings += amount;
-          if (completedAt >= weekStart) weekEarnings += amount;
-          if (completedAt >= monthStart) monthEarnings += amount;
-        }
-      });
+      totalRides++;
+      totalEarnings += amount;
+      if (rating > 0) totalRating += rating;
 
-      const averageRating = totalRides > 0 ? totalRating / totalRides : 5.0;
-
-      return {
-        totalRides,
-        totalEarnings,
-        averageRating,
-        acceptanceRate: 92,
-        cancellationRate: 3,
-        onlineHours: 156,
-        completionRate: 97,
-        todayEarnings,
-        weekEarnings,
-        monthEarnings,
-      };
-    } catch (error) {
-      console.error('Error getting driver stats:', error);
-      return {
-        totalRides: 0,
-        totalEarnings: 0,
-        averageRating: 5.0,
-        acceptanceRate: 0,
-        cancellationRate: 0,
-        onlineHours: 0,
-        completionRate: 0,
-        todayEarnings: 0,
-        weekEarnings: 0,
-        monthEarnings: 0,
-      };
+      if (completedAt) {
+        if (completedAt >= today) todayEarnings += amount;
+        if (completedAt >= weekStart) weekEarnings += amount;
+        if (completedAt >= monthStart) monthEarnings += amount;
+      }
     }
+
+    return {
+      totalRides,
+      totalEarnings,
+      averageRating: totalRides > 0 ? totalRating / totalRides : 5.0,
+      acceptanceRate: 92,
+      cancellationRate: 3,
+      onlineHours: 156,
+      completionRate: 97,
+      todayEarnings,
+      weekEarnings,
+      monthEarnings,
+    };
   }
 
   static subscribeToDriverProfile(
     driverId: string,
     callback: (profile: DriverProfile | null) => void
   ): () => void {
-    const driverRef = doc(db, 'drivers', driverId);
+    const channel = supabase
+      .channel(`driver-${driverId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'drivers', filter: `id=eq.${driverId}` },
+        (payload) => callback(payload.new as DriverProfile || null)
+      )
+      .subscribe();
 
-    return onSnapshot(driverRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        callback({
-          id: snapshot.id,
-          ...data,
-          createdAt: data.createdAt?.toDate?.() || new Date(),
-          lastActiveAt: data.lastActiveAt?.toDate?.() || new Date(),
-        } as DriverProfile);
-      } else {
-        callback(null);
-      }
-    });
+    return () => supabase.removeChannel(channel);
   }
+
+  static calculateDistance = calculateDistance;
+}
+
+function defaultStats(): DriverStats {
+  return {
+    totalRides: 0, totalEarnings: 0, averageRating: 5.0,
+    acceptanceRate: 0, cancellationRate: 0, onlineHours: 0,
+    completionRate: 0, todayEarnings: 0, weekEarnings: 0, monthEarnings: 0,
+  };
 }

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Car, User } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 
@@ -23,17 +23,18 @@ export default function RoleSelectionScreen() {
     }
   };
 
+  const player = useVideoPlayer(
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    (p) => { p.loop = true; p.muted = true; p.play(); }
+  );
+
   return (
     <View style={styles.container}>
-      <Video
-        source={{
-          uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        }}
+      <VideoView
+        player={player}
         style={styles.backgroundVideo}
-        shouldPlay
-        isLooping
-        isMuted
-        resizeMode={ResizeMode.COVER}
+        contentFit="cover"
+        nativeControls={false}
       />
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>

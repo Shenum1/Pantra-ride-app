@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAuth } from '@/hooks/useAuthStore';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
@@ -69,17 +69,18 @@ export default function PhoneLoginScreen() {
     }
   };
 
+  const player = useVideoPlayer(
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+    (p) => { p.loop = true; p.muted = true; p.play(); }
+  );
+
   return (
     <View style={styles.container}>
-      <Video
-        source={{
-          uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        }}
+      <VideoView
+        player={player}
         style={styles.backgroundVideo}
-        shouldPlay
-        isLooping
-        isMuted
-        resizeMode={ResizeMode.COVER}
+        contentFit="cover"
+        nativeControls={false}
       />
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>

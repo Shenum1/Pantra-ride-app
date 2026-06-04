@@ -54,16 +54,16 @@ interface Theme {
 }
 
 export default function DriverProfile() {
-  const { logout } = useDriverAuth();
+  const { logout, driver } = useDriverAuth();
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<boolean>(true);
   const [selectedTheme, setSelectedTheme] = useState<string>('default');
 
   const driverStats = {
-    rating: 4.8,
-    totalTrips: 1247,
-    totalEarnings: 15420.50,
-    yearsActive: 2,
+    rating: driver?.rating ?? 5.0,
+    totalTrips: driver?.totalRides ?? 0,
+    totalEarnings: driver?.totalEarnings ?? 0,
+    yearsActive: 0,
   };
 
   const achievements: Achievement[] = [
@@ -290,8 +290,8 @@ export default function DriverProfile() {
               <Camera size={16} color={Colors.light.white} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.driverName}>Alex Rodriguez</Text>
-          <Text style={styles.driverInfo}>Driver since 2022 • Toyota Camry</Text>
+          <Text style={styles.driverName}>{driver?.name ?? 'Driver'}</Text>
+          <Text style={styles.driverInfo}>{driver?.vehicle ? `${driver.vehicle.make} ${driver.vehicle.model}` : 'Vehicle not set'}</Text>
           <View style={styles.ratingContainer}>
             <Star size={16} color="#FFD700" fill="#FFD700" />
             <Text style={styles.rating}>{driverStats.rating}</Text>

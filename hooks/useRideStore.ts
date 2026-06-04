@@ -13,6 +13,9 @@ import { RideHistoryService } from '@/lib/ride-history-service';
 import { DatabaseService } from '@/lib/database-service';
 import { useAuth } from './useAuthStore';
 
+const isValidUuid = (id: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 interface FareBounds {
   basePrice: number;
   minPrice: number;
@@ -100,8 +103,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
       return FirebaseDriverService.getNearbyDrivers(
         pickupLocation.latitude,
         pickupLocation.longitude,
-        10,
-        selectedRideType
+        10
       );
     },
     enabled: !!pickupLocation,
@@ -387,8 +389,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
           fareAdjustmentPercent: mergedRide.fareAdjustmentPercent ?? 0,
           trackingStage: mergedRide.trackingStage ?? null,
           statusText: mergedRide.statusText ?? null,
-          driverId: mergedRide.driver?.id ?? null,
-          driverName: mergedRide.driver?.name ?? null,
+          driverId: mergedRide.driver?.id && isValidUuid(mergedRide.driver.id) ? mergedRide.driver.id : null,
           driverLocation: mergedRide.driverLocation
             ? {
                 latitude: mergedRide.driverLocation.latitude,
@@ -455,11 +456,20 @@ export const [RideProvider, useRide] = createContextHook(() => {
       createdAt: new Date(),
       sharedWith: isSharedRide && sharedWith.length > 0 ? sharedWith : undefined,
       scheduledTime: scheduledDate && scheduledDate > new Date() ? scheduledDate : undefined,
-      driverId: fallbackDriver?.id ?? null,
-      driverName: fallbackDriver?.name ?? null,
+      driverId: fallbackDriver?.id && isValidUuid(fallbackDriver.id) ? fallbackDriver.id : null,
     };
 
-    const rideId = await DatabaseService.create('rides', rideData);
+    let rideId: string;
+    try {
+      rideId = await DatabaseService.create('rides', rideData);
+    } catch (error) {
+      const isSupabaseUser = isValidUuid(user.id);
+      if (isSupabaseUser) {
+        throw error;
+      }
+      console.warn('Using local ride fallback for non-Supabase user:', error);
+      rideId = `local-ride-${Date.now()}`;
+    }
 
     const newRide: RideRequest = {
       id: rideId,

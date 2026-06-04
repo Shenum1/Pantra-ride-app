@@ -1,6 +1,5 @@
 import { DatabaseService, Ride, Driver } from './database-service';
-import { onSnapshot, collection, query, where, doc } from 'firebase/firestore';
-import { db } from './firebase';
+import { supabase } from './supabase';
 
 export interface RideMatchResult {
   rideId: string;
@@ -10,12 +9,7 @@ export interface RideMatchResult {
 }
 
 export class RideMatchingService {
-  static calculateDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number
-  ): number {
+  static calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
     const R = 6371;
     const dLat = ((lat2 - lat1) * Math.PI) / 180;
     const dLon = ((lon2 - lon1) * Math.PI) / 180;
@@ -25,60 +19,40 @@ export class RideMatchingService {
         Math.cos((lat2 * Math.PI) / 180) *
         Math.sin(dLon / 2) *
         Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
   static async findNearbyDrivers(
     latitude: number,
     longitude: number,
-    radiusKm: number = 5,
-    rideType: string = 'standard'
+    radiusKm = 5,
+    rideType = 'standard'
   ): Promise<Driver[]> {
     try {
-      const drivers = await DatabaseService.query(
-        'drivers',
-        [
-          { field: 'status', operator: '==', value: 'available' },
-          { field: 'vehicleType', operator: '==', value: rideType }
-        ]
-      );
+      const drivers = await DatabaseService.query('drivers', [
+        { field: 'status', operator: '==', value: 'available' },
+        { field: 'vehicleType', operator: '==', value: rideType },
+      ]);
 
-      const nearbyDrivers = drivers
-        .filter((driver: any) => {
-          if (!driver.currentLocation) return false;
-          const distance = this.calculateDistance(
-            latitude,
-            longitude,
-            driver.currentLocation.lat,
-            driver.currentLocation.lng
-          );
-          return distance <= radiusKm;
+      return (drivers as any[])
+        .filter((d) => {
+          if (!d.currentLocation) return false;
+          return this.calculateDistance(latitude, longitude, d.currentLocation.lat, d.currentLocation.lng) <= radiusKm;
         })
-        .map((driver: any) => ({
-          ...driver,
-          distanceToPickup: this.calculateDistance(
-            latitude,
-            longitude,
-            driver.currentLocation.lat,
-            driver.currentLocation.lng
-          )
+        .map((d) => ({
+          ...d,
+          distanceToPickup: this.calculateDistance(latitude, longitude, d.currentLocation.lat, d.currentLocation.lng),
         }))
-        .sort((a: any, b: any) => a.distanceToPickup - b.distanceToPickup);
-
-      return nearbyDrivers as (Driver & { distanceToPickup: number })[];
-    } catch (error) {
-      console.error('Error finding nearby drivers:', error);
+        .sort((a: any, b: any) => a.distanceToPickup - b.distanceToPickup) as (Driver & { distanceToPickup: number })[];
+    } catch {
       return [];
     }
   }
 
   static async matchRideWithDriver(rideId: string): Promise<RideMatchResult | null> {
     try {
-      const ride = await DatabaseService.get('rides', rideId) as any;
-      if (!ride) {
-        throw new Error('Ride not found');
-      }
+      const ride = (await DatabaseService.get('rides', rideId)) as any;
+      if (!ride) throw new Error('Ride not found');
 
       const nearbyDrivers = await this.findNearbyDrivers(
         ride.pickupLocation.lat,
@@ -87,127 +61,79 @@ export class RideMatchingService {
         ride.rideType
       );
 
-      if (nearbyDrivers.length === 0) {
-        console.log('No drivers available');
-        return null;
-      }
+      if (nearbyDrivers.length === 0) return null;
 
       const bestDriver = nearbyDrivers[0] as any;
       const estimatedArrival = Math.ceil((bestDriver.distanceToPickup / 30) * 60);
 
-      await DatabaseService.update('rides', rideId, {
-        driverId: bestDriver.id,
-        status: 'accepted',
-        estimatedArrival
-      });
+      await DatabaseService.update('rides', rideId, { driverId: bestDriver.id, status: 'accepted', estimatedArrival });
+      await DatabaseService.update('drivers', bestDriver.id!, { status: 'busy' });
 
-      await DatabaseService.update('drivers', bestDriver.id!, {
-        status: 'busy'
-      });
-
-      return {
-        rideId,
-        driverId: bestDriver.id!,
-        estimatedArrival,
-        distance: bestDriver.distanceToPickup
-      };
-    } catch (error) {
-      console.error('Error matching ride with driver:', error);
+      return { rideId, driverId: bestDriver.id!, estimatedArrival, distance: bestDriver.distanceToPickup };
+    } catch {
       return null;
     }
   }
 
-  static subscribeToRideUpdates(
-    rideId: string,
-    callback: (ride: Ride) => void
-  ): () => void {
-    const rideRef = doc(db, 'rides', rideId);
-    const unsubscribe = onSnapshot(rideRef, (snapshot) => {
-      if (snapshot.exists()) {
-        callback({ id: snapshot.id, ...snapshot.data() } as Ride);
-      }
-    });
-    return unsubscribe;
+  static subscribeToRideUpdates(rideId: string, callback: (ride: Ride) => void): () => void {
+    const channel = supabase
+      .channel(`ride-${rideId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rides', filter: `id=eq.${rideId}` },
+        (payload) => { if (payload.new) callback(payload.new as Ride); }
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }
 
   static subscribeToDriverLocation(
     driverId: string,
     callback: (location: { lat: number; lng: number }) => void
   ): () => void {
-    const driverRef = doc(db, 'drivers', driverId);
-    const unsubscribe = onSnapshot(driverRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data.currentLocation) {
-          callback(data.currentLocation);
+    const channel = supabase
+      .channel(`driver-loc-${driverId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'drivers', filter: `id=eq.${driverId}` },
+        (payload) => {
+          const loc = (payload.new as any)?.location;
+          if (loc) callback({ lat: loc.latitude ?? loc.lat, lng: loc.longitude ?? loc.lng });
         }
-      }
-    });
-    return unsubscribe;
+      )
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
   }
 
-  static subscribeToAvailableRides(
-    driverId: string,
-    callback: (rides: Ride[]) => void
-  ): () => void {
-    
-    const ridesQuery = query(
-      collection(db, 'rides'),
-      where('status', '==', 'pending')
-    );
+  static subscribeToAvailableRides(_driverId: string, callback: (rides: Ride[]) => void): () => void {
+    const channel = supabase
+      .channel('available-rides')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rides', filter: 'status=eq.pending' },
+        async () => {
+          const { data } = await supabase.from('rides').select('*').eq('status', 'pending');
+          callback((data ?? []) as Ride[]);
+        }
+      )
+      .subscribe();
 
-    const unsubscribe = onSnapshot(ridesQuery, (snapshot) => {
-      const rides = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Ride[];
-      callback(rides);
-    });
-
-    return unsubscribe;
+    return () => supabase.removeChannel(channel);
   }
 
   static async cancelRide(rideId: string): Promise<void> {
-    try {
-      const ride = await DatabaseService.get('rides', rideId) as any;
-      if (!ride) {
-        throw new Error('Ride not found');
-      }
-
-      await DatabaseService.update('rides', rideId, {
-        status: 'cancelled'
-      });
-
-      if (ride.driverId) {
-        await DatabaseService.update('drivers', ride.driverId, {
-          status: 'available'
-        });
-      }
-    } catch (error) {
-      console.error('Error cancelling ride:', error);
-      throw error;
-    }
+    const ride = (await DatabaseService.get('rides', rideId)) as any;
+    if (!ride) throw new Error('Ride not found');
+    await DatabaseService.update('rides', rideId, { status: 'cancelled' });
+    if (ride.driverId) await DatabaseService.update('drivers', ride.driverId, { status: 'available' });
   }
 
   static async completeRide(rideId: string): Promise<void> {
-    try {
-      const ride = await DatabaseService.get('rides', rideId) as any;
-      if (!ride) {
-        throw new Error('Ride not found');
-      }
-
-      await DatabaseService.update('rides', rideId, {
-        status: 'completed'
-      });
-
-      if (ride.driverId) {
-        await DatabaseService.update('drivers', ride.driverId, {
-          status: 'available'
-        });
-      }
-    } catch (error) {
-      console.error('Error completing ride:', error);
-      throw error;
-    }
+    const ride = (await DatabaseService.get('rides', rideId)) as any;
+    if (!ride) throw new Error('Ride not found');
+    await DatabaseService.update('rides', rideId, { status: 'completed' });
+    if (ride.driverId) await DatabaseService.update('drivers', ride.driverId, { status: 'available' });
   }
 }

@@ -1,4 +1,27 @@
 import { Location } from '@/types';
+import { Platform } from 'react-native';
+
+function buildGoogleMapsProxyUrl(url: string): string {
+  const googleUrl = new URL(url);
+  const proxyUrl = new URL('/api/google-maps', window.location.origin);
+  proxyUrl.searchParams.set('path', googleUrl.pathname);
+
+  for (const [key, value] of googleUrl.searchParams.entries()) {
+    if (key !== 'key') {
+      proxyUrl.searchParams.set(key, value);
+    }
+  }
+
+  return proxyUrl.toString();
+}
+
+async function fetchGoogleMaps(url: string, options?: RequestInit): Promise<Response> {
+  const finalUrl = Platform.OS === 'web' && typeof window !== 'undefined'
+    ? buildGoogleMapsProxyUrl(url)
+    : url;
+
+  return fetch(finalUrl, options);
+}
 
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 const NIGERIA_BOUNDS = {
@@ -162,10 +185,10 @@ export class GoogleMapsService {
 
     try {
       const [places, autocomplete, directions, staticMap] = await Promise.all([
-        fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent('Shoprite Abuja Nigeria')}&key=${GOOGLE_MAPS_API_KEY}`),
-        fetch(`https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent('Kubwa')}&components=country:ng&key=${GOOGLE_MAPS_API_KEY}`),
-        fetch(`https://maps.googleapis.com/maps/api/directions/json?origin=9.0820,7.4951&destination=9.0579,7.4951&key=${GOOGLE_MAPS_API_KEY}`),
-        fetch(`https://maps.googleapis.com/maps/api/staticmap?center=9.0765,7.3986&zoom=14&size=300x200&key=${GOOGLE_MAPS_API_KEY}`),
+        fetchGoogleMaps(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent('Shoprite Abuja Nigeria')}&key=${GOOGLE_MAPS_API_KEY}`),
+        fetchGoogleMaps(`https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent('Kubwa')}&components=country:ng&key=${GOOGLE_MAPS_API_KEY}`),
+        fetchGoogleMaps(`https://maps.googleapis.com/maps/api/directions/json?origin=9.0820,7.4951&destination=9.0579,7.4951&key=${GOOGLE_MAPS_API_KEY}`),
+        fetchGoogleMaps(`https://maps.googleapis.com/maps/api/staticmap?center=9.0765,7.3986&zoom=14&size=300x200&key=${GOOGLE_MAPS_API_KEY}`),
       ]);
 
       apis.places = await isGoogleJsonApiOk(places);
@@ -195,7 +218,7 @@ export class GoogleMapsService {
     try {
       const loc = location ? `&location=${location.latitude},${location.longitude}&radius=100000&strictbounds=false` : '&location=9.0765,7.3986&radius=900000&strictbounds=false';
       const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ng&language=en${loc}&key=${GOOGLE_MAPS_API_KEY}`;
-      const response = await fetch(url);
+      const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
       if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
         console.warn('Google autocomplete returned non-OK status:', data.status, data.error_message ?? 'No message');
@@ -229,7 +252,7 @@ export class GoogleMapsService {
     try {
       const loc = location ? `&location=${location.latitude},${location.longitude}&radius=100000` : '';
       const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(buildNigeriaQuery(trimmed))}${loc}&region=ng&language=en&key=${GOOGLE_MAPS_API_KEY}`;
-      const response = await fetch(url);
+      const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
       if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
         console.warn('Google place search returned non-OK status:', data.status, data.error_message ?? 'No message');
@@ -248,7 +271,7 @@ export class GoogleMapsService {
 
     try {
       const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=place_id,name,formatted_address,geometry&key=${GOOGLE_MAPS_API_KEY}`;
-      const response = await fetch(url);
+      const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
       if (data.status && data.status !== 'OK') {
         console.warn('Google place details returned non-OK status:', data.status, data.error_message ?? 'No message');
@@ -266,7 +289,7 @@ export class GoogleMapsService {
 
     try {
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&mode=driving&region=ng&key=${GOOGLE_MAPS_API_KEY}`;
-      const response = await fetch(url);
+      const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
       if (data.status && data.status !== 'OK') {
         console.warn('Google directions returned non-OK status:', data.status, data.error_message ?? 'No message');
@@ -290,7 +313,7 @@ export class GoogleMapsService {
   static async reverseGeocode(location: Location): Promise<string> {
     if (!GOOGLE_MAPS_API_KEY) return 'Current location';
     try {
-      const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.latitude},${location.longitude}&region=ng&key=${GOOGLE_MAPS_API_KEY}`);
+      const response = await fetchGoogleMaps(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.latitude},${location.longitude}&region=ng&key=${GOOGLE_MAPS_API_KEY}`);
       const data = await response.json();
       return data?.results?.[0]?.formatted_address ?? 'Current location';
     } catch {

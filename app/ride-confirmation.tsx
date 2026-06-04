@@ -157,9 +157,11 @@ export default function RideConfirmationScreen() {
 
     try {
       const ride = await requestRide();
-      if (ride) {
-        router.push('/ride-progress');
+      if (!ride) {
+        Alert.alert('Sign in required', 'Please sign in to book a ride.');
+        return;
       }
+      router.push('/ride-progress');
     } catch (error) {
       console.error('Error booking ride from confirmation screen:', error);
       Alert.alert('Booking failed', 'We could not confirm this ride. Please try again.');

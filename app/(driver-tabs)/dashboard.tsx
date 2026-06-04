@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   Platform,
   StatusBar,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   TrendingUp,
@@ -33,10 +33,19 @@ import { useDriverStore } from '@/hooks/useDriverStore';
 
 const { width } = Dimensions.get('window');
 
+const DRIVING_VIDEOS = [
+  'https://videos.pexels.com/video-files/3044127/3044127-uhd_2560_1440_25fps.mp4',
+  'https://videos.pexels.com/video-files/2103099/2103099-uhd_2560_1440_30fps.mp4',
+  'https://videos.pexels.com/video-files/3571264/3571264-uhd_2560_1440_30fps.mp4',
+];
+
 export default function DriverDashboard() {
   const { driver, toggleOnlineStatus } = useDriverAuth();
   const { driverProfile, stats, earnings } = useDriverStore();
-  const videoRef = useRef<Video>(null);
+  const player = useVideoPlayer(
+    DRIVING_VIDEOS[Math.floor(Math.random() * DRIVING_VIDEOS.length)],
+    (p) => { p.loop = true; p.muted = true; p.playbackRate = 0.7; p.play(); }
+  );
 
   const [animatedValue] = useState<Animated.Value>(new Animated.Value(0));
   
@@ -49,12 +58,7 @@ export default function DriverDashboard() {
   const totalEarnings = stats?.totalEarnings || 0;
   const onlineHours = stats?.onlineHours || 0;
 
-  const drivingVideos = [
-    'https://videos.pexels.com/video-files/3044127/3044127-uhd_2560_1440_25fps.mp4',
-    'https://videos.pexels.com/video-files/2103099/2103099-uhd_2560_1440_30fps.mp4',
-    'https://videos.pexels.com/video-files/3571264/3571264-uhd_2560_1440_30fps.mp4',
-  ];
-  const [currentVideoIndex] = useState<number>(Math.floor(Math.random() * drivingVideos.length));
+  const [currentVideoIndex] = useState(() => Math.floor(Math.random() * DRIVING_VIDEOS.length));
 
   const motivationalQuotes = useMemo(() => [
     "Keep driving towards your goals! 💪",
@@ -109,15 +113,11 @@ export default function DriverDashboard() {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       {/* Video Background */}
       {Platform.OS !== 'web' ? (
-        <Video
-          ref={videoRef}
-          source={{ uri: drivingVideos[currentVideoIndex] }}
+        <VideoView
+          player={player}
           style={styles.videoBackground}
-          resizeMode={ResizeMode.COVER}
-          shouldPlay
-          isLooping
-          isMuted
-          rate={0.7}
+          contentFit="cover"
+          nativeControls={false}
         />
       ) : (
         <video
@@ -132,7 +132,7 @@ export default function DriverDashboard() {
             objectFit: 'cover',
           }}
         >
-          <source src={drivingVideos[currentVideoIndex]} type="video/mp4" />
+          <source src={DRIVING_VIDEOS[currentVideoIndex]} type="video/mp4" />
         </video>
       )}
 

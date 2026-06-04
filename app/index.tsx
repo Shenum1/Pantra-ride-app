@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useTheme } from '@/hooks/useThemeStore';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MapPinned, Sparkles } from 'lucide-react-native';
 
@@ -26,6 +26,24 @@ export default function Index() {
   const { colors } = useTheme();
   const [isSplashReady, setIsSplashReady] = useState<boolean>(false);
   const [videoFailed, setVideoFailed] = useState<boolean>(false);
+
+  const player = useVideoPlayer(SPLASH_VIDEO_URI, (p) => {
+    p.loop = true;
+    p.muted = true;
+    p.play();
+  });
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status, error }: any) => {
+      if (status === 'readyToPlay') {
+        console.log('Index: Splash video loaded successfully');
+      } else if (status === 'error') {
+        console.log('Index: Splash video failed to load', error);
+        setVideoFailed(true);
+      }
+    });
+    return () => sub.remove();
+  }, [player]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const floatAnim = useRef(new Animated.Value(0)).current;
 
@@ -123,23 +141,11 @@ export default function Index() {
   return (
     <View style={styles.container} testID="startup-splash-screen">
       {!videoFailed ? (
-        <Video
-          source={{ uri: SPLASH_VIDEO_URI }}
+        <VideoView
+          player={player}
           style={styles.videoBackground}
-          shouldPlay
-          isLooping
-          isMuted
-          resizeMode={ResizeMode.COVER}
-          onLoadStart={() => {
-            console.log('Index: Splash video loading started');
-          }}
-          onLoad={() => {
-            console.log('Index: Splash video loaded successfully');
-          }}
-          onError={(error) => {
-            console.log('Index: Splash video failed to load', error);
-            setVideoFailed(true);
-          }}
+          contentFit="cover"
+          nativeControls={false}
         />
       ) : null}
 

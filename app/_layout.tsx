@@ -44,7 +44,7 @@ function RootLayoutNav() {
         <Stack.Screen name="ride-progress" options={{ title: "Your Ride", headerShown: false }} />
         <Stack.Screen name="schedule-ride" options={{ title: "Schedule Ride" }} />
         <Stack.Screen name="payment-methods" options={{ title: "Payment Methods" }} />
-        <Stack.Screen name="add-payment" options={{ title: "Add Payment Method" }} />
+        <Stack.Screen name="add-payment-method" options={{ title: "Add Payment Method" }} />
         <Stack.Screen name="saved-locations" options={{ title: "Saved Places" }} />
         <Stack.Screen name="add-location" options={{ title: "Add Location" }} />
         <Stack.Screen name="promotions" options={{ title: "Promotions" }} />

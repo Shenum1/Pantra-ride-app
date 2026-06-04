@@ -25,6 +25,7 @@ import {
   Send,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useThemeStore';
+import { useDriverStore } from '@/hooks/useDriverStore';
 import { LinearGradient } from 'expo-linear-gradient';
 
 
@@ -47,62 +48,29 @@ interface EarningsData {
 
 export default function DriverWallet() {
   const { colors } = useTheme();
+  const { driverProfile, earnings: earningsHistory } = useDriverStore();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
-  
-  const [earnings] = useState<EarningsData>({
-    today: 127.50,
-    week: 892.30,
-    month: 3456.75,
-    tips: 234.80,
-  });
+
+  const earnings: EarningsData = {
+    today: driverProfile?.earnings?.today ?? 0,
+    week: driverProfile?.earnings?.thisWeek ?? 0,
+    month: driverProfile?.earnings?.thisMonth ?? 0,
+    tips: 0,
+  };
 
   const currentEarnings = earnings[selectedPeriod];
-  
-  const transactions: Transaction[] = [
-    {
-      id: '1',
-      type: 'earning',
-      amount: 15.75,
-      description: 'Trip to Downtown Mall',
-      date: 'Today',
-      time: '2:30 PM',
-    },
-    {
-      id: '2',
-      type: 'tip',
-      amount: 5.00,
-      description: 'Tip from Sarah Johnson',
-      date: 'Today',
-      time: '2:35 PM',
-    },
-    {
-      id: '3',
-      type: 'bonus',
-      amount: 10.00,
-      description: 'Peak hour bonus',
-      date: 'Today',
-      time: '1:45 PM',
-    },
-    {
-      id: '4',
-      type: 'earning',
-      amount: 22.50,
-      description: 'Airport pickup',
-      date: 'Today',
-      time: '12:15 PM',
-    },
-    {
-      id: '5',
-      type: 'payout',
-      amount: -450.00,
-      description: 'Weekly payout to bank',
-      date: 'Yesterday',
-      time: '9:00 AM',
-    },
-  ];
+
+  const transactions: Transaction[] = earningsHistory.map((e: any) => ({
+    id: e.id ?? String(Math.random()),
+    type: 'earning' as const,
+    amount: e.amount ?? 0,
+    description: e.description ?? 'Trip',
+    date: e.date ? new Date(e.date).toLocaleDateString() : '',
+    time: e.date ? new Date(e.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+  }));
 
 
 

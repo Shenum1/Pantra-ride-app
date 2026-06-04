@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
@@ -39,23 +39,24 @@ export default function DriverLoginScreen() {
       console.log('Driver login successful, navigating to dashboard...');
       // Navigate directly to driver dashboard
       router.replace('/(driver-tabs)/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Driver login failed:', error);
-      Alert.alert('Login Failed', 'Invalid email or password');
+      Alert.alert('Login Failed', error?.message ?? 'Invalid email or password');
     }
   };
 
+  const player = useVideoPlayer(
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    (p) => { p.loop = true; p.muted = true; p.play(); }
+  );
+
   return (
     <View style={styles.container}>
-      <Video
-        source={{
-          uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        }}
+      <VideoView
+        player={player}
         style={styles.backgroundVideo}
-        shouldPlay
-        isLooping
-        isMuted
-        resizeMode={ResizeMode.COVER}
+        contentFit="cover"
+        nativeControls={false}
       />
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>

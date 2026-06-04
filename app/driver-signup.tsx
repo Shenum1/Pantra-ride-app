@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
 import { Eye, EyeOff, ArrowLeft, CheckSquare, Square } from 'lucide-react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useTermsStore } from '@/hooks/useTermsStore';
 import Button from '@/components/Button';
@@ -105,27 +105,24 @@ export default function DriverSignupScreen() {
           color: vehicleColor,
         }
       );
-      Alert.alert(
-        'Registration Successful',
-        'Your driver account has been created. Please wait for verification.',
-        [{ text: 'OK', onPress: () => router.replace('/') }]
-      );
-    } catch {
-      Alert.alert('Registration Failed', 'Please try again');
+      router.replace('/(driver-tabs)/dashboard');
+    } catch (error: any) {
+      Alert.alert('Registration Failed', error?.message ?? 'Please try again');
     }
   };
 
+  const player = useVideoPlayer(
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    (p) => { p.loop = true; p.muted = true; p.play(); }
+  );
+
   return (
     <View style={styles.container}>
-      <Video
-        source={{
-          uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        }}
+      <VideoView
+        player={player}
         style={styles.backgroundVideo}
-        shouldPlay
-        isLooping
-        isMuted
-        resizeMode={ResizeMode.COVER}
+        contentFit="cover"
+        nativeControls={false}
       />
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>

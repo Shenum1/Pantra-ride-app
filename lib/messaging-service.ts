@@ -1,19 +1,4 @@
-import {
-  collection,
-  doc,
-  addDoc,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  onSnapshot,
-  serverTimestamp,
-  Timestamp,
-  updateDoc,
-  setDoc,
-  getDoc,
-} from 'firebase/firestore';
-import { db } from './firebase';
+import { supabase } from './supabase';
 
 export interface Message {
   id?: string;
@@ -22,8 +7,7 @@ export interface Message {
   senderType: 'user' | 'driver';
   text: string;
   read: boolean;
-  timestamp: Timestamp | null;
-  createdAt?: Timestamp;
+  createdAt?: string;
 }
 
 export interface Conversation {
@@ -36,12 +20,12 @@ export interface Conversation {
   driverPhone?: string;
   rideId?: string;
   lastMessage?: string;
-  lastMessageTime?: Timestamp;
+  lastMessageTime?: string;
   unreadCountUser: number;
   unreadCountDriver: number;
   status: 'active' | 'archived';
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export class MessagingService {
@@ -54,29 +38,28 @@ export class MessagingService {
     driverPhone?: string;
     rideId?: string;
   }): Promise<string> {
-    try {
-      const conversationId = `${data.userId}_${data.driverId}_${data.rideId || Date.now()}`;
-      
-      const existingConv = await getDoc(doc(db, 'conversations', conversationId));
-      if (existingConv.exists()) {
-        return conversationId;
-      }
+    const conversationId = `${data.userId}_${data.driverId}_${data.rideId || Date.now()}`;
 
-      const conversationData: Conversation = {
-        ...data,
-        unreadCountUser: 0,
-        unreadCountDriver: 0,
-        status: 'active',
-        createdAt: serverTimestamp() as Timestamp,
-        updatedAt: serverTimestamp() as Timestamp,
-      };
+    const { data: existing } = await supabase
+      .from('conversations')
+      .select('id')
+      .eq('id', conversationId)
+      .single();
 
-      await setDoc(doc(db, 'conversations', conversationId), conversationData);
-      return conversationId;
-    } catch (error: any) {
-      console.error('Create conversation error:', error);
-      throw new Error(error.message);
-    }
+    if (existing) return conversationId;
+
+    const { error } = await supabase.from('conversations').insert({
+      id: conversationId,
+      ...data,
+      unreadCountUser: 0,
+      unreadCountDriver: 0,
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (error) throw new Error(error.message);
+    return conversationId;
   }
 
   static async sendMessage(data: {
@@ -85,199 +68,127 @@ export class MessagingService {
     senderType: 'user' | 'driver';
     text: string;
   }): Promise<string> {
-    try {
-      const messageData: Omit<Message, 'id'> = {
+    const { data: message, error } = await supabase
+      .from('messages')
+      .insert({
         conversationId: data.conversationId,
         senderId: data.senderId,
         senderType: data.senderType,
         text: data.text,
         read: false,
-        timestamp: serverTimestamp() as Timestamp,
-        createdAt: serverTimestamp() as Timestamp,
-      };
+        createdAt: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
 
-      const messageRef = await addDoc(collection(db, 'messages'), messageData);
+    if (error) throw new Error(error.message);
 
-      const unreadField = data.senderType === 'user' ? 'unreadCountDriver' : 'unreadCountUser';
-      const convRef = doc(db, 'conversations', data.conversationId);
-      await updateDoc(convRef, {
-        lastMessage: data.text,
-        lastMessageTime: serverTimestamp(),
-        [unreadField]: (await getDoc(convRef)).data()?.[unreadField] + 1 || 1,
-        updatedAt: serverTimestamp(),
-      });
+    const unreadField = data.senderType === 'user' ? 'unreadCountDriver' : 'unreadCountUser';
+    const { data: conv } = await supabase.from('conversations').select(unreadField).eq('id', data.conversationId).single();
+    await supabase.from('conversations').update({
+      lastMessage: data.text,
+      lastMessageTime: new Date().toISOString(),
+      [unreadField]: ((conv as any)?.[unreadField] ?? 0) + 1,
+      updatedAt: new Date().toISOString(),
+    }).eq('id', data.conversationId);
 
-      return messageRef.id;
-    } catch (error: any) {
-      console.error('Send message error:', error);
-      throw new Error(error.message);
-    }
+    return message?.id ?? '';
   }
 
   static async getMessages(conversationId: string): Promise<Message[]> {
-    try {
-      const q = query(
-        collection(db, 'messages'),
-        where('conversationId', '==', conversationId),
-        orderBy('timestamp', 'asc')
-      );
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversationId', conversationId)
+      .order('createdAt', { ascending: true });
 
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-    } catch (error: any) {
-      console.error('Get messages error:', error);
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Message[];
   }
 
-  static subscribeToMessages(
-    conversationId: string,
-    callback: (messages: Message[]) => void
-  ): () => void {
-    try {
-      const q = query(
-        collection(db, 'messages'),
-        where('conversationId', '==', conversationId),
-        orderBy('timestamp', 'asc')
-      );
+  static subscribeToMessages(conversationId: string, callback: (messages: Message[]) => void): () => void {
+    const channel = supabase
+      .channel(`messages-${conversationId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages', filter: `conversationId=eq.${conversationId}` },
+        async () => callback(await this.getMessages(conversationId))
+      )
+      .subscribe();
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-        callback(messages);
-      });
-
-      return unsubscribe;
-    } catch (error: any) {
-      console.error('Subscribe to messages error:', error);
-      return () => {};
-    }
+    return () => supabase.removeChannel(channel);
   }
 
-  static async markMessagesAsRead(
-    conversationId: string,
-    userId: string,
-    userType: 'user' | 'driver'
-  ): Promise<void> {
-    try {
-      const q = query(
-        collection(db, 'messages'),
-        where('conversationId', '==', conversationId),
-        where('senderType', '!=', userType),
-        where('read', '==', false)
-      );
+  static async markMessagesAsRead(conversationId: string, _userId: string, userType: 'user' | 'driver'): Promise<void> {
+    await supabase
+      .from('messages')
+      .update({ read: true })
+      .eq('conversationId', conversationId)
+      .neq('senderType', userType)
+      .eq('read', false);
 
-      const querySnapshot = await getDocs(q);
-      const updatePromises = querySnapshot.docs.map(doc =>
-        updateDoc(doc.ref, { read: true })
-      );
-
-      await Promise.all(updatePromises);
-
-      const unreadField = userType === 'user' ? 'unreadCountUser' : 'unreadCountDriver';
-      const convRef = doc(db, 'conversations', conversationId);
-      await updateDoc(convRef, {
-        [unreadField]: 0,
-      });
-    } catch (error: any) {
-      console.error('Mark messages as read error:', error);
-      throw new Error(error.message);
-    }
+    const unreadField = userType === 'user' ? 'unreadCountUser' : 'unreadCountDriver';
+    await supabase.from('conversations').update({ [unreadField]: 0 }).eq('id', conversationId);
   }
 
   static async getUserConversations(userId: string): Promise<Conversation[]> {
-    try {
-      const q = query(
-        collection(db, 'conversations'),
-        where('userId', '==', userId),
-        where('status', '==', 'active'),
-        orderBy('updatedAt', 'desc')
-      );
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('userId', userId)
+      .eq('status', 'active')
+      .order('updatedAt', { ascending: false });
 
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Conversation));
-    } catch (error: any) {
-      console.error('Get user conversations error:', error);
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Conversation[];
   }
 
-  static subscribeToUserConversations(
-    userId: string,
-    callback: (conversations: Conversation[]) => void
-  ): () => void {
-    try {
-      const q = query(
-        collection(db, 'conversations'),
-        where('userId', '==', userId),
-        where('status', '==', 'active'),
-        orderBy('updatedAt', 'desc')
-      );
+  static subscribeToUserConversations(userId: string, callback: (conversations: Conversation[]) => void): () => void {
+    const channel = supabase
+      .channel(`user-convs-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations', filter: `userId=eq.${userId}` },
+        async () => callback(await this.getUserConversations(userId))
+      )
+      .subscribe();
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const conversations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Conversation));
-        callback(conversations);
-      });
-
-      return unsubscribe;
-    } catch (error: any) {
-      console.error('Subscribe to user conversations error:', error);
-      return () => {};
-    }
+    return () => supabase.removeChannel(channel);
   }
 
   static async getDriverConversations(driverId: string): Promise<Conversation[]> {
-    try {
-      const q = query(
-        collection(db, 'conversations'),
-        where('driverId', '==', driverId),
-        where('status', '==', 'active'),
-        orderBy('updatedAt', 'desc')
-      );
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('driverId', driverId)
+      .eq('status', 'active')
+      .order('updatedAt', { ascending: false });
 
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Conversation));
-    } catch (error: any) {
-      console.error('Get driver conversations error:', error);
-      throw new Error(error.message);
-    }
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Conversation[];
   }
 
-  static subscribeToDriverConversations(
-    driverId: string,
-    callback: (conversations: Conversation[]) => void
-  ): () => void {
-    try {
-      const q = query(
-        collection(db, 'conversations'),
-        where('driverId', '==', driverId),
-        where('status', '==', 'active'),
-        orderBy('updatedAt', 'desc')
-      );
+  static subscribeToDriverConversations(driverId: string, callback: (conversations: Conversation[]) => void): () => void {
+    const channel = supabase
+      .channel(`driver-convs-${driverId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'conversations', filter: `driverId=eq.${driverId}` },
+        async () => callback(await this.getDriverConversations(driverId))
+      )
+      .subscribe();
 
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const conversations = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Conversation));
-        callback(conversations);
-      });
-
-      return unsubscribe;
-    } catch (error: any) {
-      console.error('Subscribe to driver conversations error:', error);
-      return () => {};
-    }
+    return () => supabase.removeChannel(channel);
   }
 
   static async getConversation(conversationId: string): Promise<Conversation | null> {
-    try {
-      const docRef = doc(db, 'conversations', conversationId);
-      const docSnap = await getDoc(docRef);
-      
-      if (docSnap.exists()) {
-        return { id: docSnap.id, ...docSnap.data() } as Conversation;
-      }
-      return null;
-    } catch (error: any) {
-      console.error('Get conversation error:', error);
-      throw new Error(error.message);
-    }
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq('id', conversationId)
+      .single();
+
+    if (error || !data) return null;
+    return data as Conversation;
   }
 }
