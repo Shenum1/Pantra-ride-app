@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import createContextHook from '@nkzw/create-context-hook';
 import { DriverAuthService, DriverRow } from '@/lib/driver-auth-service';
@@ -5,26 +6,37 @@ import { FirebaseDriverService } from '@/lib/firebase-driver-service';
 
 export type Driver = DriverRow;
 
+const DRIVER_STORAGE_KEY = 'driver_auth_user';
+
 export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
   const [driver, setDriver] = useState<Driver | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      console.warn('DriverAuth: timeout — forcing isLoading false');
-      setIsLoading(false);
-    }, 5000);
+    // Load cached driver from AsyncStorage immediately — no network needed
+    const loadStoredDriver = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(DRIVER_STORAGE_KEY);
+        if (stored) setDriver(JSON.parse(stored) as Driver);
+      } catch {
+        // ignore read errors
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    void loadStoredDriver();
 
+    // Keep in sync with live Supabase session in the background
     const unsubscribe = DriverAuthService.onAuthStateChanged((d) => {
-      clearTimeout(timeout);
       setDriver(d);
-      setIsLoading(false);
+      if (d) {
+        AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(d)).catch(() => {});
+      } else {
+        AsyncStorage.removeItem(DRIVER_STORAGE_KEY).catch(() => {});
+      }
     });
 
-    return () => {
-      clearTimeout(timeout);
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -32,6 +44,7 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     try {
       const d = await DriverAuthService.signInWithEmail(email, password);
       setDriver(d);
+      await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(d));
     } finally {
       setIsLoading(false);
     }
@@ -55,16 +68,18 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     try {
       const d = await DriverAuthService.signUpWithEmail({ name, email, phone, password, driverLicense, vehicle });
       setDriver(d);
+      await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(d));
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const logout = useCallback(async () => {
+    await AsyncStorage.removeItem(DRIVER_STORAGE_KEY);
     setDriver(null);
     try {
       await DriverAuthService.signOut();
-    } catch (e) {
+    } catch {
       // session may already be expired or network unavailable — local state is cleared
     }
   }, []);
