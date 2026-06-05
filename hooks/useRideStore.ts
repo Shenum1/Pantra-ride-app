@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { mockRideTypes } from '@/mocks/rideTypes';
 import { Location, PaymentMethod, RideCancellationReason, RideRequest, RideTrackingStage, RideType } from '@/types';
+import { calculateFare, calculateAllTierFares } from '@/lib/fare-calculator';
 import { useLocation } from './useLocationStore';
 import { usePayment } from './usePaymentStore';
 import { usePromotions } from './usePromotionsStore';
@@ -90,6 +91,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const [isSharedRide, setIsSharedRide] = useState<boolean>(false);
   const [sharedWith, setSharedWith] = useState<string[]>([]);
   const [surgeMultiplier, setSurgeMultiplier] = useState<number>(1);
+  const [tierPrices, setTierPrices] = useState<Record<string, number>>({});
   const [isHydratingRide, setIsHydratingRide] = useState<boolean>(true);
   const currentRideRef = useRef<RideRequest | null>(null);
 
@@ -254,32 +256,23 @@ export const [RideProvider, useRide] = createContextHook(() => {
     durationSeconds: number,
     rideTypeId: string
   ) => {
-    console.log('Calculating price from route:', {
-      distanceMeters,
-      durationSeconds,
-      rideTypeId,
-      fareAdjustmentPercent,
-    });
-
     const distanceKm = distanceMeters / 1000;
     const durationMinutes = durationSeconds / 60;
-    const selectedType = rideTypes.find((type) => type.id === rideTypeId);
-    const basePrice = 500;
-    const pricePerKm = 150;
 
-    let computedPrice = (basePrice + distanceKm * pricePerKm) * (selectedType?.multiplier ?? 1) * surgeMultiplier;
+    let computedPrice = calculateFare(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
+    setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
 
     if (isSharedRide) {
-      computedPrice *= 0.8;
+      computedPrice = Math.round(computedPrice * 0.8);
     }
 
     const activePromo = getActivePromotion();
     if (activePromo) {
-      computedPrice -= computedPrice * (activePromo.discountPercentage / 100);
+      computedPrice = Math.round(computedPrice * (1 - activePromo.discountPercentage / 100));
     }
 
     updateEstimatedFare(computedPrice, distanceKm, durationMinutes);
-  }, [fareAdjustmentPercent, getActivePromotion, isSharedRide, rideTypes, surgeMultiplier, updateEstimatedFare]);
+  }, [fareAdjustmentPercent, getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare]);
 
   const calculateRideEstimates = useCallback((pickup: typeof pickupLocation, dropoff: typeof dropoffLocation, rideTypeId: string) => {
     if (!pickup || !dropoff) {
@@ -298,23 +291,21 @@ export const [RideProvider, useRide] = createContextHook(() => {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distanceKm = earthRadiusKm * c;
     const durationMinutes = (distanceKm / 30) * 60;
-    const selectedType = rideTypes.find((type) => type.id === rideTypeId);
-    const basePrice = 500;
-    const pricePerKm = 150;
 
-    let computedPrice = (basePrice + distanceKm * pricePerKm) * (selectedType?.multiplier ?? 1) * surgeMultiplier;
+    let computedPrice = calculateFare(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
+    setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
 
     if (isSharedRide) {
-      computedPrice *= 0.8;
+      computedPrice = Math.round(computedPrice * 0.8);
     }
 
     const activePromo = getActivePromotion();
     if (activePromo) {
-      computedPrice -= computedPrice * (activePromo.discountPercentage / 100);
+      computedPrice = Math.round(computedPrice * (1 - activePromo.discountPercentage / 100));
     }
 
     updateEstimatedFare(computedPrice, distanceKm, durationMinutes);
-  }, [getActivePromotion, isSharedRide, rideTypes, surgeMultiplier, updateEstimatedFare]);
+  }, [getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare]);
 
   useEffect(() => {
     if (routeInfo) {
@@ -638,6 +629,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     sharedWith,
     selectedPaymentMethod,
     isHydratingRide,
+    tierPrices,
     requestRide,
     cancelRide,
     completeRide,
@@ -670,6 +662,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     sharedWith,
     selectedPaymentMethod,
     isHydratingRide,
+    tierPrices,
     requestRide,
     cancelRide,
     completeRide,

@@ -121,10 +121,15 @@ export class DriverAuthService {
 
   static onAuthStateChanged(callback: (driver: DriverRow | null) => void): () => void {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        const driver = await this.getDriverByUserId(session.user.id);
-        callback(driver);
-      } else {
+      try {
+        if (session?.user) {
+          const driver = await this.getDriverByUserId(session.user.id);
+          callback(driver);
+        } else {
+          callback(null);
+        }
+      } catch (error) {
+        console.error('DriverAuthService: onAuthStateChange error', error);
         callback(null);
       }
     });

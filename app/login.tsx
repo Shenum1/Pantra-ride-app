@@ -42,7 +42,7 @@ export default function LoginScreen() {
       console.log('Login: Starting login process...');
       await login(email, password);
       console.log('Login: Login successful, navigating to home');
-      router.replace('/');
+      router.replace('/(tabs)/home');
     } catch (error) {
       console.error('Login: Login failed:', error);
     }

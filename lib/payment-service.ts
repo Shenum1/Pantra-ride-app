@@ -1,4 +1,5 @@
 import { DatabaseService } from './database-service';
+import { calculateFare } from './fare-calculator';
 
 export interface PaymentIntent {
   id: string;
@@ -31,7 +32,7 @@ export class PaymentService {
     try {
       const paymentIntent: Omit<PaymentIntent, 'id'> = {
         amount,
-        currency: 'USD',
+        currency: 'NGN',
         status: 'pending',
         paymentMethodId,
         userId,
@@ -170,22 +171,12 @@ export class PaymentService {
   }
 
   static calculateFare(
-    distance: number,
-    duration: number,
+    distanceKm: number,
+    durationMin: number,
     rideType: string,
     surgeMultiplier: number = 1.0
   ): number {
-    const baseRates: Record<string, { base: number; perKm: number; perMin: number }> = {
-      standard: { base: 5.0, perKm: 1.5, perMin: 0.3 },
-      premium: { base: 10.0, perKm: 2.5, perMin: 0.5 },
-      xl: { base: 8.0, perKm: 2.0, perMin: 0.4 },
-      shared: { base: 3.0, perKm: 1.0, perMin: 0.2 },
-    };
-
-    const rates = baseRates[rideType] || baseRates.standard;
-    const fare = (rates.base + distance * rates.perKm + duration * rates.perMin) * surgeMultiplier;
-
-    return Math.round(fare * 100) / 100;
+    return calculateFare(distanceKm, durationMin, rideType, surgeMultiplier);
   }
 
   static async getPaymentHistory(userId: string): Promise<PaymentIntent[]> {

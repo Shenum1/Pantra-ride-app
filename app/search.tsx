@@ -17,9 +17,7 @@ import Colors from "@/constants/colors";
 import { useLocation } from "@/hooks/useLocationStore";
 import { Location as LocationType } from "@/types";
 import { AutocompleteResult, GoogleMapsService, PlaceResult } from "@/lib/google-maps-service";
-import { mockRideTypes } from "@/mocks/rideTypes";
-
-
+import { calculateFare, calculateAllTierFares } from "@/lib/fare-calculator";
 
 interface PlaceWithPrice extends PlaceResult {
   estimatedPrice?: number;
@@ -28,7 +26,6 @@ interface PlaceWithPrice extends PlaceResult {
   ridePrices?: {
     rideType: string;
     price: number;
-    multiplier: number;
   }[];
 }
 
@@ -53,21 +50,17 @@ export default function SearchScreen() {
     setRecentLocations(locations);
   }, [getRecentLocations]);
 
-  const calculatePrice = useCallback((distance: number, multiplier: number = 1.0): number => {
-    const baseFare = 500;
-    const perKmRate = 150;
-    const distanceInKm = distance / 1000;
-    const basePrice = baseFare + (distanceInKm * perKmRate);
-    return basePrice * multiplier;
+  const calculatePrice = useCallback((distanceMeters: number, durationSeconds = 0): number => {
+    return calculateFare(distanceMeters / 1000, durationSeconds / 60, 'standard');
   }, []);
 
-  const calculateAllRidePrices = useCallback((distance: number) => {
-    return mockRideTypes.map(rideType => ({
-      rideType: rideType.name,
-      price: calculatePrice(distance, rideType.multiplier),
-      multiplier: rideType.multiplier,
+  const calculateAllRidePrices = useCallback((distanceMeters: number, durationSeconds = 0) => {
+    const fares = calculateAllTierFares(distanceMeters / 1000, durationSeconds / 60);
+    return Object.entries(fares).map(([id, price]) => ({
+      rideType: id.charAt(0).toUpperCase() + id.slice(1),
+      price,
     }));
-  }, [calculatePrice]);
+  }, []);
 
   const handleLocationSelect = useCallback(async (item: PlaceWithPrice) => {
     console.log('Selected location:', item);
@@ -192,8 +185,8 @@ export default function SearchScreen() {
                           ...place,
                           distance: directions.distance,
                           duration: directions.duration,
-                          estimatedPrice: calculatePrice(directions.distance),
-                          ridePrices: calculateAllRidePrices(directions.distance),
+                          estimatedPrice: calculatePrice(directions.distance, directions.duration),
+                          ridePrices: calculateAllRidePrices(directions.distance, directions.duration),
                         };
                       }
                     } catch (error) {
@@ -236,7 +229,7 @@ export default function SearchScreen() {
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [searchQuery, userLocation, pickupLocation, calculatePrice, calculateAllRidePrices, useAutocomplete]);
+  }, [searchQuery, userLocation, pickupLocation, calculatePrice, calculateAllRidePrices, useAutocomplete]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const clearSearch = () => {
     setSearchQuery("");

@@ -129,8 +129,7 @@ export default function AccountScreen() {
               console.log('Account: Logging out user...');
               await logout();
               console.log('Account: User logged out successfully');
-              // Navigate to index which will handle routing to auth pages
-              router.replace('/');
+              router.replace('/role-selection');
             } catch (error) {
               console.error('Account: Logout error:', error);
               Alert.alert('Error', 'Failed to log out. Please try again.');

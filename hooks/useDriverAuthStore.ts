@@ -10,11 +10,21 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const timeout = setTimeout(() => {
+      console.warn('DriverAuth: timeout — forcing isLoading false');
+      setIsLoading(false);
+    }, 5000);
+
     const unsubscribe = DriverAuthService.onAuthStateChanged((d) => {
+      clearTimeout(timeout);
       setDriver(d);
       setIsLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      clearTimeout(timeout);
+      unsubscribe();
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

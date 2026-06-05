@@ -12,11 +12,11 @@ import { useRide } from "@/hooks/useRideStore";
 import { RideType } from "@/types";
 
 const RideTypeSelector: React.FC = () => {
-  const { rideTypes, selectedRideType, setSelectedRideType, estimatedPrice } = useRide();
+  const { rideTypes, selectedRideType, setSelectedRideType, estimatedPrice, tierPrices } = useRide();
 
   const renderItem = ({ item }: { item: RideType }) => {
     const isSelected = selectedRideType === item.id;
-    const price = Math.round(estimatedPrice * item.multiplier);
+    const price = tierPrices[item.id] ?? estimatedPrice;
 
     return (
       <Pressable
