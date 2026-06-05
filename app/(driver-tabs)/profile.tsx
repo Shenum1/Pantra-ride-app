@@ -258,15 +258,11 @@ export default function DriverProfile() {
           style: 'destructive',
           onPress: async () => {
             try {
-              console.log('Driver Profile: Logging out driver...');
               await logout();
-              console.log('Driver Profile: Driver logged out successfully');
-              // Navigate to role selection page
-              router.replace('/role-selection');
             } catch (error) {
               console.error('Driver Profile: Driver logout error:', error);
-              Alert.alert('Error', 'Failed to log out. Please try again.');
             }
+            router.replace('/role-selection');
           },
         },
       ]

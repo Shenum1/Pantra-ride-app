@@ -61,8 +61,12 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
   }, []);
 
   const logout = useCallback(async () => {
-    await DriverAuthService.signOut();
     setDriver(null);
+    try {
+      await DriverAuthService.signOut();
+    } catch (e) {
+      // session may already be expired or network unavailable — local state is cleared
+    }
   }, []);
 
   const toggleOnlineStatus = useCallback(async () => {
