@@ -157,22 +157,7 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
 
 ## Pending Work
 
-1. **Commit & push all recent fixes to GitHub** — Multiple files changed but not yet committed:
-   - `app/login.tsx`
-   - `app/(tabs)/account.tsx`
-   - `hooks/useDriverAuthStore.ts`
-   - `lib/driver-auth-service.ts`
-
-3. **Location Testing** — Verify in Expo Go on a real device that:
-   - Rider sees their own GPS dot on the home map
-   - Driver sees their own GPS dot on the dashboard map
-   - GPS permissions are requested and granted at runtime
-
-4. **Real-time driver → rider map** — Confirm that when a ride is active, the driver's live location dot appears on the rider's `app/ride-progress.tsx` map screen.
-
-5. **End-to-end ride flow test** — Full path: rider searches → selects ride type → confirms → driver receives notification → driver accepts → both see live tracking → ride completes → rating screen.
-
-6. **Production environment variables** — Replace placeholder keys in `.env` with real values:
+1. **Production environment variables** (highest priority — blocks real device testing) — Replace placeholder keys in `.env` with real values:
    - `EXPO_PUBLIC_SUPABASE_URL`
    - `EXPO_PUBLIC_SUPABASE_ANON_KEY`
    - Firebase config keys
@@ -181,9 +166,20 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
    - Paystack public key
    - Flutterwave public key
 
-7. **Admin panel hardening** — Add proper auth guards and role checks to all `(admin-tabs)/` screens.
+2. **Location Testing** — Verify in Expo Go on a real device that:
+   - Rider sees their own GPS dot on the home map
+   - Driver sees their own GPS dot on the dashboard map
+   - GPS permissions are requested and granted at runtime
 
-8. **Phone login** — Complete OTP flow in `app/phone-login.tsx`.
+3. **Real-time driver → rider map** — Confirm that when a ride is active, the driver's live location dot appears on the rider's `app/ride-progress.tsx` map screen.
+
+4. **End-to-end ride flow test** — Full path: rider searches → selects ride type (now available in trip confirmation sheet) → confirms → driver receives notification → driver accepts → both see live tracking → ride completes → rating screen.
+
+5. **Admin panel hardening** — Add proper auth guards and role checks to all `(admin-tabs)/` screens.
+
+6. **Phone login** — Complete OTP flow in `app/phone-login.tsx`.
+
+7. **EAS build setup** — Install `eas-cli`, run `eas login` + `eas build:configure`, and produce a preview build for real-device testing (blocked earlier by disk space, now freed).
 
 ---
 
