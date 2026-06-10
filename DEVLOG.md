@@ -71,6 +71,18 @@
 
 ## Activity Log
 
+### 2026-06-05 — Ride type picker in trip details sheet
+
+**Why:** The fare calculation and tier data were fully implemented but the trip-details bottom sheet in `app/ride-confirmation.tsx` had no UI for selecting a ride type — riders had no way to choose Standard, Comfort, or XL before booking.
+
+**Fix:**
+- `app/ride-confirmation.tsx` — Added an inline tier picker (3 cards in a row) into the "Trip details" bottom sheet, between the destination card and the fare-adjustment card.
+- Cards show: vehicle icon, tier name, fare for that tier (from `tierPrices`), ETA.
+- Selecting a tier calls `setSelectedRideType` → the `estimatedPrice` at the top of the sheet updates automatically.
+- Styled to match the dark sheet theme; selected card has teal accent border.
+
+---
+
 ### 2026-06-05 — Tiered Nigerian pricing (Bolt-style, −5%)
 
 **Why:** Old formula (`₦500 + ₦150/km × multiplier`) had no per-minute rate — badly undercharges in Lagos traffic. Currency was also hardcoded as `'USD'` in the payment service. Pricing logic was duplicated in 3 files.

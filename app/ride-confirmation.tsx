@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { ChevronDown, ChevronUp, Minus, Plus, Route, X } from 'lucide-react-native';
+import { Car, ChevronDown, ChevronUp, Minus, Plus, Route, X } from 'lucide-react-native';
 
 import Map from '@/components/Map';
 import Button from '@/components/Button';
@@ -43,6 +43,10 @@ export default function RideConfirmationScreen() {
     estimatedDuration,
     estimatedPrice,
     fareAdjustmentPercent,
+    rideTypes,
+    selectedRideType,
+    setSelectedRideType,
+    tierPrices,
     requestRide,
     setFareAdjustment,
   } = useRide();
@@ -241,6 +245,33 @@ export default function RideConfirmationScreen() {
               {isExpanded ? (
                 <Text style={styles.pickupValue} numberOfLines={1}>From {pickupAddress || 'Current location'}</Text>
               ) : null}
+            </View>
+
+            <View style={styles.tierContainer} testID="ride-type-picker">
+              <Text style={styles.tierSectionTitle}>Select ride type</Text>
+              <View style={styles.tierRow}>
+                {rideTypes.map((type) => {
+                  const isSelected = selectedRideType === type.id;
+                  const price = tierPrices[type.id];
+                  return (
+                    <Pressable
+                      key={type.id}
+                      style={[styles.tierCard, isSelected && styles.tierCardSelected]}
+                      onPress={() => setSelectedRideType(type.id)}
+                      testID={`tier-option-${type.id}`}
+                    >
+                      <Car size={18} color={isSelected ? '#14B8A6' : '#64748B'} />
+                      <Text style={[styles.tierName, isSelected && styles.tierNameSelected]}>
+                        {type.name}
+                      </Text>
+                      <Text style={[styles.tierPrice, isSelected && styles.tierPriceSelected]}>
+                        {price ? `₦${price.toLocaleString()}` : '—'}
+                      </Text>
+                      <Text style={styles.tierEta}>{type.eta} min</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
 
             <View style={styles.adjustCard} testID="ride-map-fare-card">
@@ -577,6 +608,56 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 13,
     fontWeight: '700',
+  },
+  tierContainer: {
+    gap: 10,
+  },
+  tierSectionTitle: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  tierRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  tierCard: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,23,42,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.14)',
+    gap: 4,
+  },
+  tierCardSelected: {
+    backgroundColor: 'rgba(20,184,166,0.12)',
+    borderColor: '#14B8A6',
+  },
+  tierName: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  tierNameSelected: {
+    color: '#F8FAFC',
+  },
+  tierPrice: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  tierPriceSelected: {
+    color: '#99F6E4',
+  },
+  tierEta: {
+    color: '#475569',
+    fontSize: 10,
+    fontWeight: '600',
   },
   footer: {
     borderTopWidth: 1,
