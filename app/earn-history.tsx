@@ -17,6 +17,7 @@ import {
 } from 'lucide-react-native';
 import { useEarn } from '@/hooks/useEarnStore';
 import Colors from '@/constants/colors';
+import EarnTaskIcon from '@/components/EarnTaskIcon';
 
 export default function EarnHistoryScreen() {
   const {
@@ -36,7 +37,7 @@ export default function EarnHistoryScreen() {
   const renderTaskItem = (task: any) => (
     <View key={task.id} style={styles.historyItem}>
       <View style={styles.itemIconContainer}>
-        <Text style={styles.itemIcon}>{task.icon}</Text>
+        <EarnTaskIcon icon={task.icon} size={18} color={Colors.light.primary} />
       </View>
       <View style={styles.itemContent}>
         <Text style={styles.itemTitle}>{task.title}</Text>
@@ -294,9 +295,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
-  },
-  itemIcon: {
-    fontSize: 18,
   },
   itemContent: {
     flex: 1,

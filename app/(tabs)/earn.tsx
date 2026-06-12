@@ -11,16 +11,22 @@ import {
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { 
-  Gift, 
-  Star, 
-  Clock, 
-  ExternalLink, 
+import {
+  Gift,
+  Star,
+  Clock,
+  ExternalLink,
   CheckCircle,
   TrendingUp,
   Award,
-  Target
+  Target,
+  ClipboardList,
+  Film,
+  Smartphone,
+  MessageCircle,
+  Users
 } from 'lucide-react-native';
+import EarnTaskIcon from '@/components/EarnTaskIcon';
 import { useEarn } from '@/hooks/useEarnStore';
 import { useTheme } from '@/hooks/useThemeStore';
 import Button from '@/components/Button';
@@ -51,11 +57,11 @@ export default function EarnScreen() {
   const discountTier = getDiscountTier();
 
   const categories = [
-    { id: 'all', name: 'All Tasks', icon: '📋' },
-    { id: 'entertainment', name: 'Watch', icon: '🎬' },
-    { id: 'social', name: 'Social', icon: '📱' },
-    { id: 'engagement', name: 'Engage', icon: '💬' },
-    { id: 'referral', name: 'Refer', icon: '👥' }
+    { id: 'all', name: 'All Tasks', icon: ClipboardList },
+    { id: 'entertainment', name: 'Watch', icon: Film },
+    { id: 'social', name: 'Social', icon: Smartphone },
+    { id: 'engagement', name: 'Engage', icon: MessageCircle },
+    { id: 'referral', name: 'Refer', icon: Users }
   ];
 
   const filteredTasks = selectedCategory === 'all' 
@@ -135,7 +141,7 @@ export default function EarnScreen() {
       const task = availableTasks.find(t => t.id === taskId);
       if (task) {
         Alert.alert(
-          'Congratulations! 🎉',
+          'Congratulations!',
           `You earned ${task.points} points for completing \"${task.title}\"!`,
           [{ text: 'Awesome!', style: 'default' }]
         );
@@ -161,7 +167,7 @@ export default function EarnScreen() {
               try {
                 await redeemFreeRide();
                 Alert.alert(
-                  'Success! 🚗',
+                  'Success!',
                   'Your free ride has been added to your account. Use it on your next booking!',
                   [{ text: 'Great!', style: 'default' }]
                 );
@@ -186,7 +192,7 @@ export default function EarnScreen() {
     >
       <View style={styles.taskHeader}>
         <View style={styles.taskIconContainer}>
-          <Text style={styles.taskIcon}>{task.icon}</Text>
+          <EarnTaskIcon icon={task.icon} size={20} color={colors.primary} />
         </View>
         <View style={styles.taskInfo}>
           <Text style={styles.taskTitle}>{task.title}</Text>
@@ -323,7 +329,11 @@ export default function EarnScreen() {
                 ]}
                 onPress={() => setSelectedCategory(category.id)}
               >
-                <Text style={styles.categoryIcon}>{category.icon}</Text>
+                <category.icon
+                  size={16}
+                  color={selectedCategory === category.id ? 'white' : colors.text}
+                  style={styles.categoryIcon}
+                />
                 <Text style={[
                   styles.categoryText,
                   selectedCategory === category.id && styles.categoryTextActive
@@ -372,7 +382,7 @@ export default function EarnScreen() {
               <View key={task.id} style={[styles.taskCard, styles.completedTaskCard]}>
                 <View style={styles.taskHeader}>
                   <View style={styles.taskIconContainer}>
-                    <Text style={styles.taskIcon}>{task.icon}</Text>
+                    <EarnTaskIcon icon={task.icon} size={20} color={colors.primary} />
                   </View>
                   <View style={styles.taskInfo}>
                     <Text style={[styles.taskTitle, styles.completedTaskTitle]}>
@@ -534,7 +544,6 @@ const getStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.primary,
   },
   categoryIcon: {
-    fontSize: 16,
     marginRight: 6,
   },
   categoryText: {
@@ -586,9 +595,6 @@ const getStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
-  },
-  taskIcon: {
-    fontSize: 20,
   },
   taskInfo: {
     flex: 1,

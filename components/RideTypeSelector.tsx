@@ -1,4 +1,4 @@
-import { Car } from "lucide-react-native";
+import { Car, CarFront, Bus } from "lucide-react-native";
 import React from "react";
 import {
   FlatList,
@@ -11,12 +11,19 @@ import Colors from "@/constants/colors";
 import { useRide } from "@/hooks/useRideStore";
 import { RideType } from "@/types";
 
+const RIDE_TYPE_ICONS: Record<string, typeof Car> = {
+  car: Car,
+  'car-front': CarFront,
+  bus: Bus,
+};
+
 const RideTypeSelector: React.FC = () => {
   const { rideTypes, selectedRideType, setSelectedRideType, estimatedPrice, tierPrices } = useRide();
 
   const renderItem = ({ item }: { item: RideType }) => {
     const isSelected = selectedRideType === item.id;
     const price = tierPrices[item.id] ?? estimatedPrice;
+    const TypeIcon = RIDE_TYPE_ICONS[item.icon] ?? Car;
 
     return (
       <Pressable
@@ -28,7 +35,7 @@ const RideTypeSelector: React.FC = () => {
         testID={`ride-type-${item.id}`}
       >
         <View style={styles.iconContainer}>
-          <Car
+          <TypeIcon
             size={24}
             color={isSelected ? Colors.light.primary : Colors.light.secondary}
           />

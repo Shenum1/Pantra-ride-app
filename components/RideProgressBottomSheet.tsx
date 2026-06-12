@@ -8,7 +8,7 @@ import {
   Dimensions,
   TouchableOpacity 
 } from 'react-native';
-import { Car, Phone, X, ChevronDown, ChevronUp, Navigation2, Clock, MapPin } from 'lucide-react-native';
+import { Car, Phone, X, ChevronDown, ChevronUp, Navigation2, Clock, MapPin, Star } from 'lucide-react-native';
 import Button from '@/components/Button';
 import { useTheme } from '@/hooks/useThemeStore';
 
@@ -233,7 +233,7 @@ const RideProgressBottomSheet: React.FC<RideProgressBottomSheetProps> = ({
                     {driver.name}
                   </Text>
                   <View style={styles.ratingContainer}>
-                    <Text style={[styles.rating, { color: colors.warning }]}>★</Text>
+                    <Star size={14} fill={colors.warning} color={colors.warning} style={styles.rating} />
                     <Text style={[styles.ratingText, { color: colors.textSecondary }]}>
                       {driver.rating.toFixed(1)}
                     </Text>
@@ -455,7 +455,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   rating: {
-    fontSize: 16,
     marginRight: 4,
   },
   ratingText: {

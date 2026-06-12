@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuthStore';
@@ -14,25 +14,22 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children, requireDriver = 
   const { isAuthenticated: userAuthenticated, isLoading: userLoading } = useAuth();
   const { isAuthenticated: driverAuthenticated, isLoading: driverLoading } = useDriverAuth();
   const { colors } = useTheme();
-  const [hasChecked, setHasChecked] = useState(false);
 
   const isLoading = userLoading || driverLoading;
   const isAuthenticated = requireDriver ? driverAuthenticated : userAuthenticated;
 
   useEffect(() => {
-    if (!isLoading && !hasChecked) {
-      setHasChecked(true);
-      if (!isAuthenticated) {
-        console.log('AuthGuard: User not authenticated, redirecting to role selection');
-        // Use a small delay to ensure state is stable
-        setTimeout(() => {
-          router.replace('/role-selection');
-        }, 100);
-      }
+    if (!isLoading && !isAuthenticated) {
+      console.log('AuthGuard: User not authenticated, redirecting to role selection');
+      // Use a small delay to ensure state is stable
+      const timer = setTimeout(() => {
+        router.replace('/role-selection');
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, isLoading, hasChecked]);
+  }, [isAuthenticated, isLoading]);
 
-  if (isLoading || !hasChecked) {
+  if (isLoading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />

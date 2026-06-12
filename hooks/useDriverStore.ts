@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import createContextHook from '@nkzw/create-context-hook';
 import { DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
+import { NotificationService } from '@/lib/notification-service';
 import { useDriverAuth } from './useDriverAuthStore';
 
 export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
@@ -20,11 +21,12 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(false);
+  const knownRequestIdsRef = useRef<Set<string>>(new Set());
 
   const loadDriverData = useCallback(async (driverId: string) => {
     try {
       setIsLoading(true);
-      
+
       const profile = await FirebaseDriverService.getDriver(driverId);
       if (profile) {
         setDriverProfile(profile);
@@ -38,6 +40,7 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       setStats(statsData);
 
       const requests = await FirebaseDriverService.getPendingRideRequests(driverId);
+      knownRequestIdsRef.current = new Set(requests.map((r) => r.id).filter((id): id is string => !!id));
       setRideRequests(requests);
     } catch (error) {
       console.error('Error loading driver data:', error);
@@ -67,7 +70,17 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
         activeDriverId,
         (requests) => {
           if (isOnline) {
+            const newRequests = requests.filter((r) => r.id && !knownRequestIdsRef.current.has(r.id));
+            knownRequestIdsRef.current = new Set(requests.map((r) => r.id).filter((id): id is string => !!id));
             setRideRequests(requests);
+
+            newRequests.forEach((request) => {
+              void NotificationService.notifyNewRideRequest(
+                activeDriverId,
+                request.pickupAddress ?? 'a nearby pickup point',
+                request.price ?? 0
+              );
+            });
           }
         }
       );
@@ -95,12 +108,14 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
 
       const newStatus = !isOnline;
       await FirebaseDriverService.setDriverOnlineStatus(driverProfile.id, newStatus);
+      setIsOnline(newStatus);
 
       if (!newStatus) {
         setRideRequests([]);
         setCurrentRide(null);
       } else {
         const requests = await FirebaseDriverService.getPendingRideRequests(driverProfile.id);
+        knownRequestIdsRef.current = new Set(requests.map((r) => r.id).filter((id): id is string => !!id));
         setRideRequests(requests);
       }
     } catch (error) {

@@ -28,12 +28,10 @@ export default function AdminLogin() {
 
     setIsLoading(true);
     try {
-      const success = await login(email, password);
-      if (!success) {
-        Alert.alert('Error', 'Invalid credentials');
-      }
+      await login(email, password);
     } catch (error) {
-      Alert.alert('Error', 'Login failed. Please try again.');
+      const message = error instanceof Error ? error.message : 'Login failed. Please try again.';
+      Alert.alert('Error', message);
     } finally {
       setIsLoading(false);
     }

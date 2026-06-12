@@ -2,12 +2,14 @@ import { Tabs } from "expo-router";
 import { Home, MapPin, Wallet, User } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, View } from "react-native";
+import { AuthGuard } from "@/components/AuthGuard";
 import { useTheme } from "@/hooks/useThemeStore";
 
 export default function DriverTabLayout() {
   const { colors, isDark } = useTheme();
-  
+
   return (
+    <AuthGuard requireDriver>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -86,6 +88,7 @@ export default function DriverTabLayout() {
         }}
       />
     </Tabs>
+    </AuthGuard>
   );
 }
 

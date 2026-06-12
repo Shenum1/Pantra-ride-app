@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Mail, Lock } from 'lucide-react-native';
 
 export default function PrivacyPolicy() {
   return (
@@ -186,12 +186,18 @@ export default function PrivacyPolicy() {
         <Text style={styles.paragraph}>
           Pantra Limited{'\n'}
           Data Protection Officer{'\n'}
-          Abuja, Nigeria{'\n'}
-          📧 Email: pantrateam@gmail.com
+          Abuja, Nigeria
         </Text>
+        <View style={styles.contactRow}>
+          <Mail size={16} color="#333" />
+          <Text style={styles.paragraph}>Email: pantrateam@gmail.com</Text>
+        </View>
 
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryTitle}>🔒 Your Privacy Matters</Text>
+          <View style={styles.summaryTitleRow}>
+            <Lock size={16} color="#15803d" />
+            <Text style={styles.summaryTitle}>Your Privacy Matters</Text>
+          </View>
           <Text style={styles.bulletPoint}>• We comply with NDPR and Nigerian data protection laws</Text>
           <Text style={styles.bulletPoint}>• Your data is encrypted and securely stored</Text>
           <Text style={styles.bulletPoint}>• You have full control over your personal information</Text>
@@ -262,11 +268,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#22c55e',
   },
+  summaryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
   summaryTitle: {
     fontSize: 16,
     fontWeight: '700' as const,
     color: '#15803d',
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
+    marginTop: -8,
   },
   footer: {
     height: 20,

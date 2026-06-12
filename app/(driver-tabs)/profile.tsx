@@ -29,6 +29,8 @@ import {
   Trophy,
   Target,
   Zap,
+  FileCheck,
+  Check,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { router } from 'expo-router';
@@ -216,7 +218,7 @@ export default function DriverProfile() {
       <Text style={styles.themeName}>{theme.name}</Text>
       {selectedTheme === theme.id && (
         <View style={styles.selectedIndicator}>
-          <Text style={styles.selectedText}>✓</Text>
+          <Check size={14} color={Colors.light.white} />
         </View>
       )}
     </TouchableOpacity>
@@ -306,7 +308,7 @@ export default function DriverProfile() {
             />
             <ProfileStat
               label="Total Earned"
-              value={`$${driverStats.totalEarnings.toLocaleString()}`}
+              value={`₦${driverStats.totalEarnings.toLocaleString()}`}
               icon={<CreditCard size={20} color={Colors.light.success} />}
             />
             <ProfileStat
@@ -394,6 +396,13 @@ export default function DriverProfile() {
             title="Privacy & Security"
             subtitle="Manage your privacy settings"
             onPress={() => {}}
+          />
+
+          <SettingsItem
+            icon={<FileCheck size={20} color={Colors.light.primary} />}
+            title="Document Verification"
+            subtitle={driver?.isVerified ? 'Verified' : 'Upload your documents for verification'}
+            onPress={() => router.push('/driver-documents' as any)}
           />
           
           <SettingsItem
@@ -646,11 +655,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.primary,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  selectedText: {
-    fontSize: 12,
-    color: Colors.light.white,
-    fontWeight: 'bold',
   },
   settingsSection: {
     marginBottom: 30,

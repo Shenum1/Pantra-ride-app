@@ -1,19 +1,35 @@
 import createContextHook from "@nkzw/create-context-hook";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useAuth } from "@/hooks/useAuthStore";
+import { SavedLocationsService } from "@/lib/saved-locations-service";
 import { mockSavedLocations } from "@/mocks/savedLocations";
 import { Location, SavedLocation } from "@/types";
 
 const SAVED_LOCATIONS_STORAGE_KEY = "saved_locations";
 
 export const [SavedLocationsProvider, useSavedLocations] = createContextHook(() => {
+  const { user } = useAuth();
+  const isSupabaseUser = !!user?.id && user.id !== "test-rider";
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
+  const queryClient = useQueryClient();
+
+  const savedLocationsQueryKey = ["savedLocations", user?.id ?? null, isSupabaseUser] as const;
 
   // Fetch saved locations
   const { data: fetchedLocations, isLoading } = useQuery({
-    queryKey: ["savedLocations"],
+    queryKey: savedLocationsQueryKey,
     queryFn: async () => {
+      if (isSupabaseUser && user) {
+        try {
+          return await SavedLocationsService.getSavedLocations(user.id);
+        } catch (error) {
+          console.error("Error fetching saved locations from Supabase:", error);
+          return [];
+        }
+      }
+
       try {
         const storedLocations = await AsyncStorage.getItem(SAVED_LOCATIONS_STORAGE_KEY);
         if (storedLocations) {
@@ -35,6 +51,16 @@ export const [SavedLocationsProvider, useSavedLocations] = createContextHook(() 
     }
   }, [fetchedLocations]);
 
+  const refreshSavedLocations = async (): Promise<SavedLocation[]> => {
+    await queryClient.invalidateQueries({ queryKey: ["savedLocations"] });
+    if (isSupabaseUser && user) {
+      const refreshed = await SavedLocationsService.getSavedLocations(user.id);
+      setSavedLocations(refreshed);
+      return refreshed;
+    }
+    return savedLocations;
+  };
+
   const addSavedLocation = async (
     location: Location,
     address: string,
@@ -43,6 +69,12 @@ export const [SavedLocationsProvider, useSavedLocations] = createContextHook(() 
     icon?: string
   ) => {
     try {
+      if (isSupabaseUser && user) {
+        await SavedLocationsService.addSavedLocation(user.id, location, address, name, type, icon);
+        await refreshSavedLocations();
+        return;
+      }
+
       // Check if we already have a location of this type (for home/work)
       if (type === "home" || type === "work") {
         const existingIndex = savedLocations.findIndex(loc => loc.type === type);
@@ -83,6 +115,12 @@ export const [SavedLocationsProvider, useSavedLocations] = createContextHook(() 
 
   const removeSavedLocation = async (id: string) => {
     try {
+      if (isSupabaseUser && user) {
+        await SavedLocationsService.removeSavedLocation(user.id, id);
+        await refreshSavedLocations();
+        return;
+      }
+
       const updatedLocations = savedLocations.filter(location => location.id !== id);
       setSavedLocations(updatedLocations);
       await AsyncStorage.setItem(SAVED_LOCATIONS_STORAGE_KEY, JSON.stringify(updatedLocations));
@@ -94,6 +132,12 @@ export const [SavedLocationsProvider, useSavedLocations] = createContextHook(() 
 
   const updateSavedLocation = async (id: string, updates: Partial<SavedLocation>) => {
     try {
+      if (isSupabaseUser && user) {
+        await SavedLocationsService.updateSavedLocation(user.id, id, updates);
+        await refreshSavedLocations();
+        return;
+      }
+
       const updatedLocations = savedLocations.map(location =>
         location.id === id ? { ...location, ...updates } : location
       );

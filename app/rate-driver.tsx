@@ -25,7 +25,7 @@ const QUICK_COMMENTS = [
 ];
 
 export default function RateDriverScreen() {
-  const { driverId, driverName } = useLocalSearchParams<{ driverId: string; driverName: string }>();
+  const { rideId, driverId, driverName } = useLocalSearchParams<{ rideId: string; driverId: string; driverName: string }>();
   const { addReview } = useRatings();
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -37,14 +37,14 @@ export default function RateDriverScreen() {
       return;
     }
 
-    if (!driverId) {
-      Alert.alert('Error', 'Driver information is missing.');
+    if (!driverId || !rideId) {
+      Alert.alert('Error', 'Ride information is missing.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await addReview(driverId, rating, comment || undefined);
+      await addReview(rideId, driverId, rating, comment || undefined);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert('Error', 'Could not submit your rating. Please try again.');

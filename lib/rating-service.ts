@@ -1,4 +1,4 @@
-import { DatabaseService } from './database-service';
+import { supabase } from './supabase';
 
 export interface Rating {
   id?: string;
@@ -24,72 +24,44 @@ export interface DriverRatingStats {
   };
 }
 
+function mapRating(row: any): Rating {
+  return {
+    id: row.id,
+    rideId: row.rideId,
+    userId: row.userId,
+    driverId: row.driverId,
+    rating: Number(row.rating),
+    comment: row.comment ?? undefined,
+    tags: row.tags ?? undefined,
+    createdAt: row.createdAt ? new Date(row.createdAt) : undefined,
+  };
+}
+
 export class RatingService {
   static async submitRating(rating: Omit<Rating, 'id' | 'createdAt'>): Promise<string> {
-    try {
-      const existingRating = await DatabaseService.query('ratings', [
-        { field: 'rideId', operator: '==', value: rating.rideId },
-        { field: 'userId', operator: '==', value: rating.userId },
-      ]);
+    const { data, error } = await supabase.rpc('submit_rating', {
+      p_ride_id: rating.rideId,
+      p_driver_id: rating.driverId,
+      p_rating: rating.rating,
+      p_comment: rating.comment ?? null,
+      p_tags: rating.tags ?? null,
+    });
 
-      if (existingRating.length > 0) {
-        throw new Error('Rating already submitted for this ride');
-      }
-
-      const ratingId = await DatabaseService.create('ratings', rating);
-
-      await this.updateDriverRating(rating.driverId);
-
-      return ratingId;
-    } catch (error) {
-      console.error('Error submitting rating:', error);
-      throw error;
-    }
-  }
-
-  static async updateDriverRating(driverId: string): Promise<void> {
-    try {
-      const ratings = await DatabaseService.query('ratings', [
-        { field: 'driverId', operator: '==', value: driverId },
-      ]);
-
-      if (ratings.length === 0) return;
-
-      const totalRating = ratings.reduce((sum: number, r: any) => sum + r.rating, 0);
-      const averageRating = totalRating / ratings.length;
-
-      const ratingDistribution = {
-        1: 0,
-        2: 0,
-        3: 0,
-        4: 0,
-        5: 0,
-      };
-
-      ratings.forEach((r: any) => {
-        ratingDistribution[r.rating as keyof typeof ratingDistribution]++;
-      });
-
-      await DatabaseService.update('drivers', driverId, {
-        rating: Math.round(averageRating * 10) / 10,
-        totalRatings: ratings.length,
-        ratingDistribution,
-      });
-    } catch (error) {
-      console.error('Error updating driver rating:', error);
-    }
+    if (error) throw new Error(error.message);
+    return (data as { id: string }).id;
   }
 
   static async getDriverRatings(driverId: string): Promise<Rating[]> {
     try {
-      const ratings = await DatabaseService.query(
-        'ratings',
-        [{ field: 'driverId', operator: '==', value: driverId }],
-        'createdAt',
-        'desc',
-        50
-      );
-      return ratings as Rating[];
+      const { data, error } = await supabase
+        .from('ratings')
+        .select('*')
+        .eq('driverId', driverId)
+        .order('createdAt', { ascending: false })
+        .limit(50);
+
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapRating);
     } catch (error) {
       console.error('Error getting driver ratings:', error);
       return [];
@@ -98,27 +70,32 @@ export class RatingService {
 
   static async getUserRatings(userId: string): Promise<Rating[]> {
     try {
-      const ratings = await DatabaseService.query(
-        'ratings',
-        [{ field: 'userId', operator: '==', value: userId }],
-        'createdAt',
-        'desc',
-        50
-      );
-      return ratings as Rating[];
+      const { data, error } = await supabase
+        .from('ratings')
+        .select('*')
+        .eq('userId', userId)
+        .order('createdAt', { ascending: false })
+        .limit(50);
+
+      if (error) throw new Error(error.message);
+      return (data ?? []).map(mapRating);
     } catch (error) {
       console.error('Error getting user ratings:', error);
       return [];
     }
   }
 
-  static async getRideRating(rideId: string): Promise<Rating | null> {
+  static async getRideRating(rideId: string, userId: string): Promise<Rating | null> {
     try {
-      const ratings = await DatabaseService.query('ratings', [
-        { field: 'rideId', operator: '==', value: rideId },
-      ]);
+      const { data, error } = await supabase
+        .from('ratings')
+        .select('*')
+        .eq('rideId', rideId)
+        .eq('userId', userId)
+        .maybeSingle();
 
-      return ratings.length > 0 ? (ratings[0] as Rating) : null;
+      if (error) throw new Error(error.message);
+      return data ? mapRating(data) : null;
     } catch (error) {
       console.error('Error getting ride rating:', error);
       return null;
@@ -127,16 +104,19 @@ export class RatingService {
 
   static async getDriverStats(driverId: string): Promise<DriverRatingStats | null> {
     try {
-      const driver = await DatabaseService.get('drivers', driverId);
-      if (!driver) return null;
+      const { data, error } = await supabase
+        .from('drivers')
+        .select('rating, totalRatings, ratingDistribution')
+        .eq('id', driverId)
+        .single();
 
-      const driverData = driver as any;
+      if (error) return null;
 
       return {
         driverId,
-        averageRating: driverData.rating || 0,
-        totalRatings: driverData.totalRatings || 0,
-        ratingDistribution: driverData.ratingDistribution || {
+        averageRating: Number(data.rating ?? 0),
+        totalRatings: data.totalRatings ?? 0,
+        ratingDistribution: data.ratingDistribution ?? {
           1: 0,
           2: 0,
           3: 0,

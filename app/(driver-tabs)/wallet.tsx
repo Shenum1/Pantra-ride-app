@@ -119,7 +119,7 @@ export default function DriverWallet() {
         styles.transactionAmount,
         { color: getTransactionColor(transaction.type) }
       ]}>
-        {transaction.amount > 0 ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
+        {transaction.amount > 0 ? '+' : ''}₦{Math.abs(transaction.amount).toFixed(2)}
       </Text>
     </View>
   );
@@ -133,7 +133,7 @@ export default function DriverWallet() {
     }
     
     if (amount < 10) {
-      Alert.alert('Minimum Withdrawal', 'Minimum withdrawal amount is $10');
+      Alert.alert('Minimum Withdrawal', 'Minimum withdrawal amount is ₦10');
       return;
     }
     
@@ -285,7 +285,7 @@ export default function DriverWallet() {
             <View style={[styles.statIconContainer, { backgroundColor: '#2196F3' + '20' }]}>
               <TrendingUp size={22} color="#2196F3" />
             </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>$15.02</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>₦15.02</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Avg/Trip</Text>
           </View>
         </View>
@@ -302,7 +302,7 @@ export default function DriverWallet() {
                 </View>
                 <Text style={[styles.breakdownLabel, { color: colors.text }]}>Trip Earnings</Text>
               </View>
-              <Text style={[styles.breakdownValue, { color: colors.text }]}>${(currentEarnings * 0.75).toFixed(2)}</Text>
+              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{(currentEarnings * 0.75).toFixed(2)}</Text>
             </View>
             
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -314,7 +314,7 @@ export default function DriverWallet() {
                 </View>
                 <Text style={[styles.breakdownLabel, { color: colors.text }]}>Tips</Text>
               </View>
-              <Text style={[styles.breakdownValue, { color: colors.text }]}>${earnings.tips.toFixed(2)}</Text>
+              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{earnings.tips.toFixed(2)}</Text>
             </View>
             
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -326,7 +326,7 @@ export default function DriverWallet() {
                 </View>
                 <Text style={[styles.breakdownLabel, { color: colors.text }]}>Bonuses</Text>
               </View>
-              <Text style={[styles.breakdownValue, { color: colors.text }]}>${(currentEarnings * 0.15).toFixed(2)}</Text>
+              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{(currentEarnings * 0.15).toFixed(2)}</Text>
             </View>
           </View>
         </View>
@@ -357,13 +357,13 @@ export default function DriverWallet() {
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Withdraw Funds</Text>
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
-              Available Balance: ${currentEarnings.toFixed(2)}
+              Available Balance: ₦{currentEarnings.toFixed(2)}
             </Text>
             
             <View style={styles.inputContainer}>
               <Text style={[styles.inputLabel, { color: colors.text }]}>Amount</Text>
               <View style={[styles.inputWrapper, { borderColor: colors.border }]}>
-                <Text style={[styles.currencySymbol, { color: colors.text }]}>$</Text>
+                <Text style={[styles.currencySymbol, { color: colors.text }]}>₦</Text>
                 <TextInput
                   style={[styles.input, { color: colors.text }]}
                   placeholder="0.00"
@@ -374,7 +374,7 @@ export default function DriverWallet() {
                 />
               </View>
               <Text style={[styles.inputHint, { color: colors.textSecondary }]}>
-                Minimum withdrawal: $10
+                Minimum withdrawal: ₦10
               </Text>
             </View>
 
@@ -383,19 +383,19 @@ export default function DriverWallet() {
                 style={[styles.quickAmount, { backgroundColor: colors.lightGray }]}
                 onPress={() => setWithdrawAmount('50')}
               >
-                <Text style={[styles.quickAmountText, { color: colors.text }]}>$50</Text>
+                <Text style={[styles.quickAmountText, { color: colors.text }]}>₦50</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickAmount, { backgroundColor: colors.lightGray }]}
                 onPress={() => setWithdrawAmount('100')}
               >
-                <Text style={[styles.quickAmountText, { color: colors.text }]}>$100</Text>
+                <Text style={[styles.quickAmountText, { color: colors.text }]}>₦100</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickAmount, { backgroundColor: colors.lightGray }]}
                 onPress={() => setWithdrawAmount('200')}
               >
-                <Text style={[styles.quickAmountText, { color: colors.text }]}>$200</Text>
+                <Text style={[styles.quickAmountText, { color: colors.text }]}>₦200</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickAmount, { backgroundColor: colors.lightGray }]}

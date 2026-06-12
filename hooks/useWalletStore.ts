@@ -2,6 +2,8 @@ import createContextHook from "@nkzw/create-context-hook";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useMemo } from "react";
+import { useAuth } from "@/hooks/useAuthStore";
+import { WalletService } from "@/lib/wallet-service";
 
 export interface WalletTransaction {
   id: string;
@@ -40,6 +42,12 @@ export interface WalletData {
 }
 
 const WALLET_STORAGE_KEY = "wallet_data";
+
+const EMPTY_WALLET_DATA: WalletData = {
+  balance: 0,
+  transactions: [],
+  bankAccounts: [],
+};
 
 const mockWalletData: WalletData = {
   balance: 12550,
@@ -109,12 +117,25 @@ const mockWalletData: WalletData = {
 };
 
 export const [WalletProvider, useWallet] = createContextHook(() => {
-  const [walletData, setWalletData] = useState<WalletData>(mockWalletData);
+  const { user } = useAuth();
+  const isSupabaseUser = !!user?.id && user.id !== 'test-rider';
+  const [walletData, setWalletData] = useState<WalletData>(EMPTY_WALLET_DATA);
   const queryClient = useQueryClient();
 
+  const walletQueryKey = ["walletData", user?.id ?? null, isSupabaseUser] as const;
+
   const { data: fetchedWalletData, isLoading } = useQuery({
-    queryKey: ["walletData"],
-    queryFn: async () => {
+    queryKey: walletQueryKey,
+    queryFn: async (): Promise<WalletData> => {
+      if (isSupabaseUser && user) {
+        try {
+          return await WalletService.getWalletData(user.id);
+        } catch (error) {
+          console.error("Error fetching wallet data from Supabase:", error);
+          return EMPTY_WALLET_DATA;
+        }
+      }
+
       try {
         const stored = await AsyncStorage.getItem(WALLET_STORAGE_KEY);
         if (stored) {
@@ -153,8 +174,23 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
     }
   };
 
+  const refreshWalletData = async (): Promise<WalletData> => {
+    await queryClient.invalidateQueries({ queryKey: ["walletData"] });
+    return queryClient.getQueryData<WalletData>(walletQueryKey) ?? walletData;
+  };
+
   const addMoneyMutation = useMutation({
     mutationFn: async ({ amount, paymentMethodId }: { amount: number; paymentMethodId: string }) => {
+      if (isSupabaseUser && user) {
+        await WalletService.addTransaction(user.id, {
+          type: 'add_money',
+          amount,
+          description: 'Added money to wallet',
+          paymentMethodId,
+        });
+        return refreshWalletData();
+      }
+
       const newTransaction: WalletTransaction = {
         id: `txn-${Date.now()}`,
         type: 'add_money',
@@ -180,6 +216,17 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
     mutationFn: async ({ amount, bankAccountId }: { amount: number; bankAccountId: string }) => {
       if (amount > walletData.balance) {
         throw new Error("Insufficient balance");
+      }
+
+      if (isSupabaseUser && user) {
+        await WalletService.addTransaction(user.id, {
+          type: 'withdraw',
+          amount: -amount,
+          description: 'Withdrawn to bank account',
+          status: 'pending',
+          paymentMethodId: bankAccountId,
+        });
+        return refreshWalletData();
       }
 
       const newTransaction: WalletTransaction = {
@@ -208,6 +255,17 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
         throw new Error("Insufficient balance");
       }
 
+      if (isSupabaseUser && user) {
+        await WalletService.addTransaction(user.id, {
+          type: 'ride_payment',
+          amount: -amount,
+          description: 'Ride payment',
+          rideId,
+          metadata,
+        });
+        return refreshWalletData();
+      }
+
       const newTransaction: WalletTransaction = {
         id: `txn-${Date.now()}`,
         type: 'ride_payment',
@@ -232,6 +290,15 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
 
   const addCashbackMutation = useMutation({
     mutationFn: async ({ amount, description }: { amount: number; description: string }) => {
+      if (isSupabaseUser && user) {
+        await WalletService.addTransaction(user.id, {
+          type: 'cashback',
+          amount,
+          description,
+        });
+        return refreshWalletData();
+      }
+
       const newTransaction: WalletTransaction = {
         id: `txn-${Date.now()}`,
         type: 'cashback',
@@ -254,6 +321,16 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
 
   const addRefundMutation = useMutation({
     mutationFn: async ({ amount, description, rideId }: { amount: number; description: string; rideId?: string }) => {
+      if (isSupabaseUser && user) {
+        await WalletService.addTransaction(user.id, {
+          type: 'refund',
+          amount,
+          description,
+          rideId,
+        });
+        return refreshWalletData();
+      }
+
       const newTransaction: WalletTransaction = {
         id: `txn-${Date.now()}`,
         type: 'refund',
@@ -277,6 +354,11 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
 
   const addBankAccountMutation = useMutation({
     mutationFn: async (bankAccount: Omit<BankAccount, 'id' | 'isVerified'>) => {
+      if (isSupabaseUser && user) {
+        await WalletService.addBankAccount(user.id, bankAccount);
+        return refreshWalletData();
+      }
+
       const newBankAccount: BankAccount = {
         ...bankAccount,
         id: `bank-${Date.now()}`,
@@ -299,6 +381,11 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
 
   const removeBankAccountMutation = useMutation({
     mutationFn: async (bankAccountId: string) => {
+      if (isSupabaseUser && user) {
+        await WalletService.removeBankAccount(user.id, bankAccountId);
+        return refreshWalletData();
+      }
+
       const accountToRemove = walletData.bankAccounts.find(acc => acc.id === bankAccountId);
       const updatedBankAccounts = walletData.bankAccounts.filter(acc => acc.id !== bankAccountId);
 
@@ -318,6 +405,11 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
 
   const setDefaultBankAccountMutation = useMutation({
     mutationFn: async (bankAccountId: string) => {
+      if (isSupabaseUser && user) {
+        await WalletService.setDefaultBankAccount(user.id, bankAccountId);
+        return refreshWalletData();
+      }
+
       const updatedBankAccounts = walletData.bankAccounts.map(acc => ({
         ...acc,
         isDefault: acc.id === bankAccountId,

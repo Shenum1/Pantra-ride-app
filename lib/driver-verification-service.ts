@@ -38,7 +38,7 @@ export class DriverVerificationService {
   ): Promise<string> {
     try {
       const fileName = `drivers/${driverId}/${documentType}_${Date.now()}`;
-      const documentUrl = await StorageService.uploadFile(fileUri, fileName);
+      const documentUrl = await StorageService.uploadPrivateFile(fileUri, fileName);
 
       const document: Omit<DriverDocument, 'id'> = {
         driverId,
@@ -62,9 +62,12 @@ export class DriverVerificationService {
 
   static async getDriverDocuments(driverId: string): Promise<DriverDocument[]> {
     try {
-      const documents = await DatabaseService.query('driver_documents', [
-        { field: 'driverId', operator: '==', value: driverId },
-      ]);
+      const documents = await DatabaseService.query(
+        'driver_documents',
+        [{ field: 'driverId', operator: '==', value: driverId }],
+        'uploadedAt',
+        'desc'
+      );
       return documents as DriverDocument[];
     } catch (error) {
       console.error('Error getting driver documents:', error);

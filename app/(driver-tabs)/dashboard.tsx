@@ -40,8 +40,8 @@ const DRIVING_VIDEOS = [
 ];
 
 export default function DriverDashboard() {
-  const { driver, toggleOnlineStatus } = useDriverAuth();
-  const { driverProfile, stats, earnings } = useDriverStore();
+  const { driver } = useDriverAuth();
+  const { driverProfile, stats, earnings, isOnline, toggleOnlineStatus } = useDriverStore();
   const player = useVideoPlayer(
     DRIVING_VIDEOS[Math.floor(Math.random() * DRIVING_VIDEOS.length)],
     (p) => { p.loop = true; p.muted = true; p.playbackRate = 0.7; p.play(); }
@@ -54,18 +54,17 @@ export default function DriverDashboard() {
   const monthlyEarnings = stats?.monthEarnings || driverProfile?.earnings?.thisMonth || 0;
   const rating = stats?.averageRating || driver?.rating || 5.0;
   const completedTrips = stats?.totalRides || driverProfile?.totalRides || 0;
-  const isOnline = driver?.isOnline || false;
   const totalEarnings = stats?.totalEarnings || 0;
   const onlineHours = stats?.onlineHours || 0;
 
   const [currentVideoIndex] = useState(() => Math.floor(Math.random() * DRIVING_VIDEOS.length));
 
   const motivationalQuotes = useMemo(() => [
-    "Keep driving towards your goals! 💪",
-    "Every trip brings you closer to success 🎯",
-    "Great service = Great earnings ⭐",
-    "You're making a difference today! 🚗",
-    "Stay focused, stay earning 💰",
+    "Keep driving towards your goals!",
+    "Every trip brings you closer to success",
+    "Great service = Great earnings",
+    "You're making a difference today!",
+    "Stay focused, stay earning",
   ], []);
 
   const [currentQuote, setCurrentQuote] = useState<string>(motivationalQuotes[0]);
@@ -152,7 +151,7 @@ export default function DriverDashboard() {
           <View style={styles.header}>
           <View style={styles.greetingSection}>
             <Text style={styles.greeting}>{getGreeting()},</Text>
-            <Text style={styles.driverName}>{driver?.name?.split(' ')[0] || 'Driver'}! 👋</Text>
+            <Text style={styles.driverName}>{driver?.name?.split(' ')[0] || 'Driver'}!</Text>
           </View>
           <TouchableOpacity 
             style={[styles.statusButton, { backgroundColor: isOnline ? '#10B981' : '#EF4444' }]}
@@ -169,7 +168,7 @@ export default function DriverDashboard() {
           <View style={styles.earningsHeader}>
             <View>
               <Text style={styles.earningsLabel}>Today&apos;s Earnings</Text>
-              <Text style={styles.earningsAmount}>${todayEarnings.toFixed(2)}</Text>
+              <Text style={styles.earningsAmount}>₦{todayEarnings.toFixed(2)}</Text>
             </View>
             <View style={styles.earningsBadge}>
               <TrendingUp size={16} color="#10B981" strokeWidth={2.5} />
@@ -186,7 +185,7 @@ export default function DriverDashboard() {
             <View style={styles.earningsStat}>
               <Navigation size={14} color="rgba(255,255,255,0.6)" />
               <Text style={styles.earningsStatLabel}>Total Earned</Text>
-              <Text style={styles.earningsStatValue}>${totalEarnings.toFixed(0)}</Text>
+              <Text style={styles.earningsStatValue}>₦{totalEarnings.toFixed(0)}</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.earningsStat}>
@@ -220,7 +219,7 @@ export default function DriverDashboard() {
               <View style={styles.performanceIcon}>
                 <DollarSign size={20} color="#10B981" strokeWidth={2.5} />
               </View>
-              <Text style={styles.performanceValue}>${weeklyEarnings.toFixed(0)}</Text>
+              <Text style={styles.performanceValue}>₦{weeklyEarnings.toFixed(0)}</Text>
               <Text style={styles.performanceLabel}>This Week</Text>
             </View>
             
@@ -228,7 +227,7 @@ export default function DriverDashboard() {
               <View style={styles.performanceIcon}>
                 <Calendar size={20} color="#3B82F6" strokeWidth={2.5} />
               </View>
-              <Text style={styles.performanceValue}>${monthlyEarnings.toFixed(0)}</Text>
+              <Text style={styles.performanceValue}>₦{monthlyEarnings.toFixed(0)}</Text>
               <Text style={styles.performanceLabel}>This Month</Text>
             </View>
             
@@ -305,14 +304,14 @@ export default function DriverDashboard() {
           <Text style={styles.sectionTitle}>Weekly Goal Progress</Text>
           <View style={styles.goalCard}>
             <View style={styles.goalHeader}>
-              <Text style={styles.goalTitle}>$1,000 Weekly Target</Text>
+              <Text style={styles.goalTitle}>₦1,000 Weekly Target</Text>
               <Text style={styles.goalPercentage}>{Math.round((weeklyEarnings / 1000) * 100)}%</Text>
             </View>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${Math.min((weeklyEarnings / 1000) * 100, 100)}%` }]} />
             </View>
             <Text style={styles.goalSubtext}>
-              {weeklyEarnings >= 1000 ? 'Goal completed! 🎉' : `${(1000 - weeklyEarnings).toFixed(2)} to go`}
+              {weeklyEarnings >= 1000 ? 'Goal completed!' : `₦${(1000 - weeklyEarnings).toFixed(2)} to go`}
             </Text>
           </View>
         </View>

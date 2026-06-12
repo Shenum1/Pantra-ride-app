@@ -11,7 +11,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Car, ChevronDown, ChevronUp, Minus, Plus, Route, X } from 'lucide-react-native';
+import { Car, CarFront, Bus, ChevronDown, ChevronUp, Minus, Plus, Route, X } from 'lucide-react-native';
+
+const RIDE_TYPE_ICONS: Record<string, typeof Car> = {
+  car: Car,
+  'car-front': CarFront,
+  bus: Bus,
+};
 
 import Map from '@/components/Map';
 import Button from '@/components/Button';
@@ -253,6 +259,7 @@ export default function RideConfirmationScreen() {
                 {rideTypes.map((type) => {
                   const isSelected = selectedRideType === type.id;
                   const price = tierPrices[type.id];
+                  const TierIcon = RIDE_TYPE_ICONS[type.icon] ?? Car;
                   return (
                     <Pressable
                       key={type.id}
@@ -260,7 +267,7 @@ export default function RideConfirmationScreen() {
                       onPress={() => setSelectedRideType(type.id)}
                       testID={`tier-option-${type.id}`}
                     >
-                      <Car size={18} color={isSelected ? '#14B8A6' : '#64748B'} />
+                      <TierIcon size={18} color={isSelected ? '#14B8A6' : '#64748B'} />
                       <Text style={[styles.tierName, isSelected && styles.tierNameSelected]}>
                         {type.name}
                       </Text>

@@ -33,7 +33,7 @@ const ExpenseRide: React.FC<ExpenseRideProps> = ({ date, from, to, amount, categ
           <Text style={[styles.rideCategory, { color: colors.primary }]}>{category}</Text>
         </View>
         <View style={styles.rideAmount}>
-          <Text style={[styles.amountText, { color: colors.text }]}>${amount.toFixed(2)}</Text>
+          <Text style={[styles.amountText, { color: colors.text }]}>₦{amount.toFixed(2)}</Text>
           {receipt && (
             <Pressable style={styles.receiptButton}>
               <Receipt size={16} color={colors.primary} />
@@ -129,7 +129,7 @@ export default function ExpenseRidesScreen() {
               <DollarSign size={24} color={colors.primary} />
               <Text style={[styles.summaryTitle, { color: colors.text }]}>This Month</Text>
             </View>
-            <Text style={[styles.summaryAmount, { color: colors.primary }]}>${totalExpenses.toFixed(2)}</Text>
+            <Text style={[styles.summaryAmount, { color: colors.primary }]}>₦{totalExpenses.toFixed(2)}</Text>
             <Text style={[styles.summarySubtext, { color: colors.gray }]}>{expenseRides.length} business rides</Text>
           </View>
           

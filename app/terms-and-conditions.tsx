@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Mail, CheckCircle } from 'lucide-react-native';
 
 export default function TermsAndConditions() {
   return (
@@ -226,12 +226,18 @@ export default function TermsAndConditions() {
         <Text style={styles.paragraph}>For inquiries or complaints, please contact:</Text>
         <Text style={styles.paragraph}>
           Pantra Limited{'\n'}
-          Abuja, Nigeria{'\n'}
-          📧 Email: pantrateam@gmail.com
+          Abuja, Nigeria
         </Text>
+        <View style={styles.contactRow}>
+          <Mail size={16} color="#333" />
+          <Text style={styles.paragraph}>Email: pantrateam@gmail.com</Text>
+        </View>
 
         <View style={styles.summaryBox}>
-          <Text style={styles.summaryTitle}>✅ Legal Summary of Protections:</Text>
+          <View style={styles.summaryTitleRow}>
+            <CheckCircle size={16} color="#0369a1" />
+            <Text style={styles.summaryTitle}>Legal Summary of Protections:</Text>
+          </View>
           <Text style={styles.bulletPoint}>• Shields Pantra from lawsuits arising from accidents, payments, or misconduct.</Text>
           <Text style={styles.bulletPoint}>• Declares drivers as independent contractors (no employment liability).</Text>
           <Text style={styles.bulletPoint}>• Protects free-ride system from abuse.</Text>
@@ -296,11 +302,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#0ea5e9',
   },
+  summaryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
   summaryTitle: {
     fontSize: 16,
     fontWeight: '700' as const,
     color: '#0369a1',
+  },
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
+    marginTop: -8,
   },
   footer: {
     height: 20,

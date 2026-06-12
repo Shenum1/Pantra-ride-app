@@ -42,12 +42,12 @@ export default function WithdrawScreen() {
     }
     
     if (numAmount < 10) {
-      Alert.alert('Minimum Amount', 'Minimum withdrawal amount is $10');
+      Alert.alert('Minimum Amount', 'Minimum withdrawal amount is ₦10');
       return;
     }
     
     if (numAmount > balance) {
-      Alert.alert('Insufficient Balance', `You only have $${balance.toFixed(2)} available`);
+      Alert.alert('Insufficient Balance', `You only have ₦${balance.toFixed(2)} available`);
       return;
     }
     
@@ -73,7 +73,7 @@ export default function WithdrawScreen() {
       await withdrawMoneyAsync({ amount: numAmount, bankAccountId: selectedBankId });
       Alert.alert(
         'Withdrawal Initiated',
-        `$${numAmount.toFixed(2)} will be transferred to your bank account within 1-3 business days`,
+        `₦${numAmount.toFixed(2)} will be transferred to your bank account within 1-3 business days`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
@@ -96,14 +96,14 @@ export default function WithdrawScreen() {
             <ArrowUpCircle size={24} color={colors.primary} />
             <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>Available Balance</Text>
             <Animated.Text style={[styles.balanceAmount, { color: colors.text, transform: [{ scale: scaleAnim }] }]}>
-              ${balance.toFixed(2)}
+              ₦{balance.toFixed(2)}
             </Animated.Text>
           </View>
 
           <View style={styles.amountSection}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Withdrawal Amount</Text>
             <View style={[styles.amountInputContainer, { borderColor: colors.border, backgroundColor: colors.card }]}>
-              <Text style={[styles.currencySymbol, { color: colors.text }]}>$</Text>
+              <Text style={[styles.currencySymbol, { color: colors.text }]}>₦</Text>
               <TextInput
                 style={[styles.amountInput, { color: colors.text }]}
                 placeholder="0.00"
@@ -114,7 +114,7 @@ export default function WithdrawScreen() {
               />
             </View>
             <Text style={[styles.hint, { color: colors.textSecondary }]}>
-              Minimum: $10 • Maximum: ${balance.toFixed(2)}
+              Minimum: ₦10 • Maximum: ₦{balance.toFixed(2)}
             </Text>
           </View>
 
@@ -140,7 +140,7 @@ export default function WithdrawScreen() {
                       amount === quickAmount.toString() && { color: '#FFF' }
                     ]}
                   >
-                    ${quickAmount}
+                    ₦{quickAmount}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -208,7 +208,7 @@ export default function WithdrawScreen() {
           <View style={[styles.infoBox, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30' }]}>
             <Text style={[styles.infoText, { color: colors.text }]}>
               • Withdrawals are processed within 1-3 business days{'\n'}
-              • No fees for withdrawals above $10{'\n'}
+              • No fees for withdrawals above ₦10{'\n'}
               • Bank account must be verified
             </Text>
           </View>

@@ -164,15 +164,15 @@ export default function DriverDashboard() {
         {/* Earnings Summary */}
         <View style={styles.earningsCard}>
           <Text style={styles.cardTitle}>Today&apos;s Earnings</Text>
-          <Text style={styles.earningsAmount}>${(driver.totalEarnings * 0.1).toFixed(2)}</Text>
+          <Text style={styles.earningsAmount}>₦{(driver.totalEarnings * 0.1).toFixed(2)}</Text>
           <View style={styles.earningsRow}>
             <View style={styles.earningsStat}>
               <Text style={styles.earningsLabel}>This Week</Text>
-              <Text style={styles.earningsValue}>${(driver.totalEarnings * 0.3).toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{(driver.totalEarnings * 0.3).toFixed(2)}</Text>
             </View>
             <View style={styles.earningsStat}>
               <Text style={styles.earningsLabel}>Total</Text>
-              <Text style={styles.earningsValue}>${driver.totalEarnings.toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{driver.totalEarnings.toFixed(2)}</Text>
             </View>
           </View>
         </View>
@@ -214,7 +214,7 @@ export default function DriverDashboard() {
                   </View>
                   <View style={styles.metric}>
                     <DollarSign size={14} color={Colors.light.gray} />
-                    <Text style={styles.metricText}>${currentRide.estimatedEarnings?.toFixed(2)}</Text>
+                    <Text style={styles.metricText}>₦{currentRide.estimatedEarnings?.toFixed(2)}</Text>
                   </View>
                 </View>
               </View>
@@ -301,7 +301,7 @@ export default function DriverDashboard() {
                     </View>
                     <View style={styles.metric}>
                       <DollarSign size={14} color={Colors.light.gray} />
-                      <Text style={styles.metricText}>${request.estimatedEarnings.toFixed(2)}</Text>
+                      <Text style={styles.metricText}>₦{request.estimatedEarnings.toFixed(2)}</Text>
                     </View>
                     <View style={styles.metric}>
                       <Car size={14} color={Colors.light.gray} />

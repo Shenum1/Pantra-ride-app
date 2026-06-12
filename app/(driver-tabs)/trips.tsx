@@ -210,7 +210,7 @@ export default function DriverTrips() {
           </View>
         </View>
         <View style={styles.fareContainer}>
-          <Text style={styles.fare}>${(ride.price || ride.estimatedEarnings || 0).toFixed(2)}</Text>
+          <Text style={styles.fare}>₦{(ride.price || ride.estimatedEarnings || 0).toFixed(2)}</Text>
           {ride.distanceToPickup && ride.distanceToPickup < 1 && (
             <Text style={styles.surge}>Nearby</Text>
           )}
@@ -280,7 +280,7 @@ export default function DriverTrips() {
     return (
       <View style={styles.spinWheelOverlay}>
         <View style={styles.spinWheelContainer}>
-          <Text style={styles.spinWheelTitle}>Bonus Spin! 🎉</Text>
+          <Text style={styles.spinWheelTitle}>Bonus Spin!</Text>
           <Animated.View 
             style={[
               styles.wheel,
@@ -288,10 +288,10 @@ export default function DriverTrips() {
             ]}
           >
             <View style={styles.wheelSegment}>
-              <Text style={styles.wheelText}>$5</Text>
+              <Text style={styles.wheelText}>₦5</Text>
             </View>
           </Animated.View>
-          <Text style={styles.spinWheelSubtitle}>You earned a $5 bonus!</Text>
+          <Text style={styles.spinWheelSubtitle}>You earned a ₦5 bonus!</Text>
         </View>
       </View>
     );

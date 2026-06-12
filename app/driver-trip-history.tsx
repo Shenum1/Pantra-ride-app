@@ -198,9 +198,9 @@ export default function TripHistory() {
           <Text style={styles.detailText}>{trip.duration}</Text>
         </View>
         <View style={styles.earningsContainer}>
-          <Text style={styles.fareText}>${trip.fare.toFixed(2)}</Text>
+          <Text style={styles.fareText}>₦{trip.fare.toFixed(2)}</Text>
           {trip.tip > 0 && (
-            <Text style={styles.tipText}>+${trip.tip.toFixed(2)} tip</Text>
+            <Text style={styles.tipText}>+₦{trip.tip.toFixed(2)} tip</Text>
           )}
         </View>
       </View>
@@ -246,7 +246,7 @@ export default function TripHistory() {
           <View style={styles.statIcon}>
             <DollarSign size={20} color={Colors.light.success} />
           </View>
-          <Text style={styles.statValue}>${totalEarnings.toFixed(2)}</Text>
+          <Text style={styles.statValue}>₦{totalEarnings.toFixed(2)}</Text>
           <Text style={styles.statLabel}>Earned</Text>
         </View>
         <View style={styles.statItem}>

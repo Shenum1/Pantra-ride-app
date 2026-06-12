@@ -34,10 +34,12 @@ export interface Promotion {
 
 export interface Review {
   id: string;
+  rideId: string;
   userId: string;
   driverId: string;
   rating: number;
   comment?: string;
+  tags?: string[];
   createdAt: Date;
 }
 
@@ -89,7 +91,7 @@ export interface RideRequest {
   fareAdjustmentPercent?: number;
   distance?: number;
   duration?: number;
-  status?: 'pending' | 'confirmed' | 'accepted' | 'in_progress' | 'completed' | 'cancelled';
+  status?: 'pending' | 'confirmed' | 'accepted' | 'in_progress' | 'in-progress' | 'completed' | 'cancelled';
   driver?: Driver;
   createdAt?: Date;
   scheduledFor?: Date;

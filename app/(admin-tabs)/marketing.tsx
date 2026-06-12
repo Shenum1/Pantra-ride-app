@@ -52,7 +52,7 @@ const CampaignCard: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
       <View style={styles.budgetSection}>
         <View style={styles.budgetInfo}>
           <Text style={styles.budgetText}>
-            ${campaign.spent.toLocaleString()} / ${campaign.budget.toLocaleString()}
+            ₦{campaign.spent.toLocaleString()} / ₦{campaign.budget.toLocaleString()}
           </Text>
           <Text style={styles.budgetPercentage}>{budgetUsed}% used</Text>
         </View>
@@ -125,7 +125,7 @@ export default function MarketingScreen() {
   ];
 
   const marketingStats = [
-    { label: 'Total Spend', value: '$63.2K', icon: DollarSign, color: '#ef4444' },
+    { label: 'Total Spend', value: '₦63.2K', icon: DollarSign, color: '#ef4444' },
     { label: 'Active Campaigns', value: '8', icon: Target, color: '#10b981' },
     { label: 'Total Reach', value: '2.1M', icon: Users, color: '#3b82f6' },
     { label: 'Avg CVR', value: '2.8%', icon: TrendingUp, color: '#f59e0b' },

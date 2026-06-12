@@ -13,13 +13,19 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BellRing, Car, CircleDot, MapPin, Navigation2, Phone, X } from 'lucide-react-native';
+import { BellRing, Car, CircleDot, MapPin, MessageCircle, Navigation2, Phone, X } from 'lucide-react-native';
 
 import Map from '@/components/Map';
 import Colors from '@/constants/colors';
+import { useAuth } from '@/hooks/useAuthStore';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
-import { Driver, Location, RideCancellationReason, RideTrackingStage } from '@/types';
+import { DatabaseService } from '@/lib/database-service';
+import { FirebaseDriverService } from '@/lib/firebase-driver-service';
+import { MessagingService } from '@/lib/messaging-service';
+import { NotificationService } from '@/lib/notification-service';
+import { RideMatchingService } from '@/lib/ride-matching-service';
+import { Driver, Location, RideCancellationReason, RideRequest, RideTrackingStage } from '@/types';
 
 type RiderStage = RideTrackingStage;
 
@@ -58,8 +64,9 @@ function getStageTitle(stage: RiderStage): string {
 }
 
 export default function RideProgressScreen() {
-  const { currentRide, cancelRide, updateRideSession, isHydratingRide } = useRide();
+  const { currentRide, cancelRide, completeRide, updateRideSession, isHydratingRide } = useRide();
   const { pickupLocation, dropoffLocation, pickupAddress, dropoffAddress } = useLocation();
+  const { user } = useAuth();
   const resolvedPickupLocation = currentRide?.pickupLocation ?? pickupLocation ?? null;
   const resolvedDropoffLocation = currentRide?.dropoffLocation ?? dropoffLocation ?? null;
   const resolvedPickupAddress = currentRide?.pickupAddress ?? pickupAddress ?? 'Pickup location';
@@ -84,6 +91,10 @@ export default function RideProgressScreen() {
   const currentRideDriverRef = useRef<Driver | null>(null);
   const currentRideDriverLocationRef = useRef<Location | null>(null);
   const currentRideStatusTextRef = useRef<string | null>(null);
+  const currentRideTrackingStageRef = useRef<RideTrackingStage | null>(null);
+  const currentRideStatusRef = useRef<RideRequest['status'] | null>(null);
+  const cancelRideRef = useRef(cancelRide);
+  const completeRideRef = useRef(completeRide);
 
   useEffect(() => {
     const id = sheetOffset.addListener(({ value }) => {
@@ -99,7 +110,14 @@ export default function RideProgressScreen() {
     currentRideDriverRef.current = currentRideDriver;
     currentRideDriverLocationRef.current = currentRideDriverLocation;
     currentRideStatusTextRef.current = currentRideStatusText;
-  }, [currentRideDriver, currentRideDriverLocation, currentRideStatusText]);
+    currentRideTrackingStageRef.current = currentRideTrackingStage;
+    currentRideStatusRef.current = currentRideStatus;
+  }, [currentRideDriver, currentRideDriverLocation, currentRideStatusText, currentRideStatus, currentRideTrackingStage]);
+
+  useEffect(() => {
+    cancelRideRef.current = cancelRide;
+    completeRideRef.current = completeRide;
+  }, [cancelRide, completeRide]);
 
   useEffect(() => {
     console.log('RideProgress mounted with current ride:', currentRide);
@@ -113,8 +131,9 @@ export default function RideProgressScreen() {
     }
   }, [currentRide, isHydratingRide, resolvedDropoffLocation, resolvedPickupLocation]);
 
+  // Fallback simulation for rides that never made it to Supabase (no real backend row to subscribe to).
   useEffect(() => {
-    if (!currentRideId || !resolvedPickupLocation || !resolvedDropoffLocation) {
+    if (!currentRideId || !currentRideId.startsWith('local-ride-') || !resolvedPickupLocation || !resolvedDropoffLocation) {
       lastSimulationStageRef.current = null;
       return;
     }
@@ -264,6 +283,220 @@ export default function RideProgressScreen() {
     };
   }, [assignedDriver, currentRideId, currentRideStatus, currentRideTrackingStage, resolvedDropoffLocation, resolvedPickupLocation, updateRideSession]);
 
+  const ARRIVED_AT_PICKUP_KM = 0.15;
+
+  // Live tracking for rides backed by a real Supabase row: subscribe to ride status changes
+  // and the assigned driver's GPS position instead of simulating progress with timers.
+  useEffect(() => {
+    if (!currentRideId || currentRideId.startsWith('local-ride-') || !resolvedPickupLocation || !resolvedDropoffLocation) {
+      return;
+    }
+
+    let isCancelled = false;
+    let knownDriverId: string | null = currentRideDriverRef.current && currentRideDriverRef.current.id !== 'fallback-driver'
+      ? currentRideDriverRef.current.id
+      : null;
+    let latestRideStatus: RideRequest['status'] = currentRideStatusRef.current ?? 'pending';
+    let driverLocationUnsubscribe: (() => void) | null = null;
+
+    liveStageRef.current = currentRideTrackingStageRef.current ?? 'searching';
+    setStage(liveStageRef.current);
+    setStatusText(currentRideStatusTextRef.current ?? 'Looking for a nearby driver');
+    if (currentRideDriverLocationRef.current) {
+      setDriverLocation(currentRideDriverLocationRef.current);
+    }
+    if (currentRideDriverRef.current?.eta !== undefined) {
+      setDriverEtaMinutes(currentRideDriverRef.current.eta);
+    }
+
+    const handleDriverLocation = (loc: { lat: number; lng: number }) => {
+      if (isCancelled) return;
+      const nextLocation: Location = { latitude: loc.lat, longitude: loc.lng };
+      setDriverLocation(nextLocation);
+
+      if (liveStageRef.current === 'driver_assigned' || liveStageRef.current === 'driver_arriving') {
+        const distanceToPickup = RideMatchingService.calculateDistance(
+          nextLocation.latitude,
+          nextLocation.longitude,
+          resolvedPickupLocation.latitude,
+          resolvedPickupLocation.longitude
+        );
+        const arrived = distanceToPickup <= ARRIVED_AT_PICKUP_KM;
+        const nextStage: RiderStage = arrived ? 'driver_arrived' : 'driver_arriving';
+
+        if (nextStage !== liveStageRef.current) {
+          const nextStatus = arrived ? 'Driver has arrived at your pickup' : 'Driver is on the way';
+          liveStageRef.current = nextStage;
+          setStage(nextStage);
+          setStatusText(nextStatus);
+          setDriverEtaMinutes(arrived ? 0 : Math.max(1, Math.round((distanceToPickup / 30) * 60)));
+          void updateRideSession({
+            trackingStage: nextStage,
+            statusText: nextStatus,
+            driverLocation: nextLocation,
+            status: latestRideStatus,
+          });
+
+          if (nextStage === 'driver_arrived') {
+            void NotificationService.notifyDriverArrived(
+              user?.id ?? '',
+              currentRideDriverRef.current?.name ?? 'Your driver'
+            );
+          }
+        } else if (!arrived) {
+          setDriverEtaMinutes(Math.max(1, Math.round((distanceToPickup / 30) * 60)));
+        }
+      } else if (liveStageRef.current === 'trip_in_progress') {
+        const distanceToDropoff = RideMatchingService.calculateDistance(
+          nextLocation.latitude,
+          nextLocation.longitude,
+          resolvedDropoffLocation.latitude,
+          resolvedDropoffLocation.longitude
+        );
+        const nextStatus = distanceToDropoff <= ARRIVED_AT_PICKUP_KM
+          ? 'You have arrived at your destination'
+          : 'Trip started. Driver is heading to your destination';
+        setStatusText((prev) => (prev === nextStatus ? prev : nextStatus));
+      }
+    };
+
+    const subscribeDriverLocation = (driverId: string) => {
+      if (driverLocationUnsubscribe) {
+        driverLocationUnsubscribe();
+      }
+      driverLocationUnsubscribe = RideMatchingService.subscribeToDriverLocation(driverId, handleDriverLocation);
+    };
+
+    const handleRideUpdate = async (ride: { status?: string; driverId?: string | null }) => {
+      if (isCancelled) return;
+      const status = (ride.status as RideRequest['status'] | undefined) ?? latestRideStatus;
+      const driverId = ride.driverId ?? null;
+      latestRideStatus = status;
+
+      if (status === 'cancelled') {
+        isCancelled = true;
+        Alert.alert('Ride cancelled', 'Your driver cancelled this ride.');
+        cancelRideRef.current('other', 'Cancelled by driver');
+        router.replace('/(tabs)/home');
+        return;
+      }
+
+      if (status === 'completed') {
+        isCancelled = true;
+        const completedRide = completeRideRef.current();
+        void NotificationService.notifyRideCompleted(user?.id ?? '', completedRide?.price ?? 0);
+        if (completedRide?.driver) {
+          router.replace({
+            pathname: '/rate-driver',
+            params: {
+              rideId: completedRide.id,
+              driverId: completedRide.driver.id,
+              driverName: completedRide.driver.name,
+            },
+          });
+        } else {
+          router.replace('/(tabs)/home');
+        }
+        return;
+      }
+
+      if (driverId && driverId !== knownDriverId) {
+        knownDriverId = driverId;
+        const profile = await FirebaseDriverService.getDriver(driverId);
+        if (isCancelled) return;
+
+        const driverLoc: Location = profile?.location ?? buildApproachStart(resolvedPickupLocation);
+        const mappedDriver: Driver = profile
+          ? {
+              id: profile.id,
+              name: profile.name,
+              rating: profile.rating,
+              location: driverLoc,
+              carType: profile.vehicle?.type ?? 'Standard',
+              carModel: `${profile.vehicle?.make ?? ''} ${profile.vehicle?.model ?? ''}`.trim(),
+              licensePlate: profile.vehicle?.licensePlate ?? '',
+              eta: 3,
+              phone: profile.phone,
+            }
+          : {
+              id: driverId,
+              name: 'Your driver',
+              rating: 5,
+              location: driverLoc,
+              carType: 'Standard',
+              carModel: '',
+              licensePlate: '',
+              eta: 3,
+              phone: '',
+            };
+
+        const nextStage: RiderStage = status === 'in-progress' ? 'trip_in_progress' : 'driver_assigned';
+        const nextStatus = status === 'in-progress'
+          ? 'Trip started. Driver is heading to your destination'
+          : `${mappedDriver.name} accepted your ride`;
+
+        liveStageRef.current = nextStage;
+        setStage(nextStage);
+        setStatusText(nextStatus);
+        setDriverLocation(driverLoc);
+        setDriverEtaMinutes(mappedDriver.eta);
+
+        void updateRideSession({
+          driver: mappedDriver,
+          driverLocation: driverLoc,
+          trackingStage: nextStage,
+          statusText: nextStatus,
+          status,
+        });
+
+        if (nextStage === 'driver_assigned') {
+          void NotificationService.notifyDriverAssigned(user?.id ?? '', mappedDriver.name, mappedDriver.eta);
+        } else if (nextStage === 'trip_in_progress') {
+          void NotificationService.notifyRideStarted(user?.id ?? '');
+        }
+
+        subscribeDriverLocation(driverId);
+        return;
+      }
+
+      if (status === 'in-progress' && liveStageRef.current !== 'trip_in_progress') {
+        const nextStatus = 'Trip started. Driver is heading to your destination';
+        liveStageRef.current = 'trip_in_progress';
+        setStage('trip_in_progress');
+        setStatusText(nextStatus);
+        setDriverEtaMinutes(0);
+        void updateRideSession({
+          trackingStage: 'trip_in_progress',
+          statusText: nextStatus,
+          status,
+        });
+        void NotificationService.notifyRideStarted(user?.id ?? '');
+      }
+    };
+
+    const ridesUnsubscribe = RideMatchingService.subscribeToRideUpdates(currentRideId, (ride) => {
+      void handleRideUpdate(ride);
+    });
+
+    if (knownDriverId) {
+      subscribeDriverLocation(knownDriverId);
+    }
+
+    void DatabaseService.get('rides', currentRideId).then((ride) => {
+      if (ride) {
+        void handleRideUpdate(ride);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+      ridesUnsubscribe();
+      if (driverLocationUnsubscribe) {
+        driverLocationUnsubscribe();
+      }
+    };
+  }, [currentRideId, resolvedDropoffLocation, resolvedPickupLocation, updateRideSession]);
+
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 8,
     onMoveShouldSetPanResponderCapture: (_, gestureState) => Math.abs(gestureState.dy) > 8,
@@ -400,6 +633,37 @@ export default function RideProgressScreen() {
     await Linking.openURL(phoneUrl);
   };
 
+  const handleMessageDriver = async () => {
+    if (!user || !assignedDriver) {
+      Alert.alert('Unavailable', 'Driver information not available yet.');
+      return;
+    }
+
+    try {
+      const conversationId = await MessagingService.createConversation({
+        userId: user.id,
+        userName: user.name,
+        userPhone: user.phone,
+        driverId: assignedDriver.id,
+        driverName: assignedDriver.name,
+        driverPhone: assignedDriver.phone,
+        rideId: currentRideId ?? undefined,
+      });
+
+      router.push({
+        pathname: '/messages',
+        params: {
+          conversationId,
+          driverName: assignedDriver.name,
+          driverPhone: assignedDriver.phone ?? '',
+        },
+      });
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      Alert.alert('Error', 'Failed to open message');
+    }
+  };
+
   const confirmCancelReason = (reason: RideCancellationReason, label: string) => {
     Alert.alert('Cancel ride', `Reason: ${label}?`, [
       { text: 'Back', style: 'cancel' },
@@ -438,6 +702,7 @@ export default function RideProgressScreen() {
   }
 
   const canCallDriver = stage !== 'searching' && !!assignedDriver?.phone;
+  const canMessageDriver = stage !== 'searching' && !!assignedDriver;
   const showRoute = stage === 'trip_in_progress';
 
   return (
@@ -549,6 +814,12 @@ export default function RideProgressScreen() {
                     <Pressable style={styles.secondaryButton} onPress={handleCallDriver} testID="ride-progress-call-button">
                       <Phone size={16} color="#0F172A" />
                       <Text style={styles.secondaryButtonText}>Call driver</Text>
+                    </Pressable>
+                  ) : null}
+                  {canMessageDriver ? (
+                    <Pressable style={styles.secondaryButton} onPress={handleMessageDriver} testID="ride-progress-message-button">
+                      <MessageCircle size={16} color="#0F172A" />
+                      <Text style={styles.secondaryButtonText}>Message</Text>
                     </Pressable>
                   ) : null}
                   <Pressable style={styles.secondaryButton} onPress={handleCancelRide} testID="ride-progress-cancel-button">

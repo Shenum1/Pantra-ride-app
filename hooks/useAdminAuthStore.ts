@@ -1,5 +1,7 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { AdminAuthService } from '@/lib/admin-auth-service';
 import type { AdminUser } from '@/types';
 
 interface AdminAuthState {
@@ -8,85 +10,68 @@ interface AdminAuthState {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  checkAuthStatus: () => Promise<void>;
 }
+
+const ADMIN_STORAGE_KEY = 'admin_auth_user';
 
 export const [AdminAuthProvider, useAdminAuth] = createContextHook<AdminAuthState>(() => {
   const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const isAuthenticated = adminUser !== null;
-
-  const checkAuthStatus = useCallback(async () => {
-    try {
-      // Mock storage - replace with actual storage implementation
-      const storedAdmin = null; // await storage.getItem('admin_user');
-      if (storedAdmin) {
-        setAdminUser(JSON.parse(storedAdmin));
+  useEffect(() => {
+    // Load cached admin from AsyncStorage immediately — no network needed
+    const loadStoredAdmin = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(ADMIN_STORAGE_KEY);
+        if (stored) setAdminUser(JSON.parse(stored) as AdminUser);
+      } catch {
+        // ignore read errors
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('Error checking admin auth status:', error);
-    } finally {
-      setIsLoading(false);
-    }
+    };
+    void loadStoredAdmin();
+
+    // Keep in sync with live Supabase session in the background
+    const unsubscribe = AdminAuthService.onAuthStateChanged((admin) => {
+      setAdminUser(admin);
+      if (admin) {
+        AsyncStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(admin)).catch(() => {});
+      } else {
+        AsyncStorage.removeItem(ADMIN_STORAGE_KEY).catch(() => {});
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      // Mock admin login - replace with actual API call
-      if (email === 'admin@rideapp.com' && password === 'admin123') {
-        const mockAdmin: AdminUser = {
-          id: '1',
-          name: 'Super Admin',
-          email: 'admin@rideapp.com',
-          role: 'super_admin',
-          department: 'management',
-          permissions: [
-            {
-              id: '1',
-              name: 'Full Access',
-              resource: 'users',
-              actions: ['create', 'read', 'update', 'delete', 'approve']
-            }
-          ],
-          isActive: true,
-          lastLogin: new Date(),
-          createdAt: new Date('2024-01-01')
-        };
-        
-        setAdminUser(mockAdmin);
-        // await storage.setItem('admin_user', JSON.stringify(mockAdmin));
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Admin login error:', error);
-      return false;
+      const admin = await AdminAuthService.signInWithEmail(email, password);
+      setAdminUser(admin);
+      await AsyncStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(admin));
+      return true;
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   const logout = useCallback(async () => {
+    await AsyncStorage.removeItem(ADMIN_STORAGE_KEY);
+    setAdminUser(null);
     try {
-      setAdminUser(null);
-      // await storage.removeItem('admin_user');
-    } catch (error) {
-      console.error('Admin logout error:', error);
+      await AdminAuthService.signOut();
+    } catch {
+      // session may already be expired or network unavailable — local state is cleared
     }
   }, []);
-
-  useEffect(() => {
-    checkAuthStatus();
-  }, [checkAuthStatus]);
 
   return useMemo(() => ({
     adminUser,
     isLoading,
-    isAuthenticated,
+    isAuthenticated: !!adminUser,
     login,
     logout,
-    checkAuthStatus
-  }), [adminUser, isLoading, isAuthenticated, login, logout, checkAuthStatus]);
+  }), [adminUser, isLoading, login, logout]);
 });

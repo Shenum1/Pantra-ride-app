@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View, Text, Pressable, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { CreditCard, Check } from 'lucide-react-native';
+import { CreditCard, Check, Wallet, Banknote, Lightbulb } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 
@@ -12,7 +12,7 @@ interface GatewayOption {
   id: PaymentGateway;
   name: string;
   description: string;
-  icon: string;
+  icon: typeof CreditCard;
   available: boolean;
 }
 
@@ -21,21 +21,21 @@ const paymentGateways: GatewayOption[] = [
     id: 'paystack',
     name: 'Paystack',
     description: 'Pay with card, bank transfer, or USSD',
-    icon: '💳',
+    icon: CreditCard,
     available: true,
   },
   {
     id: 'flutterwave',
     name: 'Flutterwave',
     description: 'Pay with card, bank, or mobile money',
-    icon: '🦋',
+    icon: Wallet,
     available: true,
   },
   {
     id: 'cash',
     name: 'Cash',
     description: 'Pay with cash after the ride',
-    icon: '💵',
+    icon: Banknote,
     available: true,
   },
 ];
@@ -95,7 +95,7 @@ export default function PaymentGatewaySelectScreen() {
             disabled={!gateway.available}
           >
             <View style={styles.gatewayIcon}>
-              <Text style={styles.gatewayIconText}>{gateway.icon}</Text>
+              <gateway.icon size={28} color={Colors.light.primary} />
             </View>
             <View style={styles.gatewayInfo}>
               <Text style={styles.gatewayName}>{gateway.name}</Text>
@@ -113,15 +113,18 @@ export default function PaymentGatewaySelectScreen() {
         ))}
 
         <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>💡 Payment Gateway Setup</Text>
+          <View style={styles.infoTitleRow}>
+            <Lightbulb size={16} color={Colors.light.text} />
+            <Text style={styles.infoTitle}>Payment Gateway Setup</Text>
+          </View>
           <Text style={styles.infoText}>
             To enable real payments, you need to add your API keys:
           </Text>
           <Text style={styles.infoText}>
             • EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY{'\n'}
-            • EXPO_PUBLIC_PAYSTACK_SECRET_KEY{'\n'}
+            • PAYSTACK_SECRET_KEY (server-only){'\n'}
             • EXPO_PUBLIC_FLUTTERWAVE_PUBLIC_KEY{'\n'}
-            • EXPO_PUBLIC_FLUTTERWAVE_SECRET_KEY
+            • FLUTTERWAVE_SECRET_KEY (server-only)
           </Text>
           <Text style={styles.infoText}>
             Get your keys from:{'\n'}
@@ -204,9 +207,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
   },
-  gatewayIconText: {
-    fontSize: 28,
-  },
   gatewayInfo: {
     flex: 1,
   },
@@ -240,11 +240,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.light.lightGray,
     borderRadius: 12,
   },
+  infoTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   infoTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: Colors.light.text,
-    marginBottom: 8,
   },
   infoText: {
     fontSize: 12,

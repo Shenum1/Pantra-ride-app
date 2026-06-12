@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Users, Search, Filter, MoreVertical, Car } from 'lucide-react-native';
+import { trpc } from '@/lib/trpc';
 
 interface User {
   id: string;
@@ -56,35 +57,25 @@ export default function UsersScreen() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
 
-  const users: User[] = [
-    {
-      id: '1',
-      name: 'John Doe',
-      email: 'john@example.com',
-      type: 'rider',
-      status: 'active',
-      joinDate: '2024-01-15',
-      totalRides: 45,
-    },
-    {
-      id: '2',
-      name: 'Sarah Wilson',
-      email: 'sarah@example.com',
-      type: 'driver',
-      status: 'active',
-      joinDate: '2024-02-20',
-      totalRides: 128,
-    },
-    {
-      id: '3',
-      name: 'Mike Johnson',
-      email: 'mike@example.com',
-      type: 'rider',
-      status: 'inactive',
-      joinDate: '2024-03-10',
-      totalRides: 12,
-    },
-  ];
+  const usersQuery = trpc.admin.users.useQuery();
+  const users: User[] = usersQuery.data?.users ?? [];
+  const stats = usersQuery.data?.stats;
+
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch =
+      !searchQuery ||
+      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesFilter =
+      selectedFilter === 'all' ||
+      (selectedFilter === 'riders' && user.type === 'rider') ||
+      (selectedFilter === 'drivers' && user.type === 'driver') ||
+      (selectedFilter === 'active' && user.status === 'active') ||
+      (selectedFilter === 'suspended' && user.status === 'suspended');
+
+    return matchesSearch && matchesFilter;
+  });
 
   const filters = [
     { key: 'all', label: 'All Users' },
@@ -140,24 +131,42 @@ export default function UsersScreen() {
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>12,847</Text>
+            <Text style={styles.statValue}>{stats ? stats.totalUsers.toLocaleString() : '—'}</Text>
             <Text style={styles.statLabel}>Total Users</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>2,341</Text>
+            <Text style={styles.statValue}>{stats ? stats.activeDrivers.toLocaleString() : '—'}</Text>
             <Text style={styles.statLabel}>Active Drivers</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>10,506</Text>
+            <Text style={styles.statValue}>{stats ? stats.totalRiders.toLocaleString() : '—'}</Text>
             <Text style={styles.statLabel}>Riders</Text>
           </View>
         </View>
 
-        <View style={styles.usersList}>
-          {users.map((user) => (
-            <UserCard key={user.id} user={user} />
-          ))}
-        </View>
+        {usersQuery.isLoading ? (
+          <View style={styles.centerState}>
+            <ActivityIndicator color="#667eea" />
+          </View>
+        ) : usersQuery.error ? (
+          <View style={styles.centerState}>
+            <Text style={styles.errorText}>
+              {usersQuery.error.message.includes('not configured')
+                ? 'Admin data is not configured on the server yet.'
+                : 'Failed to load users.'}
+            </Text>
+          </View>
+        ) : filteredUsers.length === 0 ? (
+          <View style={styles.centerState}>
+            <Text style={styles.statLabel}>No users found</Text>
+          </View>
+        ) : (
+          <View style={styles.usersList}>
+            {filteredUsers.map((user) => (
+              <UserCard key={`${user.type}-${user.id}`} user={user} />
+            ))}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -281,6 +290,15 @@ const styles = StyleSheet.create({
   },
   usersList: {
     paddingBottom: 24,
+  },
+  centerState: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#ef4444',
+    textAlign: 'center',
   },
   userCard: {
     backgroundColor: 'white',

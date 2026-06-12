@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Plus,
   CheckCircle,
+  Star,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
@@ -40,14 +41,14 @@ export default function DriverGoals() {
     {
       id: '1',
       title: 'Weekly Earnings',
-      description: 'Earn $1,000 this week',
+      description: 'Earn ₦1,000 this week',
       type: 'earnings',
       target: 1000,
       current: 892.30,
       deadline: 'Dec 15, 2024',
       icon: <DollarSign size={24} color="#4CAF50" />,
       color: '#4CAF50',
-      unit: '$',
+      unit: '₦',
       completed: false,
     },
     {
@@ -86,7 +87,7 @@ export default function DriverGoals() {
       deadline: 'Ongoing',
       icon: <TrendingUp size={24} color="#9C27B0" />,
       color: '#9C27B0',
-      unit: '★',
+      unit: '',
       completed: false,
     },
   ]);
@@ -117,10 +118,10 @@ export default function DriverGoals() {
     }
 
     const goalConfig = {
-      earnings: { icon: <DollarSign size={24} color="#4CAF50" />, color: '#4CAF50', unit: '$' },
+      earnings: { icon: <DollarSign size={24} color="#4CAF50" />, color: '#4CAF50', unit: '₦' },
       trips: { icon: <MapPin size={24} color="#2196F3" />, color: '#2196F3', unit: '' },
       hours: { icon: <Clock size={24} color="#FF9800" />, color: '#FF9800', unit: 'h' },
-      rating: { icon: <TrendingUp size={24} color="#9C27B0" />, color: '#9C27B0', unit: '★' },
+      rating: { icon: <TrendingUp size={24} color="#9C27B0" />, color: '#9C27B0', unit: '' },
     };
 
     const config = goalConfig[newGoal.type];
@@ -168,9 +169,14 @@ export default function DriverGoals() {
 
         <View style={styles.progressSection}>
           <View style={styles.progressHeader}>
-            <Text style={styles.progressText}>
-              {goal.unit}{goal.current.toFixed(goal.type === 'rating' ? 1 : 0)} / {goal.unit}{goal.target.toFixed(goal.type === 'rating' ? 1 : 0)}
-            </Text>
+            <View style={styles.progressTextRow}>
+              {goal.type === 'rating' && (
+                <Star size={12} fill={Colors.light.warning} color={Colors.light.warning} />
+              )}
+              <Text style={styles.progressText}>
+                {goal.unit}{goal.current.toFixed(goal.type === 'rating' ? 1 : 0)} / {goal.unit}{goal.target.toFixed(goal.type === 'rating' ? 1 : 0)}
+              </Text>
+            </View>
             <Text style={[styles.percentageText, { color: progressColor }]}>
               {percentage.toFixed(0)}%
             </Text>
@@ -420,6 +426,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  progressTextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   progressText: {
     fontSize: 14,

@@ -162,7 +162,7 @@ export default function TransactionDetailsScreen() {
                 { color: isCredit ? '#4CAF50' : colors.text }
               ]}
             >
-              {isCredit ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
+              {isCredit ? '+' : ''}₦{Math.abs(transaction.amount).toFixed(2)}
             </Text>
             
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor() + '20', borderColor: getStatusColor() }]}>
@@ -259,7 +259,7 @@ export default function TransactionDetailsScreen() {
               <View style={styles.fareRow}>
                 <Text style={[styles.fareLabel, { color: colors.textSecondary }]}>Ride Fare</Text>
                 <Text style={[styles.fareValue, { color: colors.text }]}>
-                  ${transaction.metadata.rideFare.toFixed(2)}
+                  ₦{transaction.metadata.rideFare.toFixed(2)}
                 </Text>
               </View>
 
@@ -267,7 +267,7 @@ export default function TransactionDetailsScreen() {
                 <View style={styles.fareRow}>
                   <Text style={[styles.fareLabel, { color: colors.textSecondary }]}>Discount</Text>
                   <Text style={[styles.fareValue, { color: '#4CAF50' }]}>
-                    -${transaction.metadata.discountApplied.toFixed(2)}
+                    -₦{transaction.metadata.discountApplied.toFixed(2)}
                   </Text>
                 </View>
               )}
@@ -286,7 +286,7 @@ export default function TransactionDetailsScreen() {
               <View style={styles.fareRow}>
                 <Text style={[styles.totalLabel, { color: colors.text }]}>Total Paid</Text>
                 <Text style={[styles.totalValue, { color: colors.text }]}>
-                  ${Math.abs(transaction.amount).toFixed(2)}
+                  ₦{Math.abs(transaction.amount).toFixed(2)}
                 </Text>
               </View>
             </Animated.View>

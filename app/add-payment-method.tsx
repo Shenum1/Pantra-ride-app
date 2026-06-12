@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { CreditCard } from 'lucide-react-native';
+import { CreditCard, Lightbulb, FileText } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import { usePayment } from '@/hooks/usePaymentStore';
@@ -240,15 +240,17 @@ export default function AddPaymentMethodScreen() {
               </View>
             </View>
 
-            <View style={styles.infoBox}>
+            <View style={[styles.infoBox, styles.infoBoxRow]}>
+              <Lightbulb size={16} color={Colors.light.text} />
               <Text style={styles.infoText}>
-                💡 Your card information is encrypted and stored securely
+                Your card information is encrypted and stored securely
               </Text>
             </View>
 
-            <View style={styles.infoBox}>
+            <View style={[styles.infoBox, styles.infoBoxRow]}>
+              <FileText size={16} color={Colors.light.text} />
               <Text style={styles.infoText}>
-                📝 Note: This is a demo. In production, use Paystack/Flutterwave for secure card processing
+                Note: This is a demo. In production, use Paystack/Flutterwave for secure card processing
               </Text>
             </View>
           </View>
@@ -357,7 +359,13 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 8,
   },
+  infoBoxRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
   infoText: {
+    flex: 1,
     fontSize: 13,
     color: Colors.light.text,
     lineHeight: 18,

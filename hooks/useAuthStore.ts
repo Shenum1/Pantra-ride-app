@@ -43,40 +43,46 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   useEffect(() => {
     loadStoredUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log('Auth Store: Supabase auth state changed:', session?.user?.id);
 
-      if (!session?.user) {
-        const storedUser = await AsyncStorage.getItem(AUTH_STORAGE_KEY).catch(() => null);
-        if (storedUser) {
-          const parsed = JSON.parse(storedUser) as User;
-          if (parsed.id === 'test-rider') {
-            setUser(parsed);
-            setIsLoading(false);
-            return;
+      // Defer all async work — supabase-js awaits this callback while
+      // notifying subscribers from inside signUp/signInWithPassword/etc,
+      // so doing async work here directly would block those calls
+      // (and hang forever if a query stalls).
+      setTimeout(async () => {
+        if (!session?.user) {
+          const storedUser = await AsyncStorage.getItem(AUTH_STORAGE_KEY).catch(() => null);
+          if (storedUser) {
+            const parsed = JSON.parse(storedUser) as User;
+            if (parsed.id === 'test-rider') {
+              setUser(parsed);
+              setIsLoading(false);
+              return;
+            }
           }
+          await AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {});
+          setUser(null);
+          setIsLoading(false);
+          return;
         }
-        await AsyncStorage.removeItem(AUTH_STORAGE_KEY).catch(() => {});
-        setUser(null);
-        setIsLoading(false);
-        return;
-      }
 
-      try {
-        const profile = await AuthService.getUserProfile(session.user.id);
-        const userData: User = {
-          id: session.user.id,
-          name: profile?.displayName || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          phone: profile?.phoneNumber || '',
-          rating: 5.0,
-          profileImage: profile?.photoURL,
-          authProvider: 'email',
-        };
-        await saveUser(userData);
-      } catch {
-        setIsLoading(false);
-      }
+        try {
+          const profile = await AuthService.getUserProfile(session.user.id);
+          const userData: User = {
+            id: session.user.id,
+            name: profile?.displayName || session.user.email?.split('@')[0] || 'User',
+            email: session.user.email || '',
+            phone: profile?.phoneNumber || '',
+            rating: 5.0,
+            profileImage: profile?.photoURL,
+            authProvider: 'email',
+          };
+          await saveUser(userData);
+        } catch {
+          setIsLoading(false);
+        }
+      }, 0);
     });
 
     return () => subscription.unsubscribe();
@@ -184,16 +190,15 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   };
 
   const logout = async () => {
+    await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+    await AsyncStorage.removeItem('driver_auth_user');
+    setUser(null);
     try {
       await AuthService.signOut();
-      await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
-      await AsyncStorage.removeItem('driver_auth_user');
-      setUser(null);
-      Toast.show({ type: 'success', text1: 'Logged Out', text2: 'See you soon!', position: 'top' });
     } catch (error: any) {
-      Toast.show({ type: 'error', text1: 'Logout Failed', text2: error.message, position: 'top' });
-      throw error;
+      console.warn('Auth Store: Supabase signOut failed (local session cleared):', error.message);
     }
+    Toast.show({ type: 'success', text1: 'Logged Out', text2: 'See you soon!', position: 'top' });
   };
 
   const updateProfile = async (updates: Partial<User>) => {

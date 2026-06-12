@@ -15,6 +15,7 @@ import { RatingsProvider } from "@/hooks/useRatingsStore";
 import { EarnProvider } from "@/hooks/useEarnStore";
 import { DriverStoreProvider } from "@/hooks/useDriverStore";
 import { DriverAuthProvider } from "@/hooks/useDriverAuthStore";
+import { AdminAuthProvider } from "@/hooks/useAdminAuthStore";
 import { ThemeProvider } from "@/hooks/useThemeStore";
 import { WeatherProvider } from "@/hooks/useWeatherStore";
 import { WalletProvider } from "@/hooks/useWalletStore";
@@ -56,6 +57,7 @@ function RootLayoutNav() {
         <Stack.Screen name="driver-achievements" options={{ headerShown: false }} />
         <Stack.Screen name="driver-goals" options={{ headerShown: false }} />
         <Stack.Screen name="driver-trip-history" options={{ headerShown: false }} />
+        <Stack.Screen name="driver-documents" options={{ headerShown: false }} />
         <Stack.Screen name="personal-info" options={{ title: "Personal Info" }} />
         <Stack.Screen name="family-profile" options={{ title: "Family Profile" }} />
         <Stack.Screen name="safety" options={{ title: "Safety" }} />
@@ -110,6 +112,7 @@ export default function RootLayout() {
             <ThemeProvider>
               <AuthProvider>
               <DriverAuthProvider>
+              <AdminAuthProvider>
                 <PaymentProvider>
                 <WalletProvider>
                 <PromotionsProvider>
@@ -131,6 +134,7 @@ export default function RootLayout() {
                 </PromotionsProvider>
                 </WalletProvider>
               </PaymentProvider>
+              </AdminAuthProvider>
               </DriverAuthProvider>
               </AuthProvider>
             </ThemeProvider>

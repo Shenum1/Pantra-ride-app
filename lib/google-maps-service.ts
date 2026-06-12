@@ -53,11 +53,56 @@ interface GooglePlaceResult {
   geometry?: { location?: { lat?: number; lng?: number } };
 }
 
+interface GooglePlacePhoto {
+  photo_reference?: string;
+  height?: number;
+  width?: number;
+}
+
+interface GoogleOpeningHours {
+  open_now?: boolean;
+}
+
+interface GoogleNearbyPlaceResult {
+  place_id?: string;
+  name?: string;
+  vicinity?: string;
+  geometry?: { location?: { lat?: number; lng?: number } };
+  rating?: number;
+  price_level?: number;
+  types?: string[];
+  photos?: GooglePlacePhoto[];
+  opening_hours?: GoogleOpeningHours;
+}
+
+interface GoogleAddressComponent {
+  long_name?: string;
+  short_name?: string;
+  types?: string[];
+}
+
+interface GoogleGeocodeResult {
+  formatted_address?: string;
+  address_components?: GoogleAddressComponent[];
+}
+
 export interface PlaceResult {
   id: string;
   name: string;
   address: string;
   location: Location;
+}
+
+export interface NearbyPlaceResult {
+  id: string;
+  name: string;
+  address: string;
+  location: Location;
+  rating?: number;
+  priceLevel?: number;
+  types: string[];
+  photoReference?: string;
+  isOpenNow?: boolean;
 }
 
 export interface DirectionsResult {
@@ -121,6 +166,24 @@ function normalizeGooglePlace(place: GooglePlaceResult, index: number): PlaceRes
     name: place.name?.trim() || place.formatted_address?.split(',')[0]?.trim() || 'Unknown place',
     address: place.formatted_address?.trim() || 'Nigeria',
     location,
+  };
+}
+
+function normalizeNearbyPlace(place: GoogleNearbyPlaceResult, index: number): NearbyPlaceResult | null {
+  const lat = place.geometry?.location?.lat;
+  const lng = place.geometry?.location?.lng;
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+
+  return {
+    id: place.place_id ?? `google-nearby-${index}`,
+    name: place.name?.trim() || 'Unknown place',
+    address: place.vicinity?.trim() || 'Nigeria',
+    location: normalizeLocation(lat, lng),
+    rating: typeof place.rating === 'number' ? place.rating : undefined,
+    priceLevel: typeof place.price_level === 'number' ? place.price_level : undefined,
+    types: Array.isArray(place.types) ? place.types : [],
+    photoReference: place.photos?.[0]?.photo_reference,
+    isOpenNow: place.opening_hours?.open_now,
   };
 }
 
@@ -266,6 +329,38 @@ export class GoogleMapsService {
     }
   }
 
+  static async getNearbyPlaces(type: string, location: Location, radius: number = 5000): Promise<NearbyPlaceResult[]> {
+    if (!GOOGLE_MAPS_API_KEY) return [];
+
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${location.latitude},${location.longitude}&radius=${radius}&type=${encodeURIComponent(type)}&key=${GOOGLE_MAPS_API_KEY}`;
+      const response = await fetchGoogleMaps(url);
+      const data = await response.json() as GoogleApiResponse<GoogleNearbyPlaceResult>;
+      if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+        console.warn('Google nearby search returned non-OK status:', data.status, data.error_message ?? 'No message');
+      }
+      const places: GoogleNearbyPlaceResult[] = Array.isArray(data?.results) ? data.results : [];
+      const normalized = places.map(normalizeNearbyPlace).filter((item): item is NearbyPlaceResult => item !== null);
+      return dedupeByAddress(normalized);
+    } catch (error) {
+      console.error('Google nearby places error:', error);
+      return [];
+    }
+  }
+
+  static getPlacePhotoUrl(photoReference: string, maxWidth: number = 400): string | null {
+    if (!GOOGLE_MAPS_API_KEY || !photoReference) return null;
+    return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${maxWidth}&photoreference=${encodeURIComponent(photoReference)}&key=${GOOGLE_MAPS_API_KEY}`;
+  }
+
+  static getDistanceLabel(origin: Location, destination: Location): string {
+    const meters = this.calculateDistance(origin, destination);
+    if (meters < 1000) {
+      return `${Math.round(meters)} m`;
+    }
+    return `${(meters / 1000).toFixed(1)} km`;
+  }
+
   static async getPlaceDetails(placeId: string): Promise<PlaceResult | null> {
     if (!GOOGLE_MAPS_API_KEY) return this.getMockPlaces(placeId)[0] ?? null;
 
@@ -318,6 +413,19 @@ export class GoogleMapsService {
       return data?.results?.[0]?.formatted_address ?? 'Current location';
     } catch {
       return 'Current location';
+    }
+  }
+
+  static async getCityName(location: Location): Promise<string> {
+    if (!GOOGLE_MAPS_API_KEY) return 'Current Location';
+    try {
+      const response = await fetchGoogleMaps(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.latitude},${location.longitude}&region=ng&key=${GOOGLE_MAPS_API_KEY}`);
+      const data = await response.json() as GoogleApiResponse<GoogleGeocodeResult>;
+      const components = data?.results?.[0]?.address_components ?? [];
+      const findType = (type: string) => components.find((c) => c.types?.includes(type))?.long_name;
+      return findType('locality') ?? findType('administrative_area_level_2') ?? findType('administrative_area_level_1') ?? 'Current Location';
+    } catch {
+      return 'Current Location';
     }
   }
 

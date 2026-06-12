@@ -154,7 +154,7 @@ const Map: React.FC<MapProps> = ({
           id: `static-driver-${driver.id}`,
           location: driver.location,
           title: driver.name,
-          description: `${driver.carModel} - ${driver.rating}⭐`,
+          description: `${driver.carModel} - ${driver.rating}`,
           type: 'driver',
         });
       });

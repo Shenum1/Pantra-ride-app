@@ -108,14 +108,14 @@ export default function DriverMessage() {
           >
             {item.text}
           </Text>
-          {item.timestamp && (
+          {item.createdAt && (
             <Text
               style={[
                 styles.timestamp,
                 isDriver ? styles.driverTimestamp : styles.passengerTimestamp,
               ]}
             >
-              {item.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           )}
         </View>

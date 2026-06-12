@@ -8,6 +8,7 @@ import {
   Image,
   FlatList,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -30,6 +31,8 @@ import { useWeather } from '@/hooks/useWeatherStore';
 import { useLocation } from '@/hooks/useLocationStore';
 import WeatherCard from '@/components/WeatherCard';
 import { router } from 'expo-router';
+import { Location } from '@/types';
+import { GoogleMapsService, NearbyPlaceResult } from '@/lib/google-maps-service';
 
 interface Place {
   id: string;
@@ -43,6 +46,7 @@ interface Place {
   openHours?: string;
   priceRange?: string;
   description: string;
+  location?: Location;
 }
 
 interface Category {
@@ -62,6 +66,61 @@ const categories: Category[] = [
   { id: 'gas', name: 'Gas Stations', icon: <Car size={24} color="#fff" />, color: '#FFB347' },
   { id: 'hospitals', name: 'Medical', icon: <Building size={24} color="#fff" />, color: '#FF7F7F' },
 ];
+
+const CATEGORY_TO_GOOGLE_TYPE: Record<string, string> = {
+  hotels: 'lodging',
+  restaurants: 'restaurant',
+  cafes: 'cafe',
+  parks: 'park',
+  shopping: 'shopping_mall',
+  attractions: 'tourist_attraction',
+  gas: 'gas_station',
+  hospitals: 'hospital',
+};
+
+const CATEGORY_FALLBACK_IMAGE: Record<string, string> = {
+  hotels: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400',
+  restaurants: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400',
+  cafes: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=400',
+  parks: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=400',
+  shopping: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=400',
+  attractions: 'https://images.unsplash.com/photo-1564769625905-50e93615e769?w=400',
+  gas: 'https://images.unsplash.com/photo-1545558014-8692077e9b5c?w=400',
+  hospitals: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?w=400',
+};
+
+const DEFAULT_FALLBACK_IMAGE = CATEGORY_FALLBACK_IMAGE.restaurants;
+
+const GENERIC_PLACE_TYPES = new Set(['point_of_interest', 'establishment', 'food', 'store']);
+
+function formatPlaceType(types: string[]): string {
+  const specific = types.find((t) => !GENERIC_PLACE_TYPES.has(t));
+  if (!specific) return 'Place';
+  return specific.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function formatPriceRange(priceLevel?: number): string | undefined {
+  if (typeof priceLevel !== 'number' || priceLevel <= 0) return undefined;
+  return '₦'.repeat(priceLevel);
+}
+
+function mapToPlace(result: NearbyPlaceResult, categoryId: string, userLocation: Location): Place {
+  const photoUrl = result.photoReference ? GoogleMapsService.getPlacePhotoUrl(result.photoReference) : null;
+
+  return {
+    id: result.id,
+    name: result.name,
+    category: categoryId,
+    rating: result.rating ?? 0,
+    distance: GoogleMapsService.getDistanceLabel(userLocation, result.location),
+    image: photoUrl ?? CATEGORY_FALLBACK_IMAGE[categoryId] ?? DEFAULT_FALLBACK_IMAGE,
+    address: result.address,
+    openHours: result.isOpenNow === undefined ? undefined : (result.isOpenNow ? 'Open now' : 'Closed now'),
+    priceRange: formatPriceRange(result.priceLevel),
+    description: formatPlaceType(result.types),
+    location: result.location,
+  };
+}
 
 const mockPlaces: Place[] = [
   {
@@ -313,8 +372,10 @@ export default function DiscoverScreen() {
   const { userLocation, setDropoffLocation, setDropoffAddress, clearRoute } = useLocation();
   const { fetchWeather } = useWeather();
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('restaurants');
   const [bookingPlace, setBookingPlace] = useState<string | null>(null);
+  const [places, setPlaces] = useState<Place[]>([]);
+  const [isLoadingPlaces, setIsLoadingPlaces] = useState<boolean>(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
@@ -324,32 +385,66 @@ export default function DiscoverScreen() {
     }
   }, [userLocation, fetchWeather]);
 
-  const filteredPlaces = mockPlaces.filter(place => {
+  React.useEffect(() => {
+    if (!userLocation) return;
+    let isCancelled = false;
+
+    const loadPlaces = async () => {
+      setIsLoadingPlaces(true);
+      try {
+        const googleType = CATEGORY_TO_GOOGLE_TYPE[selectedCategory] ?? 'restaurant';
+        const results = await GoogleMapsService.getNearbyPlaces(googleType, userLocation);
+        if (isCancelled) return;
+
+        if (results.length > 0) {
+          setPlaces(results.map((result) => mapToPlace(result, selectedCategory, userLocation)));
+        } else {
+          setPlaces(mockPlaces.filter((place) => place.category === selectedCategory));
+        }
+      } catch (error) {
+        console.error('Failed to load nearby places:', error);
+        if (!isCancelled) setPlaces(mockPlaces.filter((place) => place.category === selectedCategory));
+      } finally {
+        if (!isCancelled) setIsLoadingPlaces(false);
+      }
+    };
+
+    void loadPlaces();
+    return () => {
+      isCancelled = true;
+    };
+  }, [userLocation, selectedCategory]);
+
+  const filteredPlaces = places.filter(place => {
     const matchesSearch = place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          place.address.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = !selectedCategory || place.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    return matchesSearch;
   });
 
   const handleCategoryPress = (categoryId: string) => {
-    setSelectedCategory(selectedCategory === categoryId ? null : categoryId);
+    setSelectedCategory(categoryId);
   };
 
   const handlePlacePress = (place: Place) => {
     setBookingPlace(place.id);
 
-    const baseLatitude = userLocation?.latitude ?? 9.0765;
-    const baseLongitude = userLocation?.longitude ?? 7.3986;
-    const numericId = parseInt(place.id, 10) || 1;
-    const latitudeOffset = ((numericId % 5) - 2) * 0.012;
-    const longitudeOffset = ((numericId % 7) - 3) * 0.01;
+    let destinationCoords: Location;
+    if (place.location) {
+      destinationCoords = place.location;
+    } else {
+      const baseLatitude = userLocation?.latitude ?? 9.0765;
+      const baseLongitude = userLocation?.longitude ?? 7.3986;
+      const numericId = parseInt(place.id, 10) || 1;
+      const latitudeOffset = ((numericId % 5) - 2) * 0.012;
+      const longitudeOffset = ((numericId % 7) - 3) * 0.01;
 
-    const destinationCoords = {
-      latitude: baseLatitude + latitudeOffset,
-      longitude: baseLongitude + longitudeOffset,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    };
+      destinationCoords = {
+        latitude: baseLatitude + latitudeOffset,
+        longitude: baseLongitude + longitudeOffset,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+    }
 
     clearRoute();
     setDropoffLocation(destinationCoords);
@@ -544,11 +639,17 @@ export default function DiscoverScreen() {
             </Text>
           </View>
           
-          {filteredPlaces.map((item) => (
-            <View key={item.id} style={styles.placeItemContainer}>
-              {renderPlaceItem({ item })}
+          {isLoadingPlaces && places.length === 0 ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
-          ))}
+          ) : (
+            filteredPlaces.map((item) => (
+              <View key={item.id} style={styles.placeItemContainer}>
+                {renderPlaceItem({ item })}
+              </View>
+            ))
+          )}
         </View>
       </Animated.ScrollView>
     </SafeAreaView>
@@ -651,6 +752,11 @@ const styles = StyleSheet.create({
   },
   resultsCount: {
     fontSize: 14,
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   placesList: {
     paddingHorizontal: 20,

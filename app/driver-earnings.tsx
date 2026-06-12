@@ -86,7 +86,7 @@ export default function DriverEarnings() {
         <View style={styles.summaryCard}>
           <View style={styles.totalEarnings}>
             <Text style={styles.totalLabel}>Total Earnings</Text>
-            <Text style={styles.totalAmount}>${driverProfile.earnings.total.toFixed(2)}</Text>
+            <Text style={styles.totalAmount}>₦{driverProfile.earnings.total.toFixed(2)}</Text>
           </View>
 
           <View style={styles.earningsGrid}>
@@ -94,21 +94,21 @@ export default function DriverEarnings() {
               <View style={styles.earningsIcon}>
                 <DollarSign size={20} color={Colors.light.success} />
               </View>
-              <Text style={styles.earningsValue}>${driverProfile.earnings.today.toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{driverProfile.earnings.today.toFixed(2)}</Text>
               <Text style={styles.earningsLabel}>Today</Text>
             </View>
             <View style={styles.earningsItem}>
               <View style={styles.earningsIcon}>
                 <Calendar size={20} color={Colors.light.primary} />
               </View>
-              <Text style={styles.earningsValue}>${driverProfile.earnings.thisWeek.toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{driverProfile.earnings.thisWeek.toFixed(2)}</Text>
               <Text style={styles.earningsLabel}>This Week</Text>
             </View>
             <View style={styles.earningsItem}>
               <View style={styles.earningsIcon}>
                 <TrendingUp size={20} color={Colors.light.secondary} />
               </View>
-              <Text style={styles.earningsValue}>${driverProfile.earnings.thisMonth.toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{driverProfile.earnings.thisMonth.toFixed(2)}</Text>
               <Text style={styles.earningsLabel}>This Month</Text>
             </View>
           </View>
@@ -144,7 +144,7 @@ export default function DriverEarnings() {
             <View key={earning.id} style={styles.earningItem}>
               <View style={styles.earningInfo}>
                 <View style={styles.earningHeader}>
-                  <Text style={styles.earningAmount}>+${earning.netAmount.toFixed(2)}</Text>
+                  <Text style={styles.earningAmount}>+₦{earning.netAmount.toFixed(2)}</Text>
                   <View style={[styles.statusBadge, { backgroundColor: getStatusColor(earning.payoutStatus) }]}>
                     <Text style={styles.statusText}>{earning.payoutStatus}</Text>
                   </View>
@@ -152,10 +152,10 @@ export default function DriverEarnings() {
                 <Text style={styles.earningDate}>{formatDate(earning.createdAt)}</Text>
                 <View style={styles.earningDetails}>
                   <Text style={styles.earningDetail}>
-                    Ride fare: ${earning.amount.toFixed(2)}
+                    Ride fare: ₦{earning.amount.toFixed(2)}
                   </Text>
                   <Text style={styles.earningDetail}>
-                    Commission: -${earning.commission.toFixed(2)}
+                    Commission: -₦{earning.commission.toFixed(2)}
                   </Text>
                 </View>
               </View>

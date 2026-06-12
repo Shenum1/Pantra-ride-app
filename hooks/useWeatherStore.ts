@@ -1,11 +1,11 @@
 import createContextHook from "@nkzw/create-context-hook";
 import { useState, useCallback, useMemo } from "react";
 import { Location } from "@/types";
+import { GoogleMapsService } from "@/lib/google-maps-service";
 
 interface WeatherData {
   temperature: number;
   description: string;
-  icon: string;
   humidity: number;
   windSpeed: number;
   feelsLike: number;
@@ -25,29 +25,35 @@ interface WeatherStore {
 
 
 
-// Mock weather data for demo purposes
-const getMockWeatherData = (cityName: string): WeatherData => {
-  const weatherConditions = [
-    { temp: 28, desc: "Sunny", icon: "☀️", humidity: 45, wind: 12 },
-    { temp: 24, desc: "Partly Cloudy", icon: "⛅", humidity: 60, wind: 8 },
-    { temp: 22, desc: "Cloudy", icon: "☁️", humidity: 70, wind: 15 },
-    { temp: 19, desc: "Light Rain", icon: "🌦️", humidity: 85, wind: 18 },
-    { temp: 26, desc: "Clear", icon: "🌤️", humidity: 50, wind: 10 },
-  ];
-  
-  const randomWeather = weatherConditions[Math.floor(Math.random() * weatherConditions.length)];
-  
-  return {
-    temperature: randomWeather.temp,
-    description: randomWeather.desc,
-    icon: randomWeather.icon,
-    humidity: randomWeather.humidity,
-    windSpeed: randomWeather.wind,
-    feelsLike: randomWeather.temp + Math.floor(Math.random() * 4) - 2,
-    visibility: Math.floor(Math.random() * 5) + 8, // 8-12 km
-    uvIndex: Math.floor(Math.random() * 8) + 1, // 1-8
-    cityName,
-  };
+const WEATHER_CODE_DESCRIPTIONS: Record<number, string> = {
+  0: "Clear",
+  1: "Mainly Clear",
+  2: "Partly Cloudy",
+  3: "Cloudy",
+  45: "Foggy",
+  48: "Foggy",
+  51: "Light Drizzle",
+  53: "Drizzle",
+  55: "Heavy Drizzle",
+  56: "Freezing Drizzle",
+  57: "Freezing Drizzle",
+  61: "Light Rain",
+  63: "Rain",
+  65: "Heavy Rain",
+  66: "Freezing Rain",
+  67: "Freezing Rain",
+  71: "Light Snow",
+  73: "Snow",
+  75: "Heavy Snow",
+  77: "Snow Grains",
+  80: "Rain Showers",
+  81: "Rain Showers",
+  82: "Heavy Rain Showers",
+  85: "Snow Showers",
+  86: "Snow Showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm",
+  99: "Thunderstorm",
 };
 
 export const [WeatherProvider, useWeather] = createContextHook(() => {
@@ -57,19 +63,32 @@ export const [WeatherProvider, useWeather] = createContextHook(() => {
   const [error, setError] = useState<string | null>(null);
 
   const fetchWeatherFromAPI = useCallback(async (location: Location): Promise<WeatherData> => {
-    try {
-      // Mock data for demo
-      const cityNames = ["Abuja", "Lagos", "Kano", "Port Harcourt", "Ibadan"];
-      const randomCity = cityNames[Math.floor(Math.random() * cityNames.length)];
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      return getMockWeatherData(randomCity);
-    } catch (err) {
-      console.error('Weather fetch error:', err);
+    const { latitude, longitude } = location;
+
+    const [weatherResponse, cityName] = await Promise.all([
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code,visibility&timezone=auto`),
+      GoogleMapsService.getCityName(location),
+    ]);
+
+    if (!weatherResponse.ok) {
       throw new Error('Failed to fetch weather data');
     }
+
+    const data = await weatherResponse.json();
+    const current = data?.current;
+    if (!current) {
+      throw new Error('Failed to fetch weather data');
+    }
+
+    return {
+      temperature: Math.round(current.temperature_2m),
+      description: WEATHER_CODE_DESCRIPTIONS[current.weather_code] ?? "Clear",
+      humidity: Math.round(current.relative_humidity_2m),
+      windSpeed: Math.round(current.wind_speed_10m),
+      feelsLike: Math.round(current.apparent_temperature),
+      visibility: typeof current.visibility === 'number' ? Math.round(current.visibility / 1000) : 10,
+      cityName,
+    };
   }, []);
 
   const fetchWeather = useCallback(async (location: Location, isDestination: boolean = false): Promise<void> => {

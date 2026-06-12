@@ -110,7 +110,7 @@ export class NotificationService {
   static async notifyRideCompleted(userId: string, fare: number): Promise<void> {
     await this.sendLocalNotification(
       'Ride Completed',
-      `Your ride is complete. Total fare: $${fare.toFixed(2)}`,
+      `Your ride is complete. Total fare: ₦${fare.toFixed(2)}`,
       { type: 'ride_completed' }
     );
   }
@@ -122,7 +122,7 @@ export class NotificationService {
   ): Promise<void> {
     await this.sendLocalNotification(
       'New Ride Request',
-      `Pickup: ${pickupAddress} - Fare: $${fare.toFixed(2)}`,
+      `Pickup: ${pickupAddress} - Fare: ₦${fare.toFixed(0)}`,
       { type: 'new_ride_request' }
     );
   }

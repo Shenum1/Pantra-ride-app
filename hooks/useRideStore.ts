@@ -8,7 +8,6 @@ import { calculateFare, calculateAllTierFares } from '@/lib/fare-calculator';
 import { useLocation } from './useLocationStore';
 import { usePayment } from './usePaymentStore';
 import { usePromotions } from './usePromotionsStore';
-import { useRatings } from './useRatingsStore';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
 import { RideHistoryService } from '@/lib/ride-history-service';
 import { DatabaseService } from '@/lib/database-service';
@@ -73,7 +72,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const { pickupLocation, dropoffLocation, pickupAddress, dropoffAddress, routeInfo } = useLocation();
   const { getDefaultPaymentMethod } = usePayment();
   const { getActivePromotion, markPromoAsUsed } = usePromotions();
-  const { setPendingReview } = useRatings();
   const { user } = useAuth();
 
   const [selectedRideType, setSelectedRideType] = useState<string>('standard');
@@ -558,9 +556,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
     void savePastRide(cancelledRide);
   }, [currentRide, savePastRide]);
 
-  const completeRide = useCallback(() => {
+  const completeRide = useCallback((): RideRequest | undefined => {
     if (!currentRide) {
-      return;
+      return undefined;
     }
 
     const completedRide: RideRequest = {
@@ -571,10 +569,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
     setCurrentRide(null);
     void savePastRide(completedRide);
 
-    if (completedRide.driver) {
-      setPendingReview(completedRide.driver.id);
-    }
-  }, [currentRide, savePastRide, setPendingReview]);
+    return completedRide;
+  }, [currentRide, savePastRide]);
 
   const getSelectedRideType = useCallback((): RideType | undefined => {
     return rideTypes.find((type) => type.id === selectedRideType);

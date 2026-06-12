@@ -109,14 +109,14 @@ export default function MessagesScreen() {
           >
             {item.text}
           </Text>
-          {item.timestamp && (
+          {item.createdAt && (
             <Text
               style={[
                 styles.timestamp,
                 isUser ? styles.userTimestamp : styles.driverTimestamp,
               ]}
             >
-              {item.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           )}
         </View>

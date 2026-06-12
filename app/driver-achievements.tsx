@@ -15,6 +15,7 @@ import {
   Zap,
   Moon,
   ArrowLeft,
+  CheckCircle,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
@@ -42,7 +43,7 @@ export default function DriverAchievements() {
       earned: true,
       color: '#FFD700',
       earnedDate: 'Jan 15, 2022',
-      reward: '$5 Bonus',
+      reward: '₦5 Bonus',
     },
     {
       id: '2',
@@ -52,7 +53,7 @@ export default function DriverAchievements() {
       earned: true,
       color: '#FF9800',
       earnedDate: 'Mar 22, 2022',
-      reward: '$25 Bonus',
+      reward: '₦25 Bonus',
     },
     {
       id: '3',
@@ -62,7 +63,7 @@ export default function DriverAchievements() {
       earned: true,
       color: '#2196F3',
       earnedDate: 'Apr 8, 2022',
-      reward: '$15 Bonus',
+      reward: '₦15 Bonus',
     },
     {
       id: '4',
@@ -73,7 +74,7 @@ export default function DriverAchievements() {
       progress: 32,
       total: 50,
       color: '#4CAF50',
-      reward: '$50 Bonus',
+      reward: '₦50 Bonus',
     },
     {
       id: '5',
@@ -84,7 +85,7 @@ export default function DriverAchievements() {
       progress: 18,
       total: 25,
       color: '#9C27B0',
-      reward: '$30 Bonus',
+      reward: '₦30 Bonus',
     },
     {
       id: '6',
@@ -94,7 +95,7 @@ export default function DriverAchievements() {
       earned: true,
       color: '#FF5722',
       earnedDate: 'Nov 12, 2023',
-      reward: '$100 Bonus',
+      reward: '₦100 Bonus',
     },
   ];
 
@@ -131,7 +132,10 @@ export default function DriverAchievements() {
       
       {achievement.earned ? (
         <View style={styles.earnedContainer}>
-          <Text style={styles.earnedText}>✓ Earned</Text>
+          <View style={styles.earnedRow}>
+            <CheckCircle size={14} color={Colors.light.success} />
+            <Text style={styles.earnedText}>Earned</Text>
+          </View>
           {achievement.earnedDate && (
             <Text style={styles.earnedDate}>{achievement.earnedDate}</Text>
           )}
@@ -311,11 +315,16 @@ const styles = StyleSheet.create({
   earnedContainer: {
     alignItems: 'center',
   },
+  earnedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
   earnedText: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.light.success,
-    marginBottom: 4,
   },
   earnedDate: {
     fontSize: 12,
