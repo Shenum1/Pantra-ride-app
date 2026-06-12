@@ -1,20 +1,17 @@
 """One-off script that generates the Pantra Ride App status report as a PDF.
 
-Usage: python scripts/generate-status-report.py
-Output: Pantra_Status_Report_2026-06-12.pdf (project root)
+Plain black-and-white layout, written outside the project tree.
+
+Usage: python scripts/generate-status-report.py [output_path]
+Default output: ~/Downloads/Pantra_Status_Report_2026-06-12.pdf
 """
+import os
+import sys
 from fpdf import FPDF
 
 PAGE_W = 210
 MARGIN = 15
 CONTENT_W = PAGE_W - 2 * MARGIN
-
-GREEN = (39, 132, 73)
-ORANGE = (191, 121, 17)
-RED = (178, 58, 58)
-GRAY = (110, 110, 110)
-DARK = (30, 30, 30)
-BLUE = (37, 87, 158)
 
 
 class Report(FPDF):
@@ -22,42 +19,34 @@ class Report(FPDF):
         if self.page_no() == 1:
             return
         self.set_font("Helvetica", "I", 8)
-        self.set_text_color(*GRAY)
         self.cell(0, 8, "Pantra Ride App - Status Report - 2026-06-12", align="L")
         self.ln(10)
 
     def footer(self):
         self.set_y(-12)
         self.set_font("Helvetica", "I", 8)
-        self.set_text_color(*GRAY)
         self.cell(0, 10, f"Page {self.page_no()}", align="C")
 
     def section_title(self, text):
         self.ln(2)
         self.set_font("Helvetica", "B", 14)
-        self.set_text_color(*BLUE)
         self.cell(0, 9, text, new_x="LMARGIN", new_y="NEXT")
-        self.set_draw_color(*BLUE)
-        self.set_line_width(0.4)
+        self.set_draw_color(0, 0, 0)
+        self.set_line_width(0.3)
         y = self.get_y()
         self.line(MARGIN, y, PAGE_W - MARGIN, y)
         self.ln(3)
-        self.set_text_color(*DARK)
 
-    def sub_title(self, text, color=DARK):
+    def sub_title(self, text):
         self.set_font("Helvetica", "B", 11)
-        self.set_text_color(*color)
         self.cell(0, 7, text, new_x="LMARGIN", new_y="NEXT")
-        self.set_text_color(*DARK)
 
     def body(self, text, size=10, leading=5.2):
         self.set_font("Helvetica", "", size)
-        self.set_text_color(*DARK)
         self.multi_cell(CONTENT_W, leading, text)
 
     def bullet(self, text, indent=4, size=10, leading=5.2):
         self.set_font("Helvetica", "", size)
-        self.set_text_color(*DARK)
         x = self.get_x()
         self.set_x(x + indent)
         self.cell(4, leading, "-")
@@ -65,7 +54,6 @@ class Report(FPDF):
 
     def numbered(self, n, title, text, size=10, leading=5.2):
         self.set_font("Helvetica", "B", size)
-        self.set_text_color(*DARK)
         self.write(leading, f"{n}. {title} - ")
         self.set_font("Helvetica", "", size)
         self.write(leading, text)
@@ -79,14 +67,12 @@ pdf.add_page()
 
 # ---- Title block ----
 pdf.set_font("Helvetica", "B", 22)
-pdf.set_text_color(*DARK)
 pdf.cell(0, 12, "Pantra Ride App", new_x="LMARGIN", new_y="NEXT")
 pdf.set_font("Helvetica", "", 14)
-pdf.set_text_color(*GRAY)
 pdf.cell(0, 8, "Project Status Report - 2026-06-12", new_x="LMARGIN", new_y="NEXT")
 pdf.ln(4)
-pdf.set_draw_color(*BLUE)
-pdf.set_line_width(0.8)
+pdf.set_draw_color(0, 0, 0)
+pdf.set_line_width(0.6)
 pdf.line(MARGIN, pdf.get_y(), PAGE_W - MARGIN, pdf.get_y())
 pdf.ln(6)
 
@@ -99,8 +85,8 @@ pdf.body(
     "operations management (user oversight, driver document review, marketing)."
 )
 pdf.ln(2)
-pdf.body(f"Platform: Android / iOS / Web (Expo React Native)", size=10)
-pdf.body(f"GitHub: https://github.com/Shenum1/Pantra-ride-app (branch: main)", size=10)
+pdf.body("Platform: Android / iOS / Web (Expo React Native)", size=10)
+pdf.body("GitHub: https://github.com/Shenum1/Pantra-ride-app (branch: main)", size=10)
 pdf.ln(2)
 
 pdf.sub_title("Tech Stack")
@@ -120,9 +106,8 @@ tech_stack = [
 col1_w = 38
 col2_w = CONTENT_W - col1_w
 pdf.set_font("Helvetica", "B", 9.5)
-pdf.set_fill_color(230, 236, 245)
-pdf.cell(col1_w, 7, "Layer", border=1, fill=True)
-pdf.cell(col2_w, 7, "Technology", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
+pdf.cell(col1_w, 7, "Layer", border=1)
+pdf.cell(col2_w, 7, "Technology", border=1, new_x="LMARGIN", new_y="NEXT")
 pdf.set_font("Helvetica", "", 9.5)
 for layer, tech in tech_stack:
     pdf.cell(col1_w, 6.5, layer, border=1)
@@ -132,7 +117,7 @@ for layer, tech in tech_stack:
 pdf.add_page()
 pdf.section_title("Feature Status Summary")
 
-pdf.sub_title("Fully Working (20)", color=GREEN)
+pdf.sub_title("Fully Working (20)")
 working = [
     "Rider/driver signup, login, logout",
     "Admin panel (real Supabase auth + role='admin' check)",
@@ -156,7 +141,7 @@ for item in working:
     pdf.bullet(item)
 pdf.ln(2)
 
-pdf.sub_title("Partial (5)", color=ORANGE)
+pdf.sub_title("Partial (5)")
 partial = [
     "Payments - Paystack & Flutterwave (real backend integration, test keys only)",
     "Wallet (driver) - earnings from Firebase, no real withdrawal",
@@ -167,7 +152,7 @@ for item in partial:
     pdf.bullet(item)
 pdf.ln(2)
 
-pdf.sub_title("Mock / UI-only (3)", color=RED)
+pdf.sub_title("Mock / UI-only (3)")
 mock_only = [
     "Promotions/promo codes (in-memory only)",
     "Driver earnings (Firebase, not Supabase)",
@@ -214,15 +199,12 @@ checks = [
 col1_w2 = 90
 col2_w2 = CONTENT_W - col1_w2
 pdf.set_font("Helvetica", "B", 9.5)
-pdf.set_fill_color(230, 236, 245)
-pdf.cell(col1_w2, 7, "Check", border=1, fill=True)
-pdf.cell(col2_w2, 7, "Result", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
+pdf.cell(col1_w2, 7, "Check", border=1)
+pdf.cell(col2_w2, 7, "Result", border=1, new_x="LMARGIN", new_y="NEXT")
 pdf.set_font("Helvetica", "", 9.5)
 for check, result in checks:
     pdf.cell(col1_w2, 6.5, check, border=1)
-    pdf.set_text_color(*GREEN)
     pdf.cell(col2_w2, 6.5, result, border=1, new_x="LMARGIN", new_y="NEXT")
-    pdf.set_text_color(*DARK)
 pdf.ln(2)
 pdf.body(
     "The admin panel login now works, and all Supabase-dependent features "
@@ -240,9 +222,7 @@ pdf.add_page()
 pdf.section_title("Remaining Pending Work")
 
 pdf.set_font("Helvetica", "B", 10.5)
-pdf.set_text_color(*GREEN)
 pdf.multi_cell(CONTENT_W, 6, "Item 1 is the next milestone now that all Supabase setup blockers are resolved.")
-pdf.set_text_color(*DARK)
 pdf.ln(2)
 
 pending = [
@@ -271,5 +251,10 @@ pending = [
 for i, (title, text) in enumerate(pending, start=1):
     pdf.numbered(i, title, text)
 
-pdf.output("Pantra_Status_Report_2026-06-12.pdf")
-print("Wrote Pantra_Status_Report_2026-06-12.pdf")
+if len(sys.argv) > 1:
+    output_path = sys.argv[1]
+else:
+    output_path = os.path.join(os.path.expanduser("~"), "Downloads", "Pantra_Status_Report_2026-06-12.pdf")
+
+pdf.output(output_path)
+print(f"Wrote {output_path}")
