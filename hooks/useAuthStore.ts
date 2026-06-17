@@ -231,9 +231,14 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const loginWithPhone = async (phoneNumber: string) => {
     setIsLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 1000));
-      setPendingPhoneNumber(phoneNumber);
-      Toast.show({ type: 'success', text1: 'Verification Code Sent', text2: 'Please check your phone', position: 'top' });
+      // Normalise to E.164: strip leading 0, prepend +234 if no country code
+      const formatted = phoneNumber.startsWith('+')
+        ? phoneNumber
+        : `+234${phoneNumber.replace(/^0+/, '')}`;
+      const { error } = await supabase.auth.signInWithOtp({ phone: formatted });
+      if (error) throw new Error(error.message);
+      setPendingPhoneNumber(formatted);
+      Toast.show({ type: 'success', text1: 'Verification Code Sent', text2: 'Please check your SMS', position: 'top' });
     } catch (error: any) {
       Toast.show({ type: 'error', text1: 'Phone Login Failed', text2: error.message, position: 'top' });
       throw error;
@@ -246,11 +251,30 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     if (!pendingPhoneNumber) throw new Error('No pending phone verification');
     setIsLoading(true);
     try {
-      if (code !== '123456') throw new Error('Invalid verification code.');
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: pendingPhoneNumber,
+        token: code,
+        type: 'sms',
+      });
+      if (error) throw new Error(error.message);
+      if (!data.user) throw new Error('Verification failed — no user returned');
+
       await AsyncStorage.removeItem('driver_auth_user');
+
+      // Ensure a public.users row exists for this phone account
+      let profile = await AuthService.getUserProfile(data.user.id);
+      if (!profile) {
+        await AuthService.createMissingUserProfile(data.user.id, data.user.phone ?? '', 'Phone User', 'rider');
+        profile = await AuthService.getUserProfile(data.user.id);
+      }
+
       const userData: User = {
-        id: Date.now().toString(), name: 'Phone User', email: '',
-        phone: pendingPhoneNumber, rating: 5.0, authProvider: 'phone',
+        id: data.user.id,
+        name: profile?.displayName || 'Phone User',
+        email: profile?.email || '',
+        phone: pendingPhoneNumber,
+        rating: 5.0,
+        authProvider: 'phone',
       };
       await saveUser(userData);
       setPendingPhoneNumber(null);

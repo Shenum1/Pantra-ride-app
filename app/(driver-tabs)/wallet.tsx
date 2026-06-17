@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import {
   DollarSign,
@@ -23,10 +24,16 @@ import {
   EyeOff,
   Download,
   Send,
+  Plus,
+  CreditCard,
 } from 'lucide-react-native';
+import { router } from 'expo-router';
+import Toast from 'react-native-toast-message';
 import { useTheme } from '@/hooks/useThemeStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
+import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { LinearGradient } from 'expo-linear-gradient';
+import { DriverWalletService, DriverBankAccount, DriverPayout } from '@/lib/driver-wallet-service';
 
 
 
@@ -49,10 +56,40 @@ interface EarningsData {
 export default function DriverWallet() {
   const { colors } = useTheme();
   const { driverProfile, earnings: earningsHistory } = useDriverStore();
+  const { driver } = useDriverAuth();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [bankAccounts, setBankAccounts] = useState<DriverBankAccount[]>([]);
+  const [payouts, setPayouts] = useState<DriverPayout[]>([]);
+  const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadWalletData = useCallback(async () => {
+    if (!driver?.id) return;
+    try {
+      const [accounts, payoutHistory] = await Promise.all([
+        DriverWalletService.getBankAccounts(driver.id),
+        DriverWalletService.getPayouts(driver.id),
+      ]);
+      setBankAccounts(accounts);
+      setPayouts(payoutHistory);
+      const defaultAccount = accounts.find(a => a.isDefault) ?? accounts[0];
+      if (defaultAccount) setSelectedBankId(defaultAccount.id);
+    } catch (error: any) {
+      console.error('Failed to load wallet data:', error.message);
+    }
+  }, [driver?.id]);
+
+  useEffect(() => { void loadWalletData(); }, [loadWalletData]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadWalletData();
+    setRefreshing(false);
+  };
 
   const earnings: EarningsData = {
     today: driverProfile?.earnings?.today ?? 0,
@@ -124,37 +161,62 @@ export default function DriverWallet() {
     </View>
   );
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount);
-    
+
     if (!withdrawAmount || isNaN(amount)) {
       Alert.alert('Invalid Amount', 'Please enter a valid amount');
       return;
     }
-    
-    if (amount < 10) {
-      Alert.alert('Minimum Withdrawal', 'Minimum withdrawal amount is ₦10');
+    if (amount < 100) {
+      Alert.alert('Minimum Withdrawal', 'Minimum withdrawal amount is ₦100');
       return;
     }
-    
     if (amount > currentEarnings) {
       Alert.alert('Insufficient Balance', 'You do not have enough balance for this withdrawal');
       return;
     }
-    
-    setWithdrawModalVisible(false);
-    Alert.alert(
-      'Withdrawal Requested',
-      `${amount.toFixed(2)} will be transferred to your bank account within 1-3 business days.`,
-      [{ text: 'OK', onPress: () => setWithdrawAmount('') }]
-    );
+    if (!selectedBankId) {
+      Alert.alert('No Bank Account', 'Please add a bank account first');
+      return;
+    }
+    if (!driver?.id) return;
+
+    setIsSubmitting(true);
+    try {
+      await DriverWalletService.requestWithdrawal(driver.id, amount, selectedBankId);
+      setWithdrawModalVisible(false);
+      setWithdrawAmount('');
+      await loadWalletData();
+      Toast.show({
+        type: 'success',
+        text1: 'Withdrawal Requested',
+        text2: `₦${amount.toFixed(2)} request submitted — processed within 1-3 business days`,
+        position: 'top',
+        visibilityTime: 4000,
+      });
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to submit withdrawal request');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const statusColor = (status: DriverPayout['status']) => {
+    switch (status) {
+      case 'completed': return '#4CAF50';
+      case 'processing': return '#FF9800';
+      case 'failed': return '#F44336';
+      default: return '#9E9E9E';
+    }
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView 
+      <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* Balance Card with Gradient */}
         <View style={styles.balanceSection}>
@@ -335,15 +397,87 @@ export default function DriverWallet() {
         <View style={styles.transactionsSection}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
-            <TouchableOpacity>
-              <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
+          </View>
+          {transactions.length === 0 ? (
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No transactions yet</Text>
+          ) : (
+            transactions.map((transaction) => (
+              <TransactionItem key={transaction.id} transaction={transaction} />
+            ))
+          )}
+        </View>
+
+        {/* Bank Accounts */}
+        <View style={styles.transactionsSection}>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Bank Accounts</Text>
+            <TouchableOpacity onPress={() => router.push('/driver-add-bank' as any)}>
+              <View style={styles.addBankBtn}>
+                <Plus size={14} color={colors.primary} />
+                <Text style={[styles.viewAllText, { color: colors.primary }]}>Add</Text>
+              </View>
             </TouchableOpacity>
           </View>
-          
-          {transactions.map((transaction) => (
-            <TransactionItem key={transaction.id} transaction={transaction} />
-          ))}
+          {bankAccounts.length === 0 ? (
+            <TouchableOpacity
+              style={[styles.emptyBankCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push('/driver-add-bank' as any)}
+            >
+              <CreditCard size={24} color={colors.textSecondary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary, marginTop: 8 }]}>
+                No bank accounts added yet
+              </Text>
+              <Text style={[styles.emptySubText, { color: colors.primary }]}>Tap to add one</Text>
+            </TouchableOpacity>
+          ) : (
+            bankAccounts.map(account => (
+              <View key={account.id} style={[styles.bankCard, { backgroundColor: colors.card }]}>
+                <CreditCard size={20} color={colors.primary} />
+                <View style={styles.bankCardDetails}>
+                  <Text style={[styles.bankCardName, { color: colors.text }]}>{account.bankName}</Text>
+                  <Text style={[styles.bankCardNumber, { color: colors.textSecondary }]}>
+                    {account.accountName} • ••••{account.accountNumber.slice(-4)}
+                  </Text>
+                </View>
+                {account.isDefault && (
+                  <View style={[styles.defaultBadge, { backgroundColor: colors.primary + '20' }]}>
+                    <Text style={[styles.defaultBadgeText, { color: colors.primary }]}>Default</Text>
+                  </View>
+                )}
+              </View>
+            ))
+          )}
         </View>
+
+        {/* Payout History */}
+        {payouts.length > 0 && (
+          <View style={styles.transactionsSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Payout History</Text>
+            {payouts.map(payout => (
+              <View key={payout.id} style={[styles.transactionItem, { backgroundColor: colors.card }]}>
+                <View style={[styles.transactionIcon, { backgroundColor: colors.lightGray }]}>
+                  <ArrowDownLeft size={20} color={statusColor(payout.status)} />
+                </View>
+                <View style={styles.transactionDetails}>
+                  <Text style={[styles.transactionDescription, { color: colors.text }]}>
+                    Withdrawal — {payout.bankAccount?.bankName ?? 'Bank'}
+                  </Text>
+                  <Text style={[styles.transactionDateTime, { color: colors.textSecondary }]}>
+                    {new Date(payout.requestedAt).toLocaleDateString()}
+                  </Text>
+                </View>
+                <View style={styles.payoutRight}>
+                  <Text style={[styles.transactionAmount, { color: colors.text }]}>
+                    ₦{payout.amount.toFixed(2)}
+                  </Text>
+                  <Text style={[styles.payoutStatus, { color: statusColor(payout.status) }]}>
+                    {payout.status.charAt(0).toUpperCase() + payout.status.slice(1)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
       </ScrollView>
 
       {/* Withdraw Modal */}
@@ -405,30 +539,49 @@ export default function DriverWallet() {
               </TouchableOpacity>
             </View>
 
-            <View style={[styles.bankInfo, { backgroundColor: colors.lightGray }]}>
-              <Text style={[styles.bankInfoText, { color: colors.textSecondary }]}>
-                Funds will be sent to:
-              </Text>
-              <Text style={[styles.bankInfoAccount, { color: colors.text }]}>
-                Bank of America •••• 1234
-              </Text>
-            </View>
+            {bankAccounts.length === 0 ? (
+              <TouchableOpacity
+                style={[styles.bankInfo, { backgroundColor: colors.lightGray }]}
+                onPress={() => { setWithdrawModalVisible(false); router.push('/driver-add-bank' as any); }}
+              >
+                <Text style={[styles.bankInfoText, { color: colors.textSecondary }]}>No bank account added.</Text>
+                <Text style={[styles.bankInfoAccount, { color: colors.primary }]}>Tap to add one →</Text>
+              </TouchableOpacity>
+            ) : (
+              <View>
+                <Text style={[styles.bankInfoText, { color: colors.textSecondary, marginBottom: 8 }]}>Send to:</Text>
+                {bankAccounts.map(account => (
+                  <TouchableOpacity
+                    key={account.id}
+                    style={[
+                      styles.bankInfo,
+                      { backgroundColor: selectedBankId === account.id ? colors.primary + '20' : colors.lightGray },
+                      selectedBankId === account.id && { borderWidth: 1, borderColor: colors.primary },
+                    ]}
+                    onPress={() => setSelectedBankId(account.id)}
+                  >
+                    <Text style={[styles.bankInfoAccount, { color: colors.text }]}>
+                      {account.bankName} • ••••{account.accountNumber.slice(-4)}
+                    </Text>
+                    <Text style={[styles.bankInfoText, { color: colors.textSecondary }]}>{account.accountName}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton, { borderColor: colors.border }]}
-                onPress={() => {
-                  setWithdrawModalVisible(false);
-                  setWithdrawAmount('');
-                }}
+                onPress={() => { setWithdrawModalVisible(false); setWithdrawAmount(''); }}
               >
                 <Text style={[styles.cancelButtonText, { color: colors.text }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.confirmButton, { backgroundColor: colors.primary }]}
+                style={[styles.modalButton, styles.confirmButton, { backgroundColor: isSubmitting ? colors.primary + '80' : colors.primary }]}
                 onPress={handleWithdraw}
+                disabled={isSubmitting}
               >
-                <Text style={styles.confirmButtonText}>Withdraw</Text>
+                <Text style={styles.confirmButtonText}>{isSubmitting ? 'Submitting…' : 'Withdraw'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -757,4 +910,48 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  emptyText: {
+    textAlign: 'center',
+    fontSize: 14,
+    marginVertical: 8,
+  },
+  emptySubText: {
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  emptyBankCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  bankCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    gap: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+  },
+  bankCardDetails: { flex: 1 },
+  bankCardName: { fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  bankCardNumber: { fontSize: 12 },
+  defaultBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  defaultBadgeText: { fontSize: 11, fontWeight: '700' },
+  addBankBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  payoutRight: { alignItems: 'flex-end', gap: 4 },
+  payoutStatus: { fontSize: 11, fontWeight: '600' },
 });

@@ -31,19 +31,16 @@ export default function PhoneLoginScreen() {
       return;
     }
 
-    if (phoneNumber.length < 10) {
+    if (phoneNumber.replace(/\D/g, '').length < 7) {
       Alert.alert('Error', 'Please enter a valid phone number');
       return;
     }
 
     try {
-      console.log('Phone Login: Sending verification code...');
       await loginWithPhone(phoneNumber);
       setCodeSent(true);
-      Alert.alert('Success', 'Verification code sent! Use 123456 for testing.');
     } catch (error) {
       console.error('Phone Login: Send code failed:', error);
-      Alert.alert('Error', 'Failed to send verification code');
     }
   };
 
@@ -59,13 +56,10 @@ export default function PhoneLoginScreen() {
     }
 
     try {
-      console.log('Phone Login: Verifying code...');
       await verifyPhoneCode(verificationCode);
-      console.log('Phone Login: Verification successful, navigating to home');
-      router.replace('/');
+      router.replace('/(tabs)/home');
     } catch (error) {
       console.error('Phone Login: Verification failed:', error);
-      Alert.alert('Error', 'Invalid verification code. Try 123456 for testing.');
     }
   };
 
@@ -103,15 +97,20 @@ export default function PhoneLoginScreen() {
                 <>
                   <View style={styles.inputContainer}>
                     <Text style={styles.label}>Phone Number</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={phoneNumber}
-                      onChangeText={setPhoneNumber}
-                      placeholder="+1 234 567 8900"
-                      keyboardType="phone-pad"
-                      autoComplete="tel"
-                      testID="phone-input"
-                    />
+                    <View style={styles.phoneRow}>
+                      <View style={styles.countryCode}>
+                        <Text style={styles.countryCodeText}>🇳🇬 +234</Text>
+                      </View>
+                      <TextInput
+                        style={[styles.input, styles.phoneInput]}
+                        value={phoneNumber}
+                        onChangeText={setPhoneNumber}
+                        placeholder="802 345 6789"
+                        keyboardType="phone-pad"
+                        autoComplete="tel"
+                        testID="phone-input"
+                      />
+                    </View>
                   </View>
 
                   <Button
@@ -130,7 +129,7 @@ export default function PhoneLoginScreen() {
                       style={styles.input}
                       value={verificationCode}
                       onChangeText={setVerificationCode}
-                      placeholder="123456"
+                      placeholder="Enter 6-digit code"
                       keyboardType="number-pad"
                       maxLength={6}
                       testID="code-input"
@@ -258,5 +257,26 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginTop: 8,
+  },
+  phoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  countryCode: {
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+  },
+  countryCodeText: {
+    fontSize: 16,
+    color: Colors.light.black,
+    fontWeight: '600',
+  },
+  phoneInput: {
+    flex: 1,
   },
 });

@@ -63,14 +63,56 @@
 | Saved places | ✅ Working | `hooks/useSavedLocationsStore.ts` persists to Supabase `saved_locations` table (see `supabase-schema-saved-locations.sql`, migration run) for real accounts via `lib/saved-locations-service.ts`, including the home/work upsert behavior; `test-rider` keeps its AsyncStorage + mock fallback |
 | Weather widget | ✅ Working | `useWeatherStore.ts` calls the real Open-Meteo forecast API with the user's actual coordinates, plus `GoogleMapsService.getCityName()` for the real city name |
 | Dark / light theme | ✅ Working | `hooks/useThemeStore.ts`, system / manual toggle |
-| Phone login | ❌ Mock only | Hardcoded OTP `123456` in `useAuthStore.verifyPhoneCode`; no real Supabase/SMS verification |
-| Schedule a ride | ❌ UI only | `app/schedule-ride.tsx` only shows an `Alert` and navigates back; nothing persisted |
+| Phone login | 🔄 Partial | `signInWithOtp`/`verifyOtp` wired in `useAuthStore`; +234 prefix in `phone-login.tsx`. **Needs Twilio configured in Supabase Dashboard before SMS goes live** |
+| Schedule a ride | 🔄 Partial | Real `DateTimePicker` + `scheduleRide()` store call + local reminder notification; `scheduled_for` column migration ready. **Run `supabase-schema-scheduled-rides.sql`** |
+| Driver withdrawal | 🔄 Partial | Manual payout: `driver_bank_accounts` + `driver_payouts` Supabase tables, bank-account add screen, payout history list. **Run `supabase-schema-driver-payouts.sql`** |
 | Global route protection | ✅ Working | `(tabs)` already had `AuthGuard`; `(driver-tabs)/_layout.tsx` now wraps in `<AuthGuard requireDriver>`, and `(admin-tabs)/_layout.tsx` now checks `useAdminAuth()` and shows `AdminLogin` when not authenticated. `AdminAuthProvider` added to root `_layout.tsx` so `useAdminAuth()` is available app-wide |
 | Production env vars | 🔄 Partial | Supabase + Google Maps/OAuth real values present; Firebase no longer needed (replaced by Supabase stub). Paystack is test-key only, Mapbox token and Flutterwave keys are unset |
 
 ---
 
 ## Activity Log
+
+### 2026-06-17 — Phone login, Schedule a ride, Driver withdrawal implemented
+
+**What changed:**
+- **Phone login** (`hooks/useAuthStore.ts`, `app/phone-login.tsx`): replaced mock OTP
+  (`123456`) with real Supabase `signInWithOtp` / `verifyOtp`. Numbers auto-formatted to
+  E.164 (`+234XXXXXXXXXX`). `+234` prefix shown inline in the login UI. After verify,
+  a `public.users` row is upserted so the profile loads correctly.
+  _Needs Twilio configured in Supabase Dashboard → Auth → Providers → Phone before SMS
+  will actually send._
+- **Schedule a ride** (`app/schedule-ride.tsx`): full rewrite using
+  `@react-native-community/datetimepicker` (newly installed). Connects to
+  `useRideStore.scheduleRide(date)`. Schedules a local notification 30 min before the
+  ride via `expo-notifications`. Migration `database/schemas/supabase-schema-scheduled-rides.sql`
+  adds `scheduled_for TIMESTAMPTZ` column to `rides`.
+- **Driver withdrawal** (`app/(driver-tabs)/wallet.tsx`, new `app/driver-add-bank.tsx`,
+  new `lib/driver-wallet-service.ts`): replaced Alert stub with real Supabase-backed manual
+  payout flow. Driver saves bank account(s) to `driver_bank_accounts`, submits a withdrawal
+  request to `driver_payouts` (status = `pending`). Admin reviews and pays out manually.
+  Migration `database/schemas/supabase-schema-driver-payouts.sql` creates both tables with RLS.
+
+**Action required (user):**
+1. Supabase Dashboard → Auth → Providers → Phone → Enable + add Twilio credentials
+2. Supabase SQL Editor → run `supabase-schema-scheduled-rides.sql`
+3. Supabase SQL Editor → run `supabase-schema-driver-payouts.sql`
+
+---
+
+### 2026-06-16 — Project folder restructured
+
+**What changed:** Reorganised project root so related files sit together:
+- `docs/` — all markdown docs (DEVLOG, API contracts, architecture notes)
+- `database/schemas/` — all SQL migration files
+- `admin/` — admin web panel source (`web/`) and server (`server.js`)
+- `config/firebase/` — Firebase rule files (storage, firestore)
+- `config/eas/` — EAS build profile
+- Root config files (`app.json`, `tsconfig.json`, `package.json`, etc.) left in place
+- Updated two broken import paths: `app/admin.tsx` → `../admin/app`; `admin/server.js`
+  static-path strings `admin-web` → `admin/web`
+
+---
 
 ### 2026-06-12 — Supabase setup fully complete: saved_locations migration run + admin role promoted
 
