@@ -55,7 +55,7 @@ interface EarningsData {
 
 export default function DriverWallet() {
   const { colors } = useTheme();
-  const { driverProfile, earnings: earningsHistory } = useDriverStore();
+  const { driverProfile, earnings: earningsHistory, stats } = useDriverStore();
   const { driver } = useDriverAuth();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
@@ -331,23 +331,25 @@ export default function DriverWallet() {
             <View style={[styles.statIconContainer, { backgroundColor: '#4CAF50' + '20' }]}>
               <Clock size={22} color="#4CAF50" />
             </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>8.5h</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>—</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Online Time</Text>
           </View>
-          
+
           <View style={[styles.statCard, { backgroundColor: colors.card }]}>
             <View style={[styles.statIconContainer, { backgroundColor: '#FF9800' + '20' }]}>
               <Zap size={22} color="#FF9800" />
             </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>23</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.totalRides}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Trips</Text>
           </View>
-          
+
           <View style={[styles.statCard, { backgroundColor: colors.card }]}>
             <View style={[styles.statIconContainer, { backgroundColor: '#2196F3' + '20' }]}>
               <TrendingUp size={22} color="#2196F3" />
             </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>₦15.02</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>
+              ₦{stats.totalRides > 0 ? Math.round(stats.totalEarnings / stats.totalRides).toLocaleString() : '0'}
+            </Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Avg/Trip</Text>
           </View>
         </View>
@@ -364,31 +366,7 @@ export default function DriverWallet() {
                 </View>
                 <Text style={[styles.breakdownLabel, { color: colors.text }]}>Trip Earnings</Text>
               </View>
-              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{(currentEarnings * 0.75).toFixed(2)}</Text>
-            </View>
-            
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            
-            <View style={styles.breakdownItem}>
-              <View style={styles.breakdownLeft}>
-                <View style={[styles.breakdownIcon, { backgroundColor: '#FFD700' + '20' }]}>
-                  <Star size={18} color="#FFD700" />
-                </View>
-                <Text style={[styles.breakdownLabel, { color: colors.text }]}>Tips</Text>
-              </View>
-              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{earnings.tips.toFixed(2)}</Text>
-            </View>
-            
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            
-            <View style={styles.breakdownItem}>
-              <View style={styles.breakdownLeft}>
-                <View style={[styles.breakdownIcon, { backgroundColor: '#FF9800' + '20' }]}>
-                  <Gift size={18} color="#FF9800" />
-                </View>
-                <Text style={[styles.breakdownLabel, { color: colors.text }]}>Bonuses</Text>
-              </View>
-              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{(currentEarnings * 0.15).toFixed(2)}</Text>
+              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{currentEarnings.toFixed(2)}</Text>
             </View>
           </View>
         </View>

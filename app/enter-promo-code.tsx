@@ -30,7 +30,7 @@ export default function EnterPromoCodeScreen() {
 
     setIsApplying(true);
     try {
-      const result = applyPromoCode(promoCode.trim().toUpperCase());
+      const result = await applyPromoCode(promoCode.trim().toUpperCase());
       if (result.success) {
         Alert.alert(
           'Success!',
@@ -47,7 +47,7 @@ export default function EnterPromoCodeScreen() {
     }
   };
 
-  const availablePromos = promotions.filter(p => !p.isUsed && new Date(p.validUntil) > new Date());
+  const availablePromos = promotions.filter(p => new Date(p.validUntil) > new Date());
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['bottom']}>

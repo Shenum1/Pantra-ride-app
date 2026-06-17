@@ -50,7 +50,7 @@
 | Payments — Paystack | 🔄 Partial | `lib/paystack-service.ts` now calls secure backend tRPC routes (`payments.paystack.*`) using a server-only `PAYSTACK_SECRET_KEY`; dead `components/PaystackPayment.tsx` mock removed. Test keys only — needs live keys + on-device verification of the full flow including wallet credit |
 | Payments — Flutterwave | 🔄 Partial | `lib/flutterwave-service.ts` now calls secure backend tRPC routes (`payments.flutterwave.*`) using a server-only `FLUTTERWAVE_SECRET_KEY`; placeholder env vars added. Needs real keys + on-device verification |
 | Wallet (rider) | ✅ Working | `hooks/useWalletStore.ts` persists to Supabase (`wallets`/`wallet_transactions`/`wallet_bank_accounts`, see `supabase-schema-wallet.sql`) for real users via `lib/wallet-service.ts`; `test-rider` test account keeps its AsyncStorage mock. Migration confirmed run |
-| Wallet (driver) | 🔄 Partial | Earnings read from Firebase via `FirebaseDriverService`; withdraw button only shows `Alert.alert()`, no real payout |
+| Wallet (driver) | ✅ Working | Earnings read from Supabase `rides` table; stats grid shows real `totalRides` + avg/trip; bank account add screen; payout requests tracked in `driver_payouts` (manual processing) |
 | Push notifications | ✅ Working (local) | Both drivers and riders get local notifications for ride-lifecycle events: drivers via `NotificationService.notifyNewRideRequest()` (`useDriverStore`), riders via `notifyDriverAssigned`/`notifyDriverArrived`/`notifyRideStarted`/`notifyRideCompleted` wired into `app/ride-progress.tsx`'s live tracking. All notifications remain device-local, not true remote push (would need Expo push tokens + EAS) |
 | In-app messaging | ✅ Working | `lib/messaging-service.ts` — real Supabase tables + realtime subscriptions. Now bidirectional: drivers message riders from `driver-active-trip.tsx` (existing), and riders can now message drivers from `ride-progress.tsx` (new "Message" button); both `messages.tsx`/`driver-message.tsx` chat screens render timestamps correctly |
 | Maps — Google Maps | ✅ Working | `lib/google-maps-service.ts`, geocoding + routes |
@@ -58,7 +58,8 @@
 | Maps — Mapbox | 🔄 Partial | `lib/mapbox-service.ts` real, but `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is unset |
 | Ride matching | ✅ Working (pull-based) | A new `pending` ride is picked up by nearby online drivers via `FirebaseDriverService.subscribeToRideRequests` (with a local notification); driver accepts via `acceptRide`. `RideMatchingService.matchRideWithDriver()` (auto-assign) is still unused and would conflict with this pull-based flow if called |
 | Driver verification | ✅ Working | `app/driver-documents.tsx` (driver upload screen, linked from driver profile) and `app/(admin-tabs)/verification.tsx` (admin review screen with new "Verify" tab) now call the real `DriverVerificationService`/new `admin.driverDocuments`/`admin.reviewDocument` tRPC routes. `supabase-schema-driver-documents.sql` migration and private "documents" storage bucket confirmed in place |
-| Promotions / promo codes | ❌ Mock only | `mocks/promotions.ts` hardcoded codes; `applyPromoCode()` validates in-memory only; discount never applied to fare calculation |
+| Promotions / promo codes | 🔄 Partial | `usePromotionsStore` now validates against Supabase `promotions` table; `maxDiscountNGN` cap enforced in fare calculation; `user_promo_uses` prevents reuse. **Run `supabase-schema-promotions.sql`** |
+| Rewards / Points system | 🔄 Partial | Task-based points (YouTube videos, social share); 500 pts = ₦8,000 ride credit; 90-day expiry; redeemable at checkout. `lib/rewards-service.ts`, `hooks/usePointsStore.ts`, `app/task-detail.tsx`. **Run `supabase-schema-rewards.sql`** |
 | Driver earnings | 🔄 Partial | Stored/queried via **Firebase** (`FirebaseDriverService.getDriverEarnings`), not Supabase |
 | Saved places | ✅ Working | `hooks/useSavedLocationsStore.ts` persists to Supabase `saved_locations` table (see `supabase-schema-saved-locations.sql`, migration run) for real accounts via `lib/saved-locations-service.ts`, including the home/work upsert behavior; `test-rider` keeps its AsyncStorage + mock fallback |
 | Weather widget | ✅ Working | `useWeatherStore.ts` calls the real Open-Meteo forecast API with the user's actual coordinates, plus `GoogleMapsService.getCityName()` for the real city name |
@@ -72,6 +73,32 @@
 ---
 
 ## Activity Log
+
+### 2026-06-17 — Promotions backend + Points/Rewards system + Driver wallet stats
+
+**What changed:**
+- **Promo codes** (`hooks/usePromotionsStore.ts`): replaced in-memory mock with real Supabase
+  validation against `promotions` table. `applyPromoCode()` is now async; checks expiry,
+  max uses, and per-user reuse via `user_promo_uses`. `maxDiscountNGN` cap now enforced
+  in `useRideStore` fare calculation. `app/enter-promo-code.tsx` updated to `await` the
+  async call and removed `.isUsed` reference.
+- **Points/Rewards system** (new): `database/schemas/supabase-schema-rewards.sql` creates
+  `reward_tasks`, `user_task_completions`, `points_transactions` tables + `user_points_balance`
+  view. `lib/rewards-service.ts` — full Supabase CRUD. `hooks/usePointsStore.ts` — Zustand
+  store. `app/promotions.tsx` — now shows points balance + task list above promo-code section.
+  `app/task-detail.tsx` — new screen with timer-based YouTube claim and social share flow.
+  `app/ride-checkout.tsx` — "Use Points" toggle deducts points value from fare at booking.
+  1 pt = ₦16 (500 pts = ₦8,000). Points expire 90 days after earned.
+- **Driver wallet stats** (`app/(driver-tabs)/wallet.tsx`): stats grid now shows real
+  `stats.totalRides` and calculated avg/trip from Supabase. Removed hardcoded fake values
+  (8.5h, 23 trips, ₦15.02) and fake bonuses/tips rows from earnings breakdown.
+
+**Action required (user):**
+1. Supabase SQL Editor → run `supabase-schema-promotions.sql`
+2. Supabase SQL Editor → run `supabase-schema-rewards.sql`
+3. Add tasks via Supabase Dashboard → Table Editor → `reward_tasks` → Insert row
+
+---
 
 ### 2026-06-17 — SQL migrations run; Twilio setup deferred
 

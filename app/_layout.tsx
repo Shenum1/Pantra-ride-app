@@ -11,6 +11,7 @@ import { AuthProvider } from "@/hooks/useAuthStore";
 import { PaymentProvider } from "@/hooks/usePaymentStore";
 import { SavedLocationsProvider } from "@/hooks/useSavedLocationsStore";
 import { PromotionsProvider } from "@/hooks/usePromotionsStore";
+import { PointsProvider } from "@/hooks/usePointsStore";
 import { RatingsProvider } from "@/hooks/useRatingsStore";
 import { EarnProvider } from "@/hooks/useEarnStore";
 import { DriverStoreProvider } from "@/hooks/useDriverStore";
@@ -116,6 +117,7 @@ export default function RootLayout() {
                 <PaymentProvider>
                 <WalletProvider>
                 <PromotionsProvider>
+                <PointsProvider>
                   <SavedLocationsProvider>
                     <EarnProvider>
                       <DriverStoreProvider>
@@ -131,6 +133,7 @@ export default function RootLayout() {
                       </DriverStoreProvider>
                     </EarnProvider>
                   </SavedLocationsProvider>
+                </PointsProvider>
                 </PromotionsProvider>
                 </WalletProvider>
               </PaymentProvider>

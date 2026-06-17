@@ -266,7 +266,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
 
     const activePromo = getActivePromotion();
     if (activePromo) {
-      computedPrice = Math.round(computedPrice * (1 - activePromo.discountPercentage / 100));
+      const rawDiscount = computedPrice * (activePromo.discountPercentage / 100);
+      const maxCap = activePromo.maxDiscountNGN ?? Infinity;
+      computedPrice = Math.round(computedPrice - Math.min(rawDiscount, maxCap));
     }
 
     updateEstimatedFare(computedPrice, distanceKm, durationMinutes);
@@ -299,7 +301,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
 
     const activePromo = getActivePromotion();
     if (activePromo) {
-      computedPrice = Math.round(computedPrice * (1 - activePromo.discountPercentage / 100));
+      const rawDiscount = computedPrice * (activePromo.discountPercentage / 100);
+      const maxCap = activePromo.maxDiscountNGN ?? Infinity;
+      computedPrice = Math.round(computedPrice - Math.min(rawDiscount, maxCap));
     }
 
     updateEstimatedFare(computedPrice, distanceKm, durationMinutes);

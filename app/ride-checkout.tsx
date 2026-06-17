@@ -1,17 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { ArrowRight, Minus, Plus, Wallet, Clock3, CreditCard, MapPin } from 'lucide-react-native';
+import { ArrowRight, Minus, Plus, Wallet, Clock3, CreditCard, MapPin, Star } from 'lucide-react-native';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import { useRide } from '@/hooks/useRideStore';
 import { useLocation } from '@/hooks/useLocationStore';
+import { usePoints } from '@/hooks/usePointsStore';
+import { useAuth } from '@/hooks/useAuthStore';
+import { RewardsService } from '@/lib/rewards-service';
 
 const FARE_OPTIONS: number[] = [-10, 0, 10];
 
 export default function RideCheckoutScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const {
     requestRide,
     estimatedPrice,
@@ -26,7 +30,18 @@ export default function RideCheckoutScreen() {
     setFareAdjustment,
   } = useRide();
   const { pickupAddress, dropoffAddress, pickupLocation, dropoffLocation } = useLocation();
+  const { balance, balanceNGN, redeemForRide } = usePoints();
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [usePointsToggle, setUsePointsToggle] = useState(false);
+
+  // Points that would be spent (convert fare to points, capped at balance)
+  const pointsToSpend = useMemo(() => {
+    if (!usePointsToggle || balance === 0) return 0;
+    return Math.min(balance, RewardsService.ngnToPoints(estimatedPrice));
+  }, [usePointsToggle, balance, estimatedPrice]);
+
+  const pointsCoverageNGN = pointsToSpend * RewardsService.POINTS_TO_NGN;
+  const amountToPay = Math.max(0, estimatedPrice - pointsCoverageNGN);
 
   const priceNote = useMemo(() => {
     if (fareAdjustmentPercent > 0) {
@@ -51,6 +66,14 @@ export default function RideCheckoutScreen() {
     try {
       const ride = await requestRide();
       if (ride) {
+        // Deduct points if the user chose to use them
+        if (usePointsToggle && pointsToSpend > 0 && user?.id && user.id !== 'test-rider' && ride.id) {
+          try {
+            await redeemForRide(user.id, pointsToSpend, ride.id);
+          } catch (e) {
+            console.error('Points redemption failed (ride still booked):', e);
+          }
+        }
         router.push('/ride-progress');
       }
     } catch (error) {
@@ -183,12 +206,47 @@ export default function RideCheckoutScreen() {
               </View>
             </View>
           </View>
+
+          {/* Points redemption */}
+          {balanceNGN > 0 && (
+            <View style={styles.card} testID="points-card">
+              <View style={styles.pointsHeader}>
+                <Star size={18} color="#FFD700" fill="#FFD700" />
+                <Text style={styles.cardTitle}>Use Points</Text>
+              </View>
+              <Text style={styles.cardSubtitle}>
+                You have ₦{balanceNGN.toLocaleString()} in points ({balance.toLocaleString()} pts)
+              </Text>
+              <View style={styles.pointsToggleRow}>
+                <Text style={styles.pointsToggleLabel}>
+                  {usePointsToggle
+                    ? pointsCoverageNGN >= estimatedPrice
+                      ? 'Fully covered by points'
+                      : `₦${pointsCoverageNGN.toLocaleString()} covered, pay ₦${amountToPay.toFixed(0)} extra`
+                    : 'Apply points to this ride'}
+                </Text>
+                <Switch
+                  value={usePointsToggle}
+                  onValueChange={setUsePointsToggle}
+                  trackColor={{ true: Colors.light.primary }}
+                />
+              </View>
+              {usePointsToggle && (
+                <Text style={styles.pointsDeductNote}>
+                  {pointsToSpend.toLocaleString()} pts will be deducted after booking
+                </Text>
+              )}
+            </View>
+          )}
         </ScrollView>
 
         <View style={styles.footer}>
           <View>
             <Text style={styles.footerLabel}>You will pay</Text>
-            <Text style={styles.footerPrice}>₦{estimatedPrice.toFixed(0)}</Text>
+            <Text style={styles.footerPrice}>₦{amountToPay.toFixed(0)}</Text>
+            {usePointsToggle && pointsToSpend > 0 && (
+              <Text style={styles.footerPointsSub}>+{pointsToSpend} pts</Text>
+            )}
           </View>
           <View style={styles.footerButtonWrap}>
             <Button
@@ -488,5 +546,35 @@ const styles = StyleSheet.create({
   footerButtonWrap: {
     flex: 1,
     marginLeft: 16,
+  },
+  footerPointsSub: {
+    fontSize: 12,
+    color: '#60A5FA',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  pointsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  pointsToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  pointsToggleLabel: {
+    flex: 1,
+    fontSize: 14,
+    color: '#122033',
+    fontWeight: '500',
+    paddingRight: 12,
+  },
+  pointsDeductNote: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 8,
   },
 });

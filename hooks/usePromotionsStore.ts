@@ -1,113 +1,128 @@
-import createContextHook from "@nkzw/create-context-hook";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { mockPromotions } from "@/mocks/promotions";
-import { Promotion } from "@/types";
+import createContextHook from '@nkzw/create-context-hook';
+import { useState, useCallback } from 'react';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from './useAuthStore';
 
-const PROMOTIONS_STORAGE_KEY = "promotions";
+export interface SupabasePromotion {
+  id: string;
+  code: string;
+  description: string;
+  discountPercentage: number;
+  maxDiscountNGN: number | null;
+  maxUses: number | null;
+  usedCount: number;
+  validFrom: string;
+  validUntil: string;
+  isActive: boolean;
+  createdAt: string;
+}
 
 export const [PromotionsProvider, usePromotions] = createContextHook(() => {
-  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const { user } = useAuth();
+  const [promotions, setPromotions] = useState<SupabasePromotion[]>([]);
   const [activePromoCode, setActivePromoCode] = useState<string | null>(null);
+  const [activePromotion, setActivePromotion] = useState<SupabasePromotion | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch promotions
-  const { data: fetchedPromotions, isLoading } = useQuery({
-    queryKey: ["promotions"],
-    queryFn: async () => {
-      try {
-        const storedPromotions = await AsyncStorage.getItem(PROMOTIONS_STORAGE_KEY);
-        if (storedPromotions) {
-          return JSON.parse(storedPromotions) as Promotion[];
-        }
-        // If no stored promotions, use mock data
-        await AsyncStorage.setItem(PROMOTIONS_STORAGE_KEY, JSON.stringify(mockPromotions));
-        return mockPromotions;
-      } catch (error) {
-        console.error("Error fetching promotions:", error);
-        return mockPromotions;
-      }
-    },
-  });
-
-  useEffect(() => {
-    if (fetchedPromotions) {
-      // Filter out expired promotions
-      const validPromotions = fetchedPromotions.filter(
-        promo => new Date(promo.validUntil) > new Date()
-      );
-      setPromotions(validPromotions);
-    }
-  }, [fetchedPromotions]);
-
-  const addPromotion = async (newPromotion: Omit<Promotion, "id">) => {
+  const loadPromotions = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const promoWithId: Promotion = {
-        ...newPromotion,
-        id: `promo-${Date.now()}`,
-      };
-      
-      const updatedPromotions = [...promotions, promoWithId];
-      setPromotions(updatedPromotions);
-      await AsyncStorage.setItem(PROMOTIONS_STORAGE_KEY, JSON.stringify(updatedPromotions));
-    } catch (error) {
-      console.error("Error adding promotion:", error);
-      throw error;
+      const { data, error } = await supabase
+        .from('promotions')
+        .select('*')
+        .order('createdAt', { ascending: false });
+      if (!error && data) setPromotions(data as SupabasePromotion[]);
+    } catch (e) {
+      console.error('Error loading promotions:', e);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const applyPromoCode = (code: string): { success: boolean; message: string; discount?: number } => {
-    const promo = promotions.find(
-      p => p.code.toUpperCase() === code.toUpperCase() && !p.isUsed
-    );
-    
-    if (!promo) {
-      return { success: false, message: "Invalid or expired promo code" };
+  const applyPromoCode = useCallback(async (
+    code: string
+  ): Promise<{ success: boolean; message: string; discount?: number }> => {
+    const userId = user?.id;
+    if (!userId || userId === 'test-rider') {
+      return { success: false, message: 'Sign in to use promo codes' };
     }
-    
+
+    // 1. Validate code in Supabase
+    const { data: promoRows, error } = await supabase
+      .from('promotions')
+      .select('*')
+      .ilike('code', code)
+      .eq('isActive', true)
+      .gt('validUntil', new Date().toISOString())
+      .limit(1);
+
+    if (error || !promoRows || promoRows.length === 0) {
+      return { success: false, message: 'Invalid or expired promo code' };
+    }
+
+    const promo = promoRows[0] as SupabasePromotion;
+
+    if (promo.maxUses !== null && promo.usedCount >= promo.maxUses) {
+      return { success: false, message: 'This promo code has reached its usage limit' };
+    }
+
+    // 2. Check if user already used it
+    const { data: used } = await supabase
+      .from('user_promo_uses')
+      .select('id')
+      .eq('userId', userId)
+      .eq('promoId', promo.id)
+      .maybeSingle();
+
+    if (used) {
+      return { success: false, message: 'You have already used this promo code' };
+    }
+
     setActivePromoCode(promo.code);
+    setActivePromotion(promo);
     return {
       success: true,
       message: `${promo.description} applied!`,
       discount: promo.discountPercentage,
     };
-  };
+  }, [user]);
 
-  const markPromoAsUsed = async (code: string) => {
+  const markPromoAsUsed = useCallback(async (code: string, rideId?: string) => {
+    const userId = user?.id;
+    if (!userId || userId === 'test-rider' || !activePromotion) return;
+
     try {
-      const updatedPromotions = promotions.map(promo =>
-        promo.code.toUpperCase() === code.toUpperCase()
-          ? { ...promo, isUsed: true }
-          : promo
-      );
-      
-      setPromotions(updatedPromotions);
+      await supabase
+        .from('user_promo_uses')
+        .insert({ userId, promoId: activePromotion.id, rideId: rideId ?? null });
+
+      await supabase.rpc('increment_promo_use', { promo_id: activePromotion.id });
+    } catch (e) {
+      console.error('Error marking promo as used:', e);
+    } finally {
       setActivePromoCode(null);
-      await AsyncStorage.setItem(PROMOTIONS_STORAGE_KEY, JSON.stringify(updatedPromotions));
-    } catch (error) {
-      console.error("Error marking promo as used:", error);
-      throw error;
+      setActivePromotion(null);
     }
-  };
+  }, [user, activePromotion]);
 
-  const clearActivePromo = () => {
+  const clearActivePromo = useCallback(() => {
     setActivePromoCode(null);
-  };
+    setActivePromotion(null);
+  }, []);
 
-  const getActivePromotion = (): Promotion | undefined => {
-    if (!activePromoCode) return undefined;
-    return promotions.find(p => p.code === activePromoCode);
-  };
+  const getActivePromotion = useCallback((): SupabasePromotion | undefined => {
+    return activePromotion ?? undefined;
+  }, [activePromotion]);
 
-  const getValidPromotions = (): Promotion[] => {
-    return promotions.filter(promo => !promo.isUsed);
-  };
+  const getValidPromotions = useCallback((): SupabasePromotion[] => {
+    return promotions.filter(p => new Date(p.validUntil) > new Date());
+  }, [promotions]);
 
   return {
     promotions,
     isLoading,
     activePromoCode,
-    addPromotion,
+    loadPromotions,
     applyPromoCode,
     markPromoAsUsed,
     clearActivePromo,
