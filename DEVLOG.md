@@ -64,14 +64,22 @@
 | Weather widget | ✅ Working | `useWeatherStore.ts` calls the real Open-Meteo forecast API with the user's actual coordinates, plus `GoogleMapsService.getCityName()` for the real city name |
 | Dark / light theme | ✅ Working | `hooks/useThemeStore.ts`, system / manual toggle |
 | Phone login | 🔄 Partial | `signInWithOtp`/`verifyOtp` wired in `useAuthStore`; +234 prefix in `phone-login.tsx`. **Needs Twilio configured in Supabase Dashboard before SMS goes live** |
-| Schedule a ride | 🔄 Partial | Real `DateTimePicker` + `scheduleRide()` store call + local reminder notification; `scheduled_for` column migration ready. **Run `supabase-schema-scheduled-rides.sql`** |
-| Driver withdrawal | 🔄 Partial | Manual payout: `driver_bank_accounts` + `driver_payouts` Supabase tables, bank-account add screen, payout history list. **Run `supabase-schema-driver-payouts.sql`** |
+| Schedule a ride | ✅ Working | Real `DateTimePicker` + `scheduleRide()` store call + local reminder notification; `scheduled_for` column migration run ✓ |
+| Driver withdrawal | ✅ Working | Manual payout: `driver_bank_accounts` + `driver_payouts` tables live in Supabase ✓; driver adds bank account → submits withdrawal → admin pays out manually |
 | Global route protection | ✅ Working | `(tabs)` already had `AuthGuard`; `(driver-tabs)/_layout.tsx` now wraps in `<AuthGuard requireDriver>`, and `(admin-tabs)/_layout.tsx` now checks `useAdminAuth()` and shows `AdminLogin` when not authenticated. `AdminAuthProvider` added to root `_layout.tsx` so `useAdminAuth()` is available app-wide |
 | Production env vars | 🔄 Partial | Supabase + Google Maps/OAuth real values present; Firebase no longer needed (replaced by Supabase stub). Paystack is test-key only, Mapbox token and Flutterwave keys are unset |
 
 ---
 
 ## Activity Log
+
+### 2026-06-17 — SQL migrations run; Twilio setup deferred
+
+- `supabase-schema-scheduled-rides.sql` ✓ run — `rides.scheduled_for` column live
+- `supabase-schema-driver-payouts.sql` ✓ run — `driver_bank_accounts` + `driver_payouts` tables live
+- Twilio credentials not yet available — phone OTP remains non-functional until Supabase Auth → Providers → Phone is configured with Twilio Account SID, Auth Token, and Messaging Service SID
+
+---
 
 ### 2026-06-17 — Phone login, Schedule a ride, Driver withdrawal implemented
 
