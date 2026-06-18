@@ -59,7 +59,7 @@
 | Ride matching | ✅ Working (pull-based) | A new `pending` ride is picked up by nearby online drivers via `FirebaseDriverService.subscribeToRideRequests` (with a local notification); driver accepts via `acceptRide`. `RideMatchingService.matchRideWithDriver()` (auto-assign) is still unused and would conflict with this pull-based flow if called |
 | Driver verification | ✅ Working | `app/driver-documents.tsx` (driver upload screen, linked from driver profile) and `app/(admin-tabs)/verification.tsx` (admin review screen with new "Verify" tab) now call the real `DriverVerificationService`/new `admin.driverDocuments`/`admin.reviewDocument` tRPC routes. `supabase-schema-driver-documents.sql` migration and private "documents" storage bucket confirmed in place |
 | Promotions / promo codes | 🔄 Partial | `usePromotionsStore` now validates against Supabase `promotions` table; `maxDiscountNGN` cap enforced in fare calculation; `user_promo_uses` prevents reuse. **Run `supabase-schema-promotions.sql`** |
-| Rewards / Points system | 🔄 Partial | Task-based points (YouTube videos, social share); 500 pts = ₦8,000 ride credit; 90-day expiry; redeemable at checkout. `lib/rewards-service.ts`, `hooks/usePointsStore.ts`, `app/task-detail.tsx`. **Run `supabase-schema-rewards.sql`** |
+| Rewards / Points system | 🔄 Partial | Task-based points (YouTube videos, social share); 500 pts = ₦8,000 ride credit; 90-day expiry; redeemable at checkout. `lib/rewards-service.ts`, `hooks/usePointsStore.ts`, `app/task-detail.tsx`. **Run `supabase-schema-rewards.sql`**. YouTube task URL not yet provided — no task rows seeded in `reward_tasks` yet |
 | Driver earnings | 🔄 Partial | Stored/queried via **Firebase** (`FirebaseDriverService.getDriverEarnings`), not Supabase |
 | Saved places | ✅ Working | `hooks/useSavedLocationsStore.ts` persists to Supabase `saved_locations` table (see `supabase-schema-saved-locations.sql`, migration run) for real accounts via `lib/saved-locations-service.ts`, including the home/work upsert behavior; `test-rider` keeps its AsyncStorage + mock fallback |
 | Weather widget | ✅ Working | `useWeatherStore.ts` calls the real Open-Meteo forecast API with the user's actual coordinates, plus `GoogleMapsService.getCityName()` for the real city name |
@@ -73,6 +73,36 @@
 ---
 
 ## Activity Log
+
+### 2026-06-18 — Admin web panel spec created
+
+**What changed:**
+- Produced a complete technical handoff document for a colleague to build the standalone admin web panel: `docs/ADMIN_WEB_PANEL_SPEC.md`
+- The admin web panel is a separate Next.js app (not part of this Expo project) that connects to the same Supabase project
+- The in-app `(admin-tabs)` screens remain in the Expo app but will be superseded by the web panel
+
+**Screens specified for the web panel:**
+Dashboard, Rides Management, User Management (list + detail pages for riders and drivers), Driver Verification, Analytics & Reports (revenue charts, cancellation rate, CSV export), Driver Payouts, Promotions Management, Reward Tasks Management, Ratings Moderation, Notifications (placeholder), Support Tickets (placeholder), Settings
+
+**What the colleague needs from you:**
+- Supabase Project URL (`NEXT_PUBLIC_SUPABASE_URL`)
+- Supabase anon key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`)
+- Supabase service role key (`SUPABASE_SERVICE_ROLE_KEY`)
+- All are in Supabase Dashboard → Settings → API
+
+---
+
+### 2026-06-18 — Status checkpoint
+
+**Current blockers (no code changes needed — user actions only):**
+- `supabase-schema-promotions.sql` and `supabase-schema-rewards.sql` not yet run — promo validation and points system are non-functional until migrations are applied
+- YouTube task URL not yet provided — `reward_tasks` table has no rows; the "Earn Points" task list on `app/promotions.tsx` will show "No tasks available right now" until at least one row is inserted
+- `git push` not yet run — latest commit (`99e5b94`: promotions + rewards + driver wallet stats) is local only
+
+**Working as-is (no migration dependency):**
+- Promo code input UI, task-detail timer flow, ride-checkout points toggle, driver wallet stats — all code is live; they just need the DB tables to exist
+
+---
 
 ### 2026-06-17 — Promotions backend + Points/Rewards system + Driver wallet stats
 
@@ -628,19 +658,29 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
 
 ## Pending Work
 
-1. **End-to-end test of the core ride loop + route guards** — Verify on two devices/accounts: rider books → online driver gets a local notification + sees the request → driver accepts → rider's `ride-progress` screen shows the real driver, live location, ETA, and stage transitions through to trip completion/cancellation. Also confirm deep-linking to `/(driver-tabs)/dashboard` or `/(admin-tabs)/settings` while logged out redirects/shows login instead of crashing.
+1. **Run SQL migrations** — Both must be run in Supabase SQL Editor before promo/rewards features work end-to-end:
+   - `database/schemas/supabase-schema-promotions.sql` — creates `promotions` + `user_promo_uses` tables; seeds 3 demo codes (WELCOME50, WEEKEND25, BOLT15)
+   - `database/schemas/supabase-schema-rewards.sql` — creates `reward_tasks`, `user_task_completions`, `points_transactions` tables + `user_points_balance` view
 
-2. **Phone login OTP** — Replace the hardcoded `123456` check in `useAuthStore.verifyPhoneCode` with real Supabase phone auth (`signInWithOtp`/`verifyOtp`) or a third-party SMS provider.
+2. **Add YouTube reward task** — after running `supabase-schema-rewards.sql`, insert a row in Supabase Dashboard → Table Editor → `reward_tasks`. **YouTube URL not yet provided.** When you have it:
+   - `type`: `youtube_video`
+   - `title`: e.g. "Watch: Introducing Pantra Ride"
+   - `url`: your YouTube link
+   - `pointsReward`: `500`
+   - `minWatchSeconds`: `120`
+   - `isActive`: `true`
 
-3. **Promotions backend** — Add a Supabase `promo_codes` table, validate codes server-side in `applyPromoCode()`, and apply the discount in the fare calculator.
+3. **Push to GitHub** — run `git push` from your terminal (Git Credential Manager needs GUI to authenticate; cannot be done from Claude Code)
 
-4. **Driver wallet/earnings** — Decide on Firebase vs Supabase as the source of truth for earnings, and implement a real withdrawal flow (currently just an `Alert`).
+4. **Phone login OTP** — Twilio credentials not yet available. When ready: Supabase Dashboard → Authentication → Providers → Phone → enable + Account SID + Auth Token + Messaging Service SID
 
-5. **Lower-priority polish** — Schedule a ride (persist + reminder).
+5. **Payment live keys** — Paystack is on test keys only; Flutterwave keys are unset. Replace in `.env` with live keys before production launch
 
-6. **Production secrets** — Once the above flows are real, replace Paystack test keys with live keys, and set `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` and real Flutterwave keys (placeholders already added to `.env`/`.env.example`).
+6. **Mapbox token** — `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is unset; add to `.env` for the Mapbox map layer to function
 
-7. **EAS build setup** — Install `eas-cli`, run `eas login` + `eas build:configure`, produce a preview build for real-device testing.
+7. **End-to-end ride loop test** — deferred until migrations are run and pending items resolved: rider books → driver notified → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
+
+8. **EAS build setup** — `eas-cli` not yet configured; needed to produce a preview build for real-device testing (`eas login` + `eas build:configure`)
 
 ---
 
