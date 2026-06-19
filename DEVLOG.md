@@ -58,9 +58,9 @@
 | Maps — Mapbox | 🔄 Partial | `lib/mapbox-service.ts` real, but `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is unset |
 | Ride matching | ✅ Working (pull-based) | A new `pending` ride is picked up by nearby online drivers via `FirebaseDriverService.subscribeToRideRequests` (with a local notification); driver accepts via `acceptRide`. `RideMatchingService.matchRideWithDriver()` (auto-assign) is still unused and would conflict with this pull-based flow if called |
 | Driver verification | ✅ Working | `app/driver-documents.tsx` (driver upload screen, linked from driver profile) and `app/(admin-tabs)/verification.tsx` (admin review screen with new "Verify" tab) now call the real `DriverVerificationService`/new `admin.driverDocuments`/`admin.reviewDocument` tRPC routes. `supabase-schema-driver-documents.sql` migration and private "documents" storage bucket confirmed in place |
-| Promotions / promo codes | 🔄 Partial | `usePromotionsStore` now validates against Supabase `promotions` table; `maxDiscountNGN` cap enforced in fare calculation; `user_promo_uses` prevents reuse. **Run `supabase-schema-promotions.sql`** |
-| Rewards / Points system | 🔄 Partial | Task-based points (YouTube videos, social share); 500 pts = ₦8,000 ride credit; 90-day expiry; redeemable at checkout. `lib/rewards-service.ts`, `hooks/usePointsStore.ts`, `app/task-detail.tsx`. **Run `supabase-schema-rewards.sql`**. YouTube task URL not yet provided — no task rows seeded in `reward_tasks` yet |
-| Driver earnings | 🔄 Partial | Stored/queried via **Firebase** (`FirebaseDriverService.getDriverEarnings`), not Supabase |
+| Promotions / promo codes | ✅ Working | `usePromotionsStore` validates against Supabase `promotions` table; `maxDiscountNGN` cap enforced in fare calculation; `user_promo_uses` prevents reuse. Migration confirmed run |
+| Rewards / Points system | 🔄 Partial | Task-based points (YouTube videos, social share); 500 pts = ₦8,000 ride credit; 90-day expiry; redeemable at checkout. `lib/rewards-service.ts`, `hooks/usePointsStore.ts`, `app/task-detail.tsx`. Migration confirmed run. YouTube task URL not yet provided — no task rows seeded in `reward_tasks` yet |
+| Driver earnings | ✅ Working | `getDriverEarnings`/`getDriverStats` already query Supabase `rides` table (despite class name). Fixed `wallet.tsx` to use computed `stats.todayEarnings/weekEarnings/monthEarnings` instead of stale JSONB; withdrawal cap now uses `totalEarnings − completedPayouts` |
 | Saved places | ✅ Working | `hooks/useSavedLocationsStore.ts` persists to Supabase `saved_locations` table (see `supabase-schema-saved-locations.sql`, migration run) for real accounts via `lib/saved-locations-service.ts`, including the home/work upsert behavior; `test-rider` keeps its AsyncStorage + mock fallback |
 | Weather widget | ✅ Working | `useWeatherStore.ts` calls the real Open-Meteo forecast API with the user's actual coordinates, plus `GoogleMapsService.getCityName()` for the real city name |
 | Dark / light theme | ✅ Working | `hooks/useThemeStore.ts`, system / manual toggle |
@@ -73,6 +73,16 @@
 ---
 
 ## Activity Log
+
+### 2026-06-19 — Driver wallet earnings fixed (stale JSONB → computed Supabase stats)
+
+**What changed:**
+- `app/(driver-tabs)/wallet.tsx` — period earnings (Today/Week/Month) now read from `stats.todayEarnings/weekEarnings/monthEarnings` (computed from Supabase `rides` table by `getDriverStats`) instead of `driverProfile.earnings.today/thisWeek/thisMonth` (a JSONB column on the `drivers` row that was set to `{today:0,...}` at signup and never updated)
+- Recent Activity date/amount fix: `earningsHistory` items have `payoutDate` and `createdAt`, not `date` — dates are now read correctly; amount now shows `netAmount` (80% of fare) instead of gross fare
+- Withdrawal available balance: the "Available Balance" in the withdraw modal and the max-withdrawal guard now use `stats.totalEarnings - completedPayoutsTotal` (lifetime net earnings minus already-paid payouts) instead of the currently-selected period's earnings
+- No schema changes, no new files — `getDriverEarnings` and `getDriverStats` in `lib/firebase-driver-service.ts` were already querying Supabase correctly; only the display layer was reading the wrong source
+
+---
 
 ### 2026-06-18 — Admin web panel spec created
 
@@ -94,10 +104,11 @@ Dashboard, Rides Management, User Management (list + detail pages for riders and
 
 ### 2026-06-18 — Status checkpoint
 
-**Current blockers (no code changes needed — user actions only):**
-- `supabase-schema-promotions.sql` and `supabase-schema-rewards.sql` not yet run — promo validation and points system are non-functional until migrations are applied
+**Status update:**
+- `supabase-schema-promotions.sql` ✅ confirmed run by user
+- `supabase-schema-rewards.sql` ✅ confirmed run by user
 - YouTube task URL not yet provided — `reward_tasks` table has no rows; the "Earn Points" task list on `app/promotions.tsx` will show "No tasks available right now" until at least one row is inserted
-- `git push` not yet run — latest commit (`99e5b94`: promotions + rewards + driver wallet stats) is local only
+- `git push` not yet run — commits are local only
 
 **Working as-is (no migration dependency):**
 - Promo code input UI, task-detail timer flow, ride-checkout points toggle, driver wallet stats — all code is live; they just need the DB tables to exist
@@ -658,11 +669,7 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
 
 ## Pending Work
 
-1. **Run SQL migrations** — Both must be run in Supabase SQL Editor before promo/rewards features work end-to-end:
-   - `database/schemas/supabase-schema-promotions.sql` — creates `promotions` + `user_promo_uses` tables; seeds 3 demo codes (WELCOME50, WEEKEND25, BOLT15)
-   - `database/schemas/supabase-schema-rewards.sql` — creates `reward_tasks`, `user_task_completions`, `points_transactions` tables + `user_points_balance` view
-
-2. **Add YouTube reward task** — after running `supabase-schema-rewards.sql`, insert a row in Supabase Dashboard → Table Editor → `reward_tasks`. **YouTube URL not yet provided.** When you have it:
+1. **Add YouTube reward task** — insert a row in Supabase Dashboard → Table Editor → `reward_tasks`. **YouTube URL not yet provided.** When you have it:
    - `type`: `youtube_video`
    - `title`: e.g. "Watch: Introducing Pantra Ride"
    - `url`: your YouTube link
@@ -670,17 +677,17 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
    - `minWatchSeconds`: `120`
    - `isActive`: `true`
 
-3. **Push to GitHub** — run `git push` from your terminal (Git Credential Manager needs GUI to authenticate; cannot be done from Claude Code)
+2. **Push to GitHub** — run `git push` from your terminal (Git Credential Manager needs GUI to authenticate; cannot be done from Claude Code)
 
-4. **Phone login OTP** — Twilio credentials not yet available. When ready: Supabase Dashboard → Authentication → Providers → Phone → enable + Account SID + Auth Token + Messaging Service SID
+3. **Phone login OTP** — Twilio credentials not yet available. When ready: Supabase Dashboard → Authentication → Providers → Phone → enable + Account SID + Auth Token + Messaging Service SID
 
-5. **Payment live keys** — Paystack is on test keys only; Flutterwave keys are unset. Replace in `.env` with live keys before production launch
+4. **Payment live keys** — Paystack is on test keys only; Flutterwave keys are unset. Replace in `.env` with live keys before production launch
 
-6. **Mapbox token** — `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is unset; add to `.env` for the Mapbox map layer to function
+5. **Mapbox token** — `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is unset; add to `.env` for the Mapbox map layer to function
 
-7. **End-to-end ride loop test** — deferred until migrations are run and pending items resolved: rider books → driver notified → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
+6. **End-to-end ride loop test** — deferred until pending items resolved: rider books → driver notified → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
 
-8. **EAS build setup** — `eas-cli` not yet configured; needed to produce a preview build for real-device testing (`eas login` + `eas build:configure`)
+7. **EAS build setup** — `eas-cli` not yet configured; needed to produce a preview build for real-device testing (`eas login` + `eas build:configure`)
 
 ---
 

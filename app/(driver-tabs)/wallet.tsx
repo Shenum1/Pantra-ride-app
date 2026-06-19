@@ -92,22 +92,30 @@ export default function DriverWallet() {
   };
 
   const earnings: EarningsData = {
-    today: driverProfile?.earnings?.today ?? 0,
-    week: driverProfile?.earnings?.thisWeek ?? 0,
-    month: driverProfile?.earnings?.thisMonth ?? 0,
+    today: stats.todayEarnings ?? 0,
+    week: stats.weekEarnings ?? 0,
+    month: stats.monthEarnings ?? 0,
     tips: 0,
   };
 
   const currentEarnings = earnings[selectedPeriod];
 
-  const transactions: Transaction[] = earningsHistory.map((e: any) => ({
-    id: e.id ?? String(Math.random()),
-    type: 'earning' as const,
-    amount: e.amount ?? 0,
-    description: e.description ?? 'Trip',
-    date: e.date ? new Date(e.date).toLocaleDateString() : '',
-    time: e.date ? new Date(e.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-  }));
+  const completedPayoutsTotal = payouts
+    .filter(p => p.status === 'completed')
+    .reduce((sum, p) => sum + p.amount, 0);
+  const availableBalance = Math.max(0, stats.totalEarnings - completedPayoutsTotal);
+
+  const transactions: Transaction[] = earningsHistory.map((e: any) => {
+    const dt = e.payoutDate ?? e.createdAt;
+    return {
+      id: e.id ?? String(Math.random()),
+      type: 'earning' as const,
+      amount: e.netAmount ?? e.amount ?? 0,
+      description: 'Trip Earnings',
+      date: dt ? new Date(dt).toLocaleDateString() : '',
+      time: dt ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+    };
+  });
 
 
 
@@ -172,7 +180,7 @@ export default function DriverWallet() {
       Alert.alert('Minimum Withdrawal', 'Minimum withdrawal amount is ₦100');
       return;
     }
-    if (amount > currentEarnings) {
+    if (amount > availableBalance) {
       Alert.alert('Insufficient Balance', 'You do not have enough balance for this withdrawal');
       return;
     }
@@ -469,7 +477,7 @@ export default function DriverWallet() {
           <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Withdraw Funds</Text>
             <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>
-              Available Balance: ₦{currentEarnings.toFixed(2)}
+              Available Balance: ₦{availableBalance.toFixed(2)}
             </Text>
             
             <View style={styles.inputContainer}>
@@ -511,7 +519,7 @@ export default function DriverWallet() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickAmount, { backgroundColor: colors.lightGray }]}
-                onPress={() => setWithdrawAmount(currentEarnings.toFixed(2))}
+                onPress={() => setWithdrawAmount(availableBalance.toFixed(2))}
               >
                 <Text style={[styles.quickAmountText, { color: colors.text }]}>All</Text>
               </TouchableOpacity>
