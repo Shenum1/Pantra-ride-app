@@ -18,7 +18,7 @@
 | State | Zustand 5.0.2 |
 | Auth & DB | Supabase (PostgreSQL + RLS) |
 | Real-time | Firebase / Firestore |
-| Maps | Google Maps API + Mapbox |
+| Maps | Google Maps API |
 | Payments | Paystack, Flutterwave |
 | Backend API | tRPC 11.5 + React Query 5.90 |
 | Notifications | Expo Notifications |
@@ -55,7 +55,6 @@
 | In-app messaging | ✅ Working | `lib/messaging-service.ts` — real Supabase tables + realtime subscriptions. Now bidirectional: drivers message riders from `driver-active-trip.tsx` (existing), and riders can now message drivers from `ride-progress.tsx` (new "Message" button); both `messages.tsx`/`driver-message.tsx` chat screens render timestamps correctly |
 | Maps — Google Maps | ✅ Working | `lib/google-maps-service.ts`, geocoding + routes |
 | Discover places | ✅ Working | `app/(tabs)/discover.tsx` now fetches real nearby places via `GoogleMapsService.getNearbyPlaces()` (Google Places Nearby Search) for the selected category, using the rider's real GPS location, with real ratings/photos/distance/price/open-status; falls back to the old hardcoded `mockPlaces` only if no API key / zero results / network error |
-| Maps — Mapbox | 🔄 Partial | `lib/mapbox-service.ts` real, but `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is unset |
 | Ride matching | ✅ Working (pull-based) | A new `pending` ride is picked up by nearby online drivers via `FirebaseDriverService.subscribeToRideRequests` (with a local notification); driver accepts via `acceptRide`. `RideMatchingService.matchRideWithDriver()` (auto-assign) is still unused and would conflict with this pull-based flow if called |
 | Driver verification | ✅ Working | `app/driver-documents.tsx` (driver upload screen, linked from driver profile) and `app/(admin-tabs)/verification.tsx` (admin review screen with new "Verify" tab) now call the real `DriverVerificationService`/new `admin.driverDocuments`/`admin.reviewDocument` tRPC routes. `supabase-schema-driver-documents.sql` migration and private "documents" storage bucket confirmed in place |
 | Promotions / promo codes | ✅ Working | `usePromotionsStore` validates against Supabase `promotions` table; `maxDiscountNGN` cap enforced in fare calculation; `user_promo_uses` prevents reuse. Migration confirmed run |
@@ -68,11 +67,20 @@
 | Schedule a ride | ✅ Working | Real `DateTimePicker` + `scheduleRide()` store call + local reminder notification; `scheduled_for` column migration run ✓ |
 | Driver withdrawal | ✅ Working | Manual payout: `driver_bank_accounts` + `driver_payouts` tables live in Supabase ✓; driver adds bank account → submits withdrawal → admin pays out manually |
 | Global route protection | ✅ Working | `(tabs)` already had `AuthGuard`; `(driver-tabs)/_layout.tsx` now wraps in `<AuthGuard requireDriver>`, and `(admin-tabs)/_layout.tsx` now checks `useAdminAuth()` and shows `AdminLogin` when not authenticated. `AdminAuthProvider` added to root `_layout.tsx` so `useAdminAuth()` is available app-wide |
-| Production env vars | 🔄 Partial | Supabase + Google Maps/OAuth real values present; Firebase no longer needed (replaced by Supabase stub). Paystack is test-key only, Mapbox token and Flutterwave keys are unset |
+| Production env vars | 🔄 Partial | Supabase + Google Maps/OAuth real values present; Firebase no longer needed (replaced by Supabase stub). Paystack is test-key only; Flutterwave keys are unset |
 
 ---
 
 ## Activity Log
+
+### 2026-06-19 — Removed Mapbox dead code
+
+**What changed:**
+- Deleted `lib/mapbox-service.ts` and `constants/mapbox.ts` — both files were unused dead code. No file in the app imported either of them.
+- The app uses Google Maps exclusively (`lib/google-maps-service.ts`, `components/Map.tsx`). No Mapbox npm package was installed.
+- Removed Mapbox from Tech Stack table, Feature Status table, Production env vars row, Pending Work item #5, and Earlier sessions list.
+
+---
 
 ### 2026-06-19 — Driver wallet earnings fixed (stale JSONB → computed Supabase stats)
 
@@ -649,7 +657,6 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
 - Supabase auth integration for riders and drivers (`lib/auth-service.ts`, `lib/driver-auth-service.ts`)
 - Firebase / Firestore real-time setup (`lib/firebase.ts`, `lib/firebase-driver-service.ts`)
 - Google Maps API integration (`lib/google-maps-service.ts`)
-- Mapbox integration (`lib/mapbox-service.ts`)
 - Paystack payment gateway (`lib/paystack-service.ts`, `components/PaystackPayment.tsx`)
 - Flutterwave payment gateway (`lib/flutterwave-service.ts`)
 - Driver real-time location tracking (`lib/location-tracking-service.ts`)
@@ -683,11 +690,9 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
 
 4. **Payment live keys** — Paystack is on test keys only; Flutterwave keys are unset. Replace in `.env` with live keys before production launch
 
-5. **Mapbox token** — `EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN` is unset; add to `.env` for the Mapbox map layer to function
+5. **End-to-end ride loop test** — deferred until pending items resolved: rider books → driver notified → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
 
-6. **End-to-end ride loop test** — deferred until pending items resolved: rider books → driver notified → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
-
-7. **EAS build setup** — `eas-cli` not yet configured; needed to produce a preview build for real-device testing (`eas login` + `eas build:configure`)
+6. **EAS build setup** — `eas-cli` not yet configured; needed to produce a preview build for real-device testing (`eas login` + `eas build:configure`)
 
 ---
 
