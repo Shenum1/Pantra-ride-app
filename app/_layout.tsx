@@ -7,7 +7,7 @@ import Toast from 'react-native-toast-message';
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LocationProvider } from "@/hooks/useLocationStore";
 import { RideProvider } from "@/hooks/useRideStore";
-import { AuthProvider } from "@/hooks/useAuthStore";
+import { AuthProvider, useAuth } from "@/hooks/useAuthStore";
 import { PaymentProvider } from "@/hooks/usePaymentStore";
 import { SavedLocationsProvider } from "@/hooks/useSavedLocationsStore";
 import { PromotionsProvider } from "@/hooks/usePromotionsStore";
@@ -15,11 +15,12 @@ import { PointsProvider } from "@/hooks/usePointsStore";
 import { RatingsProvider } from "@/hooks/useRatingsStore";
 import { EarnProvider } from "@/hooks/useEarnStore";
 import { DriverStoreProvider } from "@/hooks/useDriverStore";
-import { DriverAuthProvider } from "@/hooks/useDriverAuthStore";
+import { DriverAuthProvider, useDriverAuth } from "@/hooks/useDriverAuthStore";
 import { AdminAuthProvider } from "@/hooks/useAdminAuthStore";
 import { ThemeProvider } from "@/hooks/useThemeStore";
 import { WeatherProvider } from "@/hooks/useWeatherStore";
 import { WalletProvider } from "@/hooks/useWalletStore";
+import { NotificationService } from "@/lib/notification-service";
 
 import { trpc, trpcClient } from "@/lib/trpc";
 
@@ -27,6 +28,25 @@ import { trpc, trpcClient } from "@/lib/trpc";
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+
+function PushTokenRegistrar() {
+  const { user } = useAuth();
+  const { driver } = useDriverAuth();
+
+  useEffect(() => {
+    if (user?.id && user.id !== 'test-rider') {
+      void NotificationService.registerRiderPushToken(user.id);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (driver?.id) {
+      void NotificationService.registerDriverPushToken(driver.id);
+    }
+  }, [driver?.id]);
+
+  return null;
+}
 
 function RootLayoutNav() {
   return (
@@ -113,6 +133,7 @@ export default function RootLayout() {
             <ThemeProvider>
               <AuthProvider>
               <DriverAuthProvider>
+              <PushTokenRegistrar />
               <AdminAuthProvider>
                 <PaymentProvider>
                 <WalletProvider>

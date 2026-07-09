@@ -51,7 +51,7 @@
 | Payments — Flutterwave | 🔄 Partial | `lib/flutterwave-service.ts` now calls secure backend tRPC routes (`payments.flutterwave.*`) using a server-only `FLUTTERWAVE_SECRET_KEY`; placeholder env vars added. Needs real keys + on-device verification |
 | Wallet (rider) | ✅ Working | `hooks/useWalletStore.ts` persists to Supabase (`wallets`/`wallet_transactions`/`wallet_bank_accounts`, see `supabase-schema-wallet.sql`) for real users via `lib/wallet-service.ts`; `test-rider` test account keeps its AsyncStorage mock. Migration confirmed run |
 | Wallet (driver) | ✅ Working | Earnings read from Supabase `rides` table; stats grid shows real `totalRides` + avg/trip; bank account add screen; payout requests tracked in `driver_payouts` (manual processing) |
-| Push notifications | ✅ Working (local) | Both drivers and riders get local notifications for ride-lifecycle events: drivers via `NotificationService.notifyNewRideRequest()` (`useDriverStore`), riders via `notifyDriverAssigned`/`notifyDriverArrived`/`notifyRideStarted`/`notifyRideCompleted` wired into `app/ride-progress.tsx`'s live tracking. All notifications remain device-local, not true remote push (would need Expo push tokens + EAS) |
+| Push notifications | 🔄 Partial | Rider lifecycle notifications (driver assigned/arrived/started/completed) are local — fire correctly via `app/ride-progress.tsx`. Driver new-ride-request push is now **remote**: `useRideStore.requestRide` calls `trpc.notifications.notifyDrivers` server-side → Expo Push API → all online drivers receive push even when app is backgrounded. **Requires:** (1) run `supabase-schema-push-tokens.sql`, (2) `eas init` to get projectId for token registration. |
 | In-app messaging | ✅ Working | `lib/messaging-service.ts` — real Supabase tables + realtime subscriptions. Now bidirectional: drivers message riders from `driver-active-trip.tsx` (existing), and riders can now message drivers from `ride-progress.tsx` (new "Message" button); both `messages.tsx`/`driver-message.tsx` chat screens render timestamps correctly |
 | Maps — Google Maps | ✅ Working | `lib/google-maps-service.ts`, geocoding + routes |
 | Discover places | ✅ Working | `app/(tabs)/discover.tsx` now fetches real nearby places via `GoogleMapsService.getNearbyPlaces()` (Google Places Nearby Search) for the selected category, using the rider's real GPS location, with real ratings/photos/distance/price/open-status; falls back to the old hardcoded `mockPlaces` only if no API key / zero results / network error |
@@ -72,6 +72,46 @@
 ---
 
 ## Activity Log
+
+### 2026-06-19 — Production prep: bundle ID, EAS build config, remote push notifications
+
+**What changed:**
+
+**app.json fixes (critical — must be done before first store submission):**
+- App display name: `"Pantra Ride App"` → `"Pantra"`
+- Deep-link scheme: `myapp` → `pantra`
+- iOS bundle identifier: `app.rork.pantra-ride-app` → `com.pantra.rides`
+- Android package name: `app.rork.pantra-ride-app` → `com.pantra.rides`
+- Removed Rork's origin URL from `expo-router` plugin
+- Notification plugin: pointed to existing `./assets/images/icon.png` (removed missing `./local/assets/` references), enabled `enableBackgroundRemoteNotifications: true`
+- `UIBackgroundModes`: replaced `audio` with `remote-notification` (needed for APNs background push)
+- Stripped 4 Android permissions that trigger Play Store review flags: `RECORD_AUDIO`, `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `android.permission.REQUEST_INSTALL_PACKAGES`, `android.permission.HIGH_SAMPLING_RATE_SENSORS`
+- All permission strings updated to use the "Pantra" name
+- `supportsTablet: false` (ride apps are phone-only; avoids iPad-specific review requirements)
+
+**EAS build setup:**
+- Created `eas.json` with three build profiles: `development` (APK + iOS simulator), `preview` (internal APK distribution), `production` (AAB for Play Store + signed IPA for App Store)
+- `autoIncrement: true` on production so build numbers increment automatically
+
+**Remote push notifications (critical production fix):**
+
+Push notifications were local-only — they only fired if the app was in the foreground. Drivers would never receive ride requests when their phone was locked. Fixed:
+
+- `lib/notification-service.ts` — rewrote to:
+  - `registerRiderPushToken(userId)` — requests permission, gets Expo push token (using EAS `projectId` from `Constants`), saves to `users.pushToken` in Supabase
+  - `registerDriverPushToken(driverId)` — same flow, saves to `drivers.pushToken`
+  - Removed the dead `registerForPushNotifications` method that was never called
+- `app/_layout.tsx` — added `PushTokenRegistrar` component (mounted inside both `AuthProvider` and `DriverAuthProvider`) that calls the appropriate registration method whenever a rider or driver session becomes active
+- `database/schemas/supabase-schema-push-tokens.sql` — new migration: `ALTER TABLE users ADD COLUMN pushToken TEXT`, same for `drivers`, plus index on `(isOnline, pushToken)` for fast driver queries
+- `backend/trpc/routes/notifications/notify-drivers/route.ts` — new server route: reads all online drivers with a push token from Supabase, batch-sends Expo push notifications (up to 100 per request) to all of them via `https://exp.host/--/api/v2/push/send`
+- `backend/trpc/app-router.ts` — registered `notifications.notifyDrivers` route
+- `hooks/useRideStore.ts` — after a successful Supabase ride insert, fires `trpcClient.notifications.notifyDrivers.mutate(...)` server-side so all online drivers receive a remote push even when the app is backgrounded or the screen is locked
+
+**Action required (user):**
+1. **Run migration** — Supabase Dashboard → SQL Editor → run `supabase-schema-push-tokens.sql`
+2. **EAS init** — run `eas init` in the `expo/` directory to get a project ID from Expo, then run `eas build:configure` — this will write the `projectId` into `app.json` under `extra.eas`, which is needed for Expo push tokens to work in production builds
+
+---
 
 ### 2026-06-19 — Removed Mapbox dead code
 
@@ -676,7 +716,32 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
 
 ## Pending Work
 
-1. **Add YouTube reward task** — insert a row in Supabase Dashboard → Table Editor → `reward_tasks`. **YouTube URL not yet provided.** When you have it:
+### Immediate (blockers before first test build)
+
+1. **Run push token migration** — Supabase Dashboard → SQL Editor → run `supabase-schema-push-tokens.sql` (adds `pushToken` column to `users` and `drivers`)
+
+2. **EAS init + build configure** — in terminal inside `expo/`:
+   ```
+   npm install -g eas-cli
+   eas login
+   eas init          # creates projectId, writes it to app.json
+   eas build:configure
+   ```
+   Then run `eas build --profile preview --platform android` to get a real APK for device testing
+
+3. **Push to GitHub** — run `git push` from your terminal
+
+### Before production launch
+
+4. **Phone login OTP** — Twilio credentials not yet available. When ready: Supabase Dashboard → Authentication → Providers → Phone → enable + Account SID + Auth Token + Messaging Service SID
+
+5. **Payment live keys** — Paystack is on test keys only; Flutterwave keys are unset. Replace in `.env` with live keys before production launch
+
+6. **Re-enable email confirmation** — Supabase Dashboard → Authentication → Providers → Email → turn "Confirm email" back ON → then add custom SMTP under Authentication → Settings → SMTP so confirmation emails don't hit the rate limit
+
+7. **End-to-end ride loop test** — rider books → driver receives remote push → driver opens app → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
+
+8. **Add YouTube reward task** — insert a row in Supabase Dashboard → Table Editor → `reward_tasks`. **YouTube URL not yet provided.** When you have it:
    - `type`: `youtube_video`
    - `title`: e.g. "Watch: Introducing Pantra Ride"
    - `url`: your YouTube link
@@ -684,15 +749,11 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
    - `minWatchSeconds`: `120`
    - `isActive`: `true`
 
-2. **Push to GitHub** — run `git push` from your terminal (Git Credential Manager needs GUI to authenticate; cannot be done from Claude Code)
+### Store submission
 
-3. **Phone login OTP** — Twilio credentials not yet available. When ready: Supabase Dashboard → Authentication → Providers → Phone → enable + Account SID + Auth Token + Messaging Service SID
-
-4. **Payment live keys** — Paystack is on test keys only; Flutterwave keys are unset. Replace in `.env` with live keys before production launch
-
-5. **End-to-end ride loop test** — deferred until pending items resolved: rider books → driver notified → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
-
-6. **EAS build setup** — `eas-cli` not yet configured; needed to produce a preview build for real-device testing (`eas login` + `eas build:configure`)
+9. **Apple Developer Program** — enroll at developer.apple.com ($99/year) if not already done; needed for App Store submission and iOS push certificates
+10. **Google Play Console** — register at play.google.com/console ($25 one-time); create the app with package `com.pantra.rides`
+11. **Store assets** — screenshots (6.7" iPhone + Pixel), app descriptions, privacy policy URL (already in app under Terms & Privacy screens)
 
 ---
 

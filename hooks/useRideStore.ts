@@ -12,6 +12,7 @@ import { FirebaseDriverService } from '@/lib/firebase-driver-service';
 import { RideHistoryService } from '@/lib/ride-history-service';
 import { DatabaseService } from '@/lib/database-service';
 import { useAuth } from './useAuthStore';
+import { trpcClient } from '@/lib/trpc';
 
 const isValidUuid = (id: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -455,6 +456,14 @@ export const [RideProvider, useRide] = createContextHook(() => {
     let rideId: string;
     try {
       rideId = await DatabaseService.create('rides', rideData);
+
+      // Notify all online drivers via remote push so they receive the request
+      // even if their app is backgrounded or the screen is locked.
+      void trpcClient.notifications.notifyDrivers.mutate({
+        pickupAddress: rideData.pickupAddress,
+        fare: rideData.fare,
+        rideId,
+      });
     } catch (error) {
       const isSupabaseUser = isValidUuid(user.id);
       if (isSupabaseUser) {

@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { DatabaseService } from './database-service';
+import { supabase } from './supabase';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -12,75 +13,73 @@ Notifications.setNotificationHandler({
   }),
 });
 
+function getProjectId(): string | undefined {
+  return (
+    Constants.expoConfig?.extra?.eas?.projectId ??
+    (Constants as any).easConfig?.projectId
+  );
+}
+
+async function requestPermissions(): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  if (existing === 'granted') return true;
+
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === 'granted';
+}
+
+async function getExpoPushToken(): Promise<string | null> {
+  try {
+    const projectId = getProjectId();
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    return tokenData.data;
+  } catch (err) {
+    console.warn('Could not get Expo push token:', err);
+    return null;
+  }
+}
+
 export class NotificationService {
-  static async requestPermissions(): Promise<boolean> {
-    if (Platform.OS === 'web') {
-      console.log('Push notifications not supported on web');
-      return false;
-    }
+  static async registerRiderPushToken(userId: string): Promise<void> {
+    if (Platform.OS === 'web') return;
+    const granted = await requestPermissions();
+    if (!granted) return;
 
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
+    const token = await getExpoPushToken();
+    if (!token) return;
 
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-
-    if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
-      return false;
-    }
-
-    return true;
+    await supabase.from('users').update({ pushToken: token }).eq('id', userId);
   }
 
-  static async registerForPushNotifications(userId: string): Promise<string | null> {
-    if (Platform.OS === 'web') {
-      return null;
-    }
+  static async registerDriverPushToken(driverId: string): Promise<void> {
+    if (Platform.OS === 'web') return;
+    const granted = await requestPermissions();
+    if (!granted) return;
 
-    try {
-      const hasPermission = await this.requestPermissions();
-      if (!hasPermission) {
-        return null;
-      }
+    const token = await getExpoPushToken();
+    if (!token) return;
 
-      const token = (await Notifications.getExpoPushTokenAsync()).data;
-      
-      await DatabaseService.update('users', userId, {
-        pushToken: token
-      });
-
-      return token;
-    } catch (error) {
-      console.error('Error registering for push notifications:', error);
-      return null;
-    }
+    await supabase.from('drivers').update({ pushToken: token }).eq('id', driverId);
   }
 
   static async sendLocalNotification(
     title: string,
     body: string,
-    data?: any
+    data?: Record<string, unknown>
   ): Promise<void> {
-    if (Platform.OS === 'web') {
-      console.log('Local notification:', title, body);
-      return;
-    }
-
+    if (Platform.OS === 'web') return;
     await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data,
-      },
+      content: { title, body, data, sound: true },
       trigger: null,
     });
   }
 
   static async notifyDriverAssigned(
-    userId: string,
+    _userId: string,
     driverName: string,
     eta: number
   ): Promise<void> {
@@ -91,7 +90,7 @@ export class NotificationService {
     );
   }
 
-  static async notifyDriverArrived(userId: string, driverName: string): Promise<void> {
+  static async notifyDriverArrived(_userId: string, driverName: string): Promise<void> {
     await this.sendLocalNotification(
       'Driver Arrived',
       `${driverName} has arrived at your location`,
@@ -99,7 +98,7 @@ export class NotificationService {
     );
   }
 
-  static async notifyRideStarted(userId: string): Promise<void> {
+  static async notifyRideStarted(_userId: string): Promise<void> {
     await this.sendLocalNotification(
       'Ride Started',
       'Your ride has started. Have a safe journey!',
@@ -107,22 +106,22 @@ export class NotificationService {
     );
   }
 
-  static async notifyRideCompleted(userId: string, fare: number): Promise<void> {
+  static async notifyRideCompleted(_userId: string, fare: number): Promise<void> {
     await this.sendLocalNotification(
       'Ride Completed',
-      `Your ride is complete. Total fare: ₦${fare.toFixed(2)}`,
+      `Your ride is complete. Total fare: ₦${fare.toLocaleString('en-NG', { minimumFractionDigits: 0 })}`,
       { type: 'ride_completed' }
     );
   }
 
   static async notifyNewRideRequest(
-    driverId: string,
+    _driverId: string,
     pickupAddress: string,
     fare: number
   ): Promise<void> {
     await this.sendLocalNotification(
       'New Ride Request',
-      `Pickup: ${pickupAddress} - Fare: ₦${fare.toFixed(0)}`,
+      `Pickup: ${pickupAddress} — ₦${Math.round(fare).toLocaleString('en-NG')}`,
       { type: 'new_ride_request' }
     );
   }
@@ -131,17 +130,11 @@ export class NotificationService {
     onNotificationReceived: (notification: Notifications.Notification) => void,
     onNotificationResponse: (response: Notifications.NotificationResponse) => void
   ): () => void {
-    const receivedSubscription = Notifications.addNotificationReceivedListener(
-      onNotificationReceived
-    );
-
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(
-      onNotificationResponse
-    );
-
+    const received = Notifications.addNotificationReceivedListener(onNotificationReceived);
+    const response = Notifications.addNotificationResponseReceivedListener(onNotificationResponse);
     return () => {
-      receivedSubscription.remove();
-      responseSubscription.remove();
+      received.remove();
+      response.remove();
     };
   }
 }

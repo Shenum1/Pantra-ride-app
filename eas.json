@@ -1,0 +1,87 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "APP_ENV": "development",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCnwNOdzr6OWQNwOQLgpHU-EqwPMd-KKXY",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "888793952935-nj0lsg2cparlqdiqgk4l61slgm432a81.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "206676668811-7cvel1a4sjljl7gb0m0oi8maj4getka0.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "206676668811-5slq4mk007caq2tlpqvbhd3ucdgq601e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_EXPO_GO_IOS_CLIENT_ID": "206676668811-7cvel1a4sjljl7gb0m0oi8maj4getka0.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_EXPO_GO_ANDROID_CLIENT_ID": "206676668811-5slq4mk007caq2tlpqvbhd3ucdgq601e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_RORK_API_BASE_URL": "https://pantra-ride-app.rork.app",
+        "EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY": "pk_test_xxxxxxxxxxxxx",
+        "EXPO_PUBLIC_FLUTTERWAVE_PUBLIC_KEY": "FLWPUBK_TEST-xxxxxxxxxxxxx",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cymdmoprlwfpkczwqhxr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5bWRtb3BybHdmcGtjendxaHhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NzMyNTgsImV4cCI6MjA5NjA0OTI1OH0.QMERpNqu6V8EXqY4zgwXQGJ8EUCESU9CU3dpz1006g4"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCnwNOdzr6OWQNwOQLgpHU-EqwPMd-KKXY",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "888793952935-nj0lsg2cparlqdiqgk4l61slgm432a81.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "206676668811-7cvel1a4sjljl7gb0m0oi8maj4getka0.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "206676668811-5slq4mk007caq2tlpqvbhd3ucdgq601e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_EXPO_GO_IOS_CLIENT_ID": "206676668811-7cvel1a4sjljl7gb0m0oi8maj4getka0.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_EXPO_GO_ANDROID_CLIENT_ID": "206676668811-5slq4mk007caq2tlpqvbhd3ucdgq601e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_RORK_API_BASE_URL": "https://pantra-ride-app.rork.app",
+        "EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY": "pk_test_xxxxxxxxxxxxx",
+        "EXPO_PUBLIC_FLUTTERWAVE_PUBLIC_KEY": "FLWPUBK_TEST-xxxxxxxxxxxxx",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cymdmoprlwfpkczwqhxr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5bWRtb3BybHdmcGtjendxaHhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NzMyNTgsImV4cCI6MjA5NjA0OTI1OH0.QMERpNqu6V8EXqY4zgwXQGJ8EUCESU9CU3dpz1006g4"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyCnwNOdzr6OWQNwOQLgpHU-EqwPMd-KKXY",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "888793952935-nj0lsg2cparlqdiqgk4l61slgm432a81.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "206676668811-7cvel1a4sjljl7gb0m0oi8maj4getka0.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "206676668811-5slq4mk007caq2tlpqvbhd3ucdgq601e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_EXPO_GO_IOS_CLIENT_ID": "206676668811-7cvel1a4sjljl7gb0m0oi8maj4getka0.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_EXPO_GO_ANDROID_CLIENT_ID": "206676668811-5slq4mk007caq2tlpqvbhd3ucdgq601e.apps.googleusercontent.com",
+        "EXPO_PUBLIC_RORK_API_BASE_URL": "https://pantra-ride-app.rork.app",
+        "EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY": "pk_test_xxxxxxxxxxxxx",
+        "EXPO_PUBLIC_FLUTTERWAVE_PUBLIC_KEY": "FLWPUBK_TEST-xxxxxxxxxxxxx",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://cymdmoprlwfpkczwqhxr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5bWRtb3BybHdmcGtjendxaHhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NzMyNTgsImV4cCI6MjA5NjA0OTI1OH0.QMERpNqu6V8EXqY4zgwXQGJ8EUCESU9CU3dpz1006g4"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal"
+      }
+    }
+  }
+}
