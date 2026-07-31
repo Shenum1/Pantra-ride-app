@@ -37,7 +37,8 @@
 | Driver signup | ✅ Working | `app/driver-signup.tsx`, inserts into `drivers` table |
 | Driver login | ✅ Working | `app/driver-login.tsx`, navigates to `/(driver-tabs)/dashboard` |
 | Driver logout | ✅ Working | AsyncStorage session persistence + reliable logout (`hooks/useDriverAuthStore.ts`) |
-| Admin panel | ✅ Working | `(admin-tabs)/_layout.tsx` requires `useAdminAuth()` (shows `AdminLogin` if not authenticated); login is real Supabase auth + `users.role === 'admin'` check (`lib/admin-auth-service.ts`). `dashboard.tsx`/`users.tsx` now show real counts/lists from `admin.overview`/`admin.users` tRPC routes, which use `SUPABASE_SERVICE_ROLE_KEY` to bypass RLS. Requires that key to be set in `.env` and at least one `users` row with `role='admin'` |
+| Admin panel (in-app, `(admin-tabs)`) | ✅ Working | `(admin-tabs)/_layout.tsx` requires `useAdminAuth()` (shows `AdminLogin` if not authenticated); login is real Supabase auth + `users.role === 'admin'` check (`lib/admin-auth-service.ts`). `dashboard.tsx`/`users.tsx` now show real counts/lists from `admin.overview`/`admin.users` tRPC routes, which use `SUPABASE_SERVICE_ROLE_KEY` to bypass RLS. Requires that key to be set in `.env` and at least one `users` row with `role='admin'` |
+| Admin web panel (`admin-web/`, Vite) | ✅ Working | Standalone Vite app, superseding the in-app admin tabs per `docs/ADMIN_WEB_PANEL_SPEC.md` — Dashboard/Users/Verification/Rides/Payouts pages calling the same tRPC admin routes directly via `fetch` (`admin-web/src/lib/api.ts`). Was fully broken end-to-end until this session's fixes: dead Rork tunnel URL, unregistered `admin.rides`/`admin.payouts` routes, wrong `create-context` import depth in those route files, missing `SUPABASE_SERVICE_ROLE_KEY`, missing `web.output: "server"` (see 2026-07-31 entry), and a Supabase Node.js WebSocket crash on every admin request (`backend/lib/supabase-admin.ts`) — all now fixed. Not yet re-verified end-to-end after the latest restart |
 | Splash / cold-open | ✅ Working | 2.6s minimum, 5s timeout fallback for driver auth |
 | GPS — rider | ✅ Working | Real permission request + live position via `useLocationStore`; needs real-device confirmation |
 | GPS — driver | ✅ Working | `useDriverStore.updateLocation()` → `FirebaseDriverService.updateDriverLocation()` writes live location to Supabase `drivers.location`; needs real-device confirmation |
@@ -48,13 +49,13 @@
 | Ride rating | ✅ Working | `useRatingsStore` persists to Supabase `ratings` table via `lib/rating-service.ts`'s `submit_rating` RPC for real users (`test-rider` keeps AsyncStorage); `app/ride-progress.tsx` now navigates to `/rate-driver` with `rideId`/`driverId`/`driverName` after `completeRide()`. `supabase-schema-ratings.sql` migration confirmed run |
 | Fare calculation | ✅ Working | Bolt-style 3-tier NGN pricing (Standard/Comfort/XL) with base+km+min formula |
 | Payments — Paystack | 🔄 Partial | `lib/paystack-service.ts` now calls secure backend tRPC routes (`payments.paystack.*`) using a server-only `PAYSTACK_SECRET_KEY`; dead `components/PaystackPayment.tsx` mock removed. Test keys only — needs live keys + on-device verification of the full flow including wallet credit |
-| Payments — Flutterwave | 🔄 Partial | `lib/flutterwave-service.ts` now calls secure backend tRPC routes (`payments.flutterwave.*`) using a server-only `FLUTTERWAVE_SECRET_KEY`; placeholder env vars added. Needs real keys + on-device verification |
+| Payments — Flutterwave | 🔄 Partial | `lib/flutterwave-service.ts` now calls secure backend tRPC routes (`payments.flutterwave.*`) using a server-only `FLUTTERWAVE_SECRET_KEY`. Real **test** keys now configured in `.env` (were placeholders) — still needs on-device verification of the full flow including `payment-callback.tsx`'s wallet credit |
 | Wallet (rider) | ✅ Working | `hooks/useWalletStore.ts` persists to Supabase (`wallets`/`wallet_transactions`/`wallet_bank_accounts`, see `supabase-schema-wallet.sql`) for real users via `lib/wallet-service.ts`; `test-rider` test account keeps its AsyncStorage mock. Migration confirmed run |
 | Wallet (driver) | ✅ Working | Earnings read from Supabase `rides` table; stats grid shows real `totalRides` + avg/trip; bank account add screen; payout requests tracked in `driver_payouts` (manual processing) |
-| Push notifications | 🔄 Partial | Rider lifecycle notifications (driver assigned/arrived/started/completed) are local — fire correctly via `app/ride-progress.tsx`. Driver new-ride-request push is now **remote**: `useRideStore.requestRide` calls `trpc.notifications.notifyDrivers` server-side → Expo Push API → all online drivers receive push even when app is backgrounded. **Requires:** (1) run `supabase-schema-push-tokens.sql`, (2) `eas init` to get projectId for token registration. |
+| Push notifications | 🔄 Partial | Rider lifecycle notifications (driver assigned/arrived/started/completed) are local — fire correctly via `app/ride-progress.tsx`. Driver new-ride-request push is now **remote**: `useRideStore.requestRide` calls `trpc.notifications.notifyDrivers` server-side → Expo Push API → all online drivers receive push even when app is backgrounded. Was actually unreachable this whole session until `web.output: "server"` was fixed (2026-07-31) — API routes weren't being served at all; the fire-and-forget call also had no `.catch()`, so its failure surfaced as an uncaught error during ride booking (now fixed). **Requires:** (1) run `supabase-schema-push-tokens.sql`, (2) `eas init` to get projectId for token registration. Not yet re-verified end-to-end after the API-route fix |
 | In-app messaging | ✅ Working | `lib/messaging-service.ts` — real Supabase tables + realtime subscriptions. Now bidirectional: drivers message riders from `driver-active-trip.tsx` (existing), and riders can now message drivers from `ride-progress.tsx` (new "Message" button); both `messages.tsx`/`driver-message.tsx` chat screens render timestamps correctly |
-| Maps — Google Maps | ✅ Working | `lib/google-maps-service.ts`, geocoding + routes |
-| Discover places | ✅ Working | `app/(tabs)/discover.tsx` now fetches real nearby places via `GoogleMapsService.getNearbyPlaces()` (Google Places Nearby Search) for the selected category, using the rider's real GPS location, with real ratings/photos/distance/price/open-status; falls back to the old hardcoded `mockPlaces` only if no API key / zero results / network error |
+| Maps — Google Maps | 🔄 Partial | `lib/google-maps-service.ts`. Places + Directions APIs confirmed working with the configured key. **Static Maps API and Geocoding API return `403 not activated`** for this key/project — `components/Map.tsx`'s web map (falls back to a static image since `react-native-maps` doesn't support web) doesn't render, and reverse-geocoding (weather city name) is affected. Needs those two APIs enabled in Google Cloud Console — no code fix needed |
+| Discover places | ✅ Working | `app/(tabs)/discover.tsx` fetches real nearby places via `GoogleMapsService.getNearbyPlaces()` (Google Places Nearby Search) for the selected category, using the rider's real GPS location, with real ratings/photos/distance/price/open-status. The old hardcoded `mockPlaces` fallback (20 fake Abuja venues) was removed (2026-07-30) now that the real API key works — zero-result/error cases just show an empty list |
 | Ride matching | ✅ Working (pull-based) | A new `pending` ride is picked up by nearby online drivers via `FirebaseDriverService.subscribeToRideRequests` (with a local notification); driver accepts via `acceptRide`. `RideMatchingService.matchRideWithDriver()` (auto-assign) is still unused and would conflict with this pull-based flow if called |
 | Driver verification | ✅ Working | `app/driver-documents.tsx` (driver upload screen, linked from driver profile) and `app/(admin-tabs)/verification.tsx` (admin review screen with new "Verify" tab) now call the real `DriverVerificationService`/new `admin.driverDocuments`/`admin.reviewDocument` tRPC routes. `supabase-schema-driver-documents.sql` migration and private "documents" storage bucket confirmed in place |
 | Promotions / promo codes | ✅ Working | `usePromotionsStore` validates against Supabase `promotions` table; `maxDiscountNGN` cap enforced in fare calculation; `user_promo_uses` prevents reuse. Migration confirmed run |
@@ -67,11 +68,120 @@
 | Schedule a ride | ✅ Working | Real `DateTimePicker` + `scheduleRide()` store call + local reminder notification; `scheduled_for` column migration run ✓ |
 | Driver withdrawal | ✅ Working | Manual payout: `driver_bank_accounts` + `driver_payouts` tables live in Supabase ✓; driver adds bank account → submits withdrawal → admin pays out manually |
 | Global route protection | ✅ Working | `(tabs)` already had `AuthGuard`; `(driver-tabs)/_layout.tsx` now wraps in `<AuthGuard requireDriver>`, and `(admin-tabs)/_layout.tsx` now checks `useAdminAuth()` and shows `AdminLogin` when not authenticated. `AdminAuthProvider` added to root `_layout.tsx` so `useAdminAuth()` is available app-wide |
-| Production env vars | 🔄 Partial | Supabase + Google Maps/OAuth real values present; Firebase no longer needed (replaced by Supabase stub). Paystack is test-key only; Flutterwave keys are unset |
+| Production env vars | 🔄 Partial | Local `.env` recreated from scratch this session (had gone missing entirely — never committed, git-ignored). Real values now set: Supabase URL/anon/service-role key, Google Maps key (Places/Directions working; Static Maps + Geocoding APIs still need enabling — see Maps row), Flutterwave test keys. **Paystack is still the placeholder** (`sk_test_xxxxxxxxxxxxx`). Firebase no longer needed (replaced by Supabase stub). `EXPO_PUBLIC_RORK_API_BASE_URL` no longer needed for local dev (auto-detected by `lib/trpc.ts`, see 2026-07-29 entry) — only matters for real production builds |
 
 ---
 
 ## Activity Log
+
+### 2026-07-31 — Web responsive shell; RLS was silently blocking drivers from ever seeing pending rides
+
+**Why (responsive shell):** User reported the web version "doesn't adapt properly" — every screen stretched full-bleed edge-to-edge on wide desktop browsers, since the app was built mobile-first with zero responsive layout handling anywhere in the codebase (confirmed via a full audit: no `Container`/`Screen` wrapper, no breakpoints, no `useWindowDimensions`-based layout logic across ~84 screen files). Chose the low-risk "centered app shell" approach (like Instagram/X/WhatsApp Web) over a full desktop redesign (sidebar nav + per-screen multi-column layouts) — same mobile layout everywhere, just not stretched.
+
+**What changed:**
+- New `components/ResponsiveShell.tsx` — no-ops completely on native (`Platform.OS !== 'web'`); on web, centers content in a `maxWidth: 560` column with a theme-aware (`useTheme()`) frame background/border.
+- `app/_layout.tsx` — wrapped `RootLayoutNav()`'s `<Stack>` + `<Toast />` in `<ResponsiveShell>`. Since every screen and all three tab groups `(tabs)`/`(driver-tabs)`/`(admin-tabs)` nest inside that one root `Stack`, this single wrap point covers the entire app with no other files touched.
+
+**Status:** Code complete, `tsc --noEmit` clean (14 pre-existing unrelated errors only). Not yet visually verified in a browser.
+
+---
+
+**Why (driver never sees pending rides):** Continued debugging the ride-booking flow after the fixes in the entry below. Rider's booking succeeded and the driver *did* receive the Expo push notification for the new ride request (proving `notifyDrivers` and the ride insert both worked) — but opening the driver app never showed the ride on the "Available Rides" / Trips list.
+
+Two things were tried/checked first, in order:
+1. Two client-side hypotheses were checked and ruled out via user confirmation: location permission was granted, and driver/rider were in the same area, so the 10km `distanceToPickup` filter in `lib/firebase-driver-service.ts` wasn't the cause.
+2. `hooks/useDriverStore.ts` — added an `AppState` listener that refetches pending ride requests (`loadDriverData`) whenever the app returns to `'active'`, on the theory that realtime subscriptions get dropped while backgrounded (a real gap worth having regardless, but it didn't fix this particular bug).
+
+**Root cause:** Found in `database/schemas/supabase-schema.sql` — the *only* `select` RLS policy on `public.rides` is:
+```sql
+create policy "Rider can read own rides"
+  on public.rides for select using (
+    auth.uid() = "userId" or
+    auth.uid() in (select "userId" from public.drivers where "id" = "driverId")
+  );
+```
+This only allows the rider who created a ride, or a driver **already assigned** to it (`driverId` set), to read the row. A `pending` ride has `driverId = NULL` — so no driver could *ever* see any pending ride, for any reason. RLS filters this out silently (no error surfaced anywhere), so `getPendingRideRequests()`/`subscribeToRideRequests()` always returned zero rows for drivers regardless of location, distance, or any client-side logic — this was never fixable from the app side.
+
+**Fixed:** New additive migration `database/schemas/supabase-schema-driver-pending-rides.sql` — adds a policy allowing any authenticated driver to `select` rides where `status = 'pending'`. Postgres OR's multiple `select` policies together, so this adds to (doesn't replace) the existing rider/assigned-driver policy.
+
+**Action required (user):** run `supabase-schema-driver-pending-rides.sql` in Supabase Dashboard → SQL Editor.
+
+**Status:** Migration file written, not yet run/verified by the user. Once run, re-test the original repro (book while driver app is backgrounded → push arrives → open app → ride should now appear).
+
+---
+
+### 2026-07-31 — API routes were never actually enabled; fixed real-device ride booking crash + Supabase Node.js SSR crash
+
+**Why:** Booking a ride from a physical device hit `Uncaught Error: Unexpected token '<', "<!DOCTYPE "... is not valid JSON` from tRPC's `httpLink`. That's the signature of a client expecting JSON but receiving an HTML page — the request never reached an API handler.
+
+**Root cause:** Confirmed directly from Expo's CLI source (`node_modules/@expo/cli/build/src/start/server/metro/router.js` / `MetroBundlerDevServer.js`): **Expo Router API routes require `web.output: "server"` in `app.json`, even during local dev** — not just for production export, which is what the 2026-07-29 entry below assumed when adding `app/api/[...path]+api.ts`. `app.json`'s `web` block had no `output` field, so every `/api/*` request had been silently falling through to the app's HTML shell the whole time that route existed.
+
+**Fixed:**
+- `app.json` — added `"output": "server"` to the `web` block.
+- `hooks/useRideStore.ts` — the driver-notification push call after a successful ride insert was fire-and-forget with no `.catch()` (`void trpcClient.notifications.notifyDrivers.mutate({...})`), so its failure surfaced as a scary unhandled-rejection error even though the ride itself was already created successfully. Added `.catch()` to log instead of throw.
+
+**New crash surfaced by the above fix:** enabling `web.output: "server"` made Expo Router evaluate the app's module graph in real Node.js (to build the route table), which now executes `lib/supabase.ts` at import time in Node — triggering `Server Error: Node.js 20 detected without native WebSocket support`. `@supabase/supabase-js` eagerly constructs a `RealtimeClient` in `createClient()` regardless of whether realtime is used, and Node <22 has no native `WebSocket` global, so it throws unless a `transport` is supplied.
+- `lib/supabase.ts` — pass a local no-op `NoopSocketTransport` class as `realtime.transport`, but only when `typeof window === 'undefined'` (Node/SSR only — never used in the browser or native app, and never actually opens a connection in that context, since SSR never subscribes to anything).
+- `backend/lib/supabase-admin.ts` — same fix, applied unconditionally (this client only ever runs server-side). This one was a **live** bug, not just an SSR-time one: every admin route (`admin.users`, `admin.rides`, `admin.payouts.*`, etc.) would have hit this same crash on every real request, since `supabaseAdmin` is constructed eagerly at module import.
+
+Neither fix pulls in the `ws` package (Supabase's own suggested fix) — a plain inline stub class satisfies `RealtimeClientOptions.transport`'s type without risking a Metro bundling failure from trying to bundle a Node-only package for native/web-client targets.
+
+**Status:** `tsc --noEmit` clean on all four changed files (only pre-existing unrelated `admin-web` `import.meta.env` typing errors remain, not from this change). Not yet re-verified end-to-end after restart — needs a full dev server restart (`app.json` changes aren't picked up by hot reload), then re-test: rider booking a ride from a physical device, `admin-web`'s Users/Rides/Payouts/Verification pages, and the Discover tab's real Google Places results (same underlying `/api/*` dead-end likely affected all of these).
+
+---
+
+### 2026-07-30 — Removed hardcoded Discover mock places now that the Google Maps key is live
+
+**Why:** `app/(tabs)/discover.tsx` fell back to a 20-entry hardcoded `mockPlaces` array (fake Abuja venues) whenever the real Google Places API returned zero results or errored. Now that a real `EXPO_PUBLIC_GOOGLE_MAPS_API_KEY` is configured, this fallback is no longer needed and was masking whether the real integration actually works.
+
+**What changed:**
+- `app/(tabs)/discover.tsx` — deleted the `mockPlaces` array and its two fallback call sites (zero-results branch and the catch block); both now just set an empty list instead. Also removed the now-dead `phone?: string` field from the `Place` interface (only ever populated by the removed mock data — real Google results never set it).
+
+**Separately diagnosed (no code fix needed — external config):** while investigating why the on-web map wasn't rendering, found via direct API testing that the configured Google Maps key has **Places API** and **Directions API** enabled, but **Maps Static API** and **Geocoding API** return `403 This API is not activated on your API project`. Maps Static API is what `components/Map.tsx` uses to render the map on web (`react-native-maps` doesn't support web, so it falls back to a static image); Geocoding API feeds the weather widget's city name lookup. Both need to be enabled in Google Cloud Console → APIs & Services → Library for the same project the key belongs to.
+
+**Status:** Mock data removal is code-complete and typechecked clean. Static map / geocoding still blocked on enabling those two APIs (user action, not code).
+
+---
+
+### 2026-07-29 — Admin web panel (Vite), payment callback screen, admin payouts/rides routes committed
+
+**Why:** These files existed locally (uncommitted) from earlier work but were never logged or pushed — discovered while restoring a downloaded copy of the repo as a proper git clone. Committed as `e24a0c6`.
+
+**What changed:**
+- **`admin-web/`** — a standalone admin web app (Vite + React + TypeScript + Tailwind + `react-router-dom`, package name `pantra-admin-web`), connecting directly to Supabase (`admin-web/src/lib/supabase.ts`) for auth (`useAuth.ts`) and calling the Expo backend's tRPC HTTP endpoint directly via `fetch` (`admin-web/src/lib/api.ts`, not the `@trpc/client` package) for admin data. Pages: `Login`, `Dashboard`, `Users`, `Verification`, `Rides`, `Payouts`, wrapped in `RequireAuth` + `Layout`.
+  - **Note:** `docs/ADMIN_WEB_PANEL_SPEC.md` (2026-06-18) specced this as a **Next.js** app; what's actually here is **Vite**, not Next.js. Worth confirming this was an intentional deviation.
+- **`app/payment-callback.tsx`** — new Expo Router screen that verifies a Flutterwave transaction (`FlutterwaveService.verifyTransaction(txRef)`) after redirect, credits the rider's wallet via `useWallet().addMoneyAsync` when `purpose === 'wallet_funding'`, and shows a verifying/success/failed state before routing back to `/wallet` or `/(tabs)/home`.
+- **`backend/trpc/routes/admin/payouts/list/route.ts`** and **`.../update-status/route.ts`** — new `adminProcedure` routes: `list` paginates `driver_payouts` (optional status filter) joined with driver name/email and bank account details; `updateStatus` transitions a payout to `processing`/`completed`/`failed` (stamping `completedAt`, optional `failureReason`).
+- **`backend/trpc/routes/admin/rides/route.ts`** — new `adminProcedure` route paginating the `rides` table (optional status filter), joined with rider/driver display names.
+
+**Fixed:** `backend/trpc/app-router.ts` didn't register these new routes under `admin`. Checked `admin-web/src/pages/Rides.tsx` (calls `trpcQuery('admin.rides', ...)` — a direct query, not `admin.rides.list`) and `Payouts.tsx` (calls `admin.payouts.list` / `admin.payouts.updateStatus`), then wired the router to match exactly:
+```ts
+admin: createTRPCRouter({
+  // ...existing
+  rides: adminRidesRoute,
+  payouts: createTRPCRouter({ list: adminPayoutsListRoute, updateStatus: adminPayoutsUpdateStatusRoute }),
+}),
+```
+
+**Status:** Router wiring complete, confirmed via `tsc --noEmit` (see 2026-07-29 entry below — root `node_modules` is now installed). Still pending: confirm Vite-vs-Next.js was an intentional deviation from the spec, and manually test the admin-web Payouts/Rides pages + payment-callback flow end-to-end.
+
+---
+
+### 2026-07-29 — Dropped Rork tunnel dependency; auto-detected API base URL; fixed broken admin route imports
+
+**Why:** The project's only way to run its backend (`backend/hono.ts`) was `bunx rork start -p <id> --tunnel`, which mounts the Hono app and exposes it via a Rork-hosted public tunnel URL (`*.rork.app`). That tunnel is only live while someone's `rork start` process is actively running — it had gone stale (404s on every route), breaking `admin-web`'s Users/Rides/Payouts/Verification pages. Separately, running `npm install` (instead of `bun install`) failed outright with an ERESOLVE peer-dependency conflict from `@rork-ai/toolkit-sdk`'s nested dependency tree.
+
+**What changed:**
+- New `app/api/[...path]+api.ts` — a catch-all Expo Router API route that mounts the existing `backend/hono.ts` app at `/api` via `new Hono().route("/api", backendApp)` (the mounting pattern `hono.ts`'s own comment already anticipated: `// app will be mounted at /api`). This means a plain `expo start` now serves `/api/trpc/*` and `/api/google-maps` directly from the dev server — no Rork CLI, account, or tunnel required.
+- `lib/trpc.ts` — `getBaseUrl()` no longer requires manually editing `.env` every time you switch between local web dev and phone/LAN testing. New priority order: (1) web → `window.location.origin`; (2) native dev (Expo Go/dev client) → `Constants.expoConfig.hostUri`, which Expo sets automatically to the bundler's actual LAN/tunnel address; (3) native production build (no dev bundler) → falls back to the explicit `EXPO_PUBLIC_RORK_API_BASE_URL`/`extra.rorkApiBaseUrl` env value.
+- `scripts/start-expo-web.mjs` / `scripts/start-expo-phone.mjs` — removed the hardcoded `.cmd` extension on the Windows `expo` binary path. `bun install` generates `expo.exe`/`expo.bunx` in `node_modules/.bin`, not npm's `.cmd` shim, so the hardcoded path broke when deps were installed via Bun (which is required here — see ERESOLVE note above). Dropping the extension lets Windows' `PATHEXT` resolution find whichever one actually exists.
+- **Bug fix (found via `tsc --noEmit` after finally getting root `node_modules` installed):** `backend/trpc/routes/admin/rides/route.ts` and both `admin/payouts/{list,update-status}/route.ts` (from the 2026-07-29 commit above) each had one extra `../` in their `create-context` import, e.g. `"../../../../../create-context"` instead of the correct `"../../../../create-context"` — `TS2307: Cannot find module`. These would have 500'd at runtime even with the router correctly wired. Fixed to match the depth used by sibling routes (`admin/users`, `admin/overview`, etc.).
+
+**Action required (user):** dependencies must be installed with `bun install`, not `npm install` (the ERESOLVE conflict above). Local dev now runs via `npm run dev` (web, localhost) or `npm run phone` (LAN, for Expo Go) — the old `npm run start`/`start-web` scripts (`bunx rork start ... --tunnel`) are no longer needed for local development.
+
+**Status:** Code complete, `tsc --noEmit` clean for all changed/new files (only pre-existing unrelated errors remain: `Map.tsx` static marker overlay styles, `firebase/auth` test-file type errors, `admin-web`'s `import.meta.env` typing — none introduced by this change). Not yet verified end-to-end on a physical device via `npm run phone`.
+
+---
 
 ### 2026-06-19 — Production prep: bundle ID, EAS build config, remote push notifications
 

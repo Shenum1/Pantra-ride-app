@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  AppState,
   Linking,
   Platform,
   Pressable,
@@ -27,6 +28,8 @@ import { useDriverStore } from '@/hooks/useDriverStore';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { MessagingService } from '@/lib/messaging-service';
 import { GoogleMapsService } from '@/lib/google-maps-service';
+import { RideMatchingService } from '@/lib/ride-matching-service';
+import { DatabaseService } from '@/lib/database-service';
 import { Location } from '@/types';
 
 type DriverTripStatus = 'heading_to_pickup' | 'at_pickup' | 'in_progress';
@@ -119,6 +122,45 @@ export default function DriverActiveTrip() {
 
     setTripStatus('heading_to_pickup');
   }, [currentRide, tripStatus]);
+
+  // Detect the rider cancelling mid-trip. Same pattern as app/ride-progress.tsx: a
+  // realtime subscription plus an AppState-foreground refetch and a short poll as a
+  // safety net, since relying on the subscription alone has proven unreliable (missed
+  // events on brief socket drops or while the app is backgrounded).
+  useEffect(() => {
+    const rideId = currentRide?.id;
+    if (!rideId) return;
+
+    let handled = false;
+
+    const checkForCancellation = (ride: { status?: string }) => {
+      if (handled || ride.status !== 'cancelled') return;
+      handled = true;
+      Alert.alert('Trip cancelled', 'The rider cancelled this trip.');
+      router.replace('/(driver-tabs)/trips');
+    };
+
+    const unsubscribe = RideMatchingService.subscribeToRideUpdates(rideId, checkForCancellation);
+
+    const refetch = () => {
+      void DatabaseService.get('rides', rideId).then((ride) => {
+        if (ride) checkForCancellation(ride as { status?: string });
+      });
+    };
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') refetch();
+    });
+
+    const pollInterval = setInterval(refetch, 8000);
+
+    return () => {
+      handled = true;
+      unsubscribe();
+      appStateSubscription.remove();
+      clearInterval(pollInterval);
+    };
+  }, [currentRide?.id]);
 
   const mapDestination = useMemo(() => {
     if (!currentRide) {
@@ -304,6 +346,25 @@ export default function DriverActiveTrip() {
     ]);
   };
 
+  const handleCancelTrip = () => {
+    Alert.alert('Cancel Trip', 'Are you sure you want to cancel this trip? The rider will be notified.', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await updateRideStatus('cancelled');
+            router.replace('/(driver-tabs)/trips');
+          } catch (error) {
+            console.error('Error cancelling trip:', error);
+            Alert.alert('Error', 'Failed to cancel trip');
+          }
+        },
+      },
+    ]);
+  };
+
   const tripTitle = tripStatus === 'heading_to_pickup'
     ? 'Heading to pickup'
     : tripStatus === 'at_pickup'
@@ -426,6 +487,10 @@ export default function DriverActiveTrip() {
             </Pressable>
           )}
         </View>
+
+        <Pressable style={styles.cancelTripButton} onPress={handleCancelTrip} testID="driver-cancel-trip-button">
+          <Text style={styles.cancelTripButtonText}>Cancel Trip</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -613,5 +678,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  cancelTripButton: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  cancelTripButtonText: {
+    color: Colors.light.danger,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

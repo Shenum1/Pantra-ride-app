@@ -463,6 +463,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
         pickupAddress: rideData.pickupAddress,
         fare: rideData.fare,
         rideId,
+      }).catch((error) => {
+        console.error('Failed to notify drivers of new ride:', error);
       });
     } catch (error) {
       const isSupabaseUser = isValidUuid(user.id);

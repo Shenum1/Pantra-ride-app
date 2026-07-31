@@ -26,7 +26,10 @@ export class DatabaseService {
       .eq('id', documentId)
       .single();
 
-    if (error) return null;
+    if (error) {
+      console.error(`DatabaseService.get('${tableName}', '${documentId}') failed:`, error.message);
+      return null;
+    }
     return data;
   }
 

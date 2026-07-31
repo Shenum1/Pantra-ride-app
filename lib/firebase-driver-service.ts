@@ -100,19 +100,36 @@ export class FirebaseDriverService {
       .sort((a: any, b: any) => a.eta - b.eta);
   }
 
+  private static async getDeclinedRideIds(driverId: string): Promise<Set<string>> {
+    const { data, error } = await supabase
+      .from('ride_declines')
+      .select('rideId')
+      .eq('driverId', driverId);
+
+    if (error) {
+      console.error('getDeclinedRideIds failed:', error.message);
+      return new Set();
+    }
+    return new Set((data ?? []).map((d: { rideId: string }) => d.rideId));
+  }
+
   static async getPendingRideRequests(driverId: string): Promise<RideRequestForDriver[]> {
     const driver = await this.getDriver(driverId);
     if (!driver?.location) return [];
 
     const { data: rides, error } = await supabase
       .from('rides')
-      .select('*, users!rides_userId_fkey(displayName, rating, phone, photoURL)')
+      .select('*')
       .eq('status', 'pending')
       .order('createdAt', { ascending: false })
       .limit(20);
 
+    if (error) console.error('getPendingRideRequests failed:', error.message);
     if (error || !rides) return [];
-    return this.mapRidesToRequests(rides, driver);
+
+    const declinedIds = await this.getDeclinedRideIds(driverId);
+    const visibleRides = rides.filter((r: { id: string }) => !declinedIds.has(r.id));
+    return this.mapRidesToRequests(visibleRides, driver);
   }
 
   static subscribeToRideRequests(
@@ -120,7 +137,7 @@ export class FirebaseDriverService {
     callback: (requests: RideRequestForDriver[]) => void
   ): () => void {
     const channel = supabase
-      .channel('pending-rides')
+      .channel(`pending-rides-${driverId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rides', filter: 'status=eq.pending' },
@@ -135,7 +152,9 @@ export class FirebaseDriverService {
             .order('createdAt', { ascending: false })
             .limit(20);
 
-          callback(this.mapRidesToRequests(rides ?? [], driver));
+          const declinedIds = await this.getDeclinedRideIds(driverId);
+          const visibleRides = (rides ?? []).filter((r: { id: string }) => !declinedIds.has(r.id));
+          callback(this.mapRidesToRequests(visibleRides, driver));
         }
       )
       .subscribe();
@@ -158,8 +177,6 @@ export class FirebaseDriverService {
       const distanceToPickup = calculateDistance(
         driver.location.latitude, driver.location.longitude, pickupLat, pickupLng
       );
-
-      if (distanceToPickup > 10) continue;
 
       const passenger = ride.users || {};
       results.push({
@@ -198,8 +215,11 @@ export class FirebaseDriverService {
     await this.setDriverOnlineStatus(driverId, false);
   }
 
-  static async declineRide(_rideId: string): Promise<void> {
-    // No-op: driver simply doesn't accept
+  static async declineRide(rideId: string, driverId: string): Promise<void> {
+    const { error } = await supabase
+      .from('ride_declines')
+      .upsert({ rideId, driverId }, { onConflict: 'rideId,driverId', ignoreDuplicates: true });
+    if (error) throw new Error(error.message);
   }
 
   static async updateRideStatus(

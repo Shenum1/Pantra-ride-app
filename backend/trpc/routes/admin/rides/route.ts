@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { adminProcedure } from "../../../../create-context";
+import { adminProcedure } from "../../../create-context";
 
 export default adminProcedure
   .input(

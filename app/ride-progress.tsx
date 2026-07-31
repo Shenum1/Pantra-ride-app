@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   Linking,
   PanResponder,
   Platform,
@@ -371,6 +372,7 @@ export default function RideProgressScreen() {
       if (isCancelled) return;
       const status = (ride.status as RideRequest['status'] | undefined) ?? latestRideStatus;
       const driverId = ride.driverId ?? null;
+      console.log('[ride-progress] handleRideUpdate', { rideId: currentRideId, status, driverId, knownDriverId });
       latestRideStatus = status;
 
       if (status === 'cancelled') {
@@ -482,11 +484,30 @@ export default function RideProgressScreen() {
       subscribeDriverLocation(knownDriverId);
     }
 
-    void DatabaseService.get('rides', currentRideId).then((ride) => {
-      if (ride) {
-        void handleRideUpdate(ride);
+    const refetchRide = () => {
+      void DatabaseService.get('rides', currentRideId).then((ride) => {
+        if (ride) {
+          void handleRideUpdate(ride);
+        }
+      });
+    };
+
+    refetchRide();
+
+    // Safety net for the same reason as the driver side (hooks/useDriverStore.ts):
+    // the realtime subscription above can miss events (brief socket drop, app
+    // backgrounded while the rider waits), leaving the screen stuck on "searching"
+    // even though the driver already accepted. Refetch on foreground and poll while
+    // still waiting, so a missed event gets corrected within a bounded time.
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && !isCancelled) {
+        refetchRide();
       }
     });
+
+    const pollInterval = setInterval(() => {
+      if (!isCancelled) refetchRide();
+    }, 8000);
 
     return () => {
       isCancelled = true;
@@ -494,6 +515,8 @@ export default function RideProgressScreen() {
       if (driverLocationUnsubscribe) {
         driverLocationUnsubscribe();
       }
+      appStateSubscription.remove();
+      clearInterval(pollInterval);
     };
   }, [currentRideId, resolvedDropoffLocation, resolvedPickupLocation, updateRideSession]);
 

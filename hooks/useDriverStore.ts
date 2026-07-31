@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { AppState, Platform } from 'react-native';
+import * as ExpoLocation from 'expo-location';
 import createContextHook from '@nkzw/create-context-hook';
 import { DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
@@ -49,6 +51,16 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     }
   }, []);
 
+  const refreshRideRequests = useCallback(async (driverId: string) => {
+    try {
+      const requests = await FirebaseDriverService.getPendingRideRequests(driverId);
+      knownRequestIdsRef.current = new Set(requests.map((r) => r.id).filter((id): id is string => !!id));
+      setRideRequests(requests);
+    } catch (error) {
+      console.error('Error refreshing ride requests:', error);
+    }
+  }, []);
+
   const { driver } = useDriverAuth();
   const activeDriverId = driver?.id;
 
@@ -91,6 +103,40 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       };
     }
   }, [activeDriverId, isOnline, loadDriverData]);
+
+  // Realtime subscriptions can miss events while the app is backgrounded (mobile OSes
+  // commonly suspend WebSocket connections), so a ride created during that window would
+  // never appear until something else refetches. Refresh on foreground to close that gap.
+  // Deliberately only refreshes ride requests, not the full profile/isOnline — reloading
+  // isOnline from a fresh read here could race with an in-flight toggleOnlineStatus call
+  // and stomp the just-toggled value back to whatever was last read.
+  useEffect(() => {
+    if (!activeDriverId) return;
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        refreshRideRequests(activeDriverId);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [activeDriverId, refreshRideRequests]);
+
+  // Safety net independent of realtime/AppState — poll for pending rides while online.
+  // The realtime channel and foreground-refetch above should normally be enough, but
+  // both depend on triggers (a live socket, a true OS-level background/foreground
+  // transition) that have proven unreliable in practice. Polling guarantees a new ride
+  // surfaces within a bounded time regardless of which of those mechanisms is flaky.
+  // Same as above: only refreshes ride requests, never isOnline/driverProfile.
+  useEffect(() => {
+    if (!activeDriverId || !isOnline) return;
+
+    const interval = setInterval(() => {
+      refreshRideRequests(activeDriverId);
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [activeDriverId, isOnline, refreshRideRequests]);
 
   const updateDriverProfile = useCallback(async (updates: Partial<DriverProfile>) => {
     if (!driverProfile) return;
@@ -137,19 +183,22 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       console.log('Ride accepted:', rideId);
     } catch (error) {
       console.error('Error accepting ride:', error);
+      throw error;
     }
   }, [rideRequests, driverProfile]);
 
   const declineRideRequest = useCallback(async (rideId: string) => {
     try {
-      await FirebaseDriverService.declineRide(rideId);
+      if (!driverProfile) return;
+
+      await FirebaseDriverService.declineRide(rideId, driverProfile.id);
       setRideRequests(prev => prev.filter(r => r.id !== rideId));
-      
+
       console.log('Ride declined:', rideId);
     } catch (error) {
       console.error('Error declining ride:', error);
     }
-  }, []);
+  }, [driverProfile]);
 
   const updateRideStatus = useCallback(async (status: 'in_progress' | 'completed' | 'cancelled') => {
     try {
@@ -186,6 +235,41 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       console.error('Error updating location:', error);
     }
   }, [driverProfile]);
+
+  // GPS tracking used to live only inside app/(driver-tabs)/trips.tsx's effects, so
+  // drivers.location was never written unless the driver happened to have the Trips
+  // screen mounted while online — e.g. toggling online from Dashboard and backgrounding
+  // the app before visiting Trips left location permanently null, which silently made
+  // getPendingRideRequests()/subscribeToRideRequests() return nothing (both bail out on
+  // !driver.location). Tracking here instead runs whenever the driver is online, app-wide.
+  useEffect(() => {
+    if (Platform.OS === 'web' || !activeDriverId || !isOnline) return;
+
+    let cancelled = false;
+    let subscription: ExpoLocation.LocationSubscription | null = null;
+
+    (async () => {
+      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+      if (status !== 'granted' || cancelled) return;
+
+      const initial = await ExpoLocation.getCurrentPositionAsync({});
+      if (cancelled) return;
+      void updateLocation(initial.coords.latitude, initial.coords.longitude);
+
+      subscription = await ExpoLocation.watchPositionAsync(
+        { accuracy: ExpoLocation.Accuracy.High, timeInterval: 5000, distanceInterval: 10 },
+        (location) => {
+          void updateLocation(location.coords.latitude, location.coords.longitude);
+        }
+      );
+      if (cancelled) subscription.remove();
+    })();
+
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, [activeDriverId, isOnline, updateLocation]);
 
   return useMemo(() => ({
     driverProfile,

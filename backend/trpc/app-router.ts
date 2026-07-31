@@ -8,6 +8,9 @@ import adminOverviewRoute from "./routes/admin/overview/route";
 import adminUsersRoute from "./routes/admin/users/route";
 import adminDriverDocumentsRoute from "./routes/admin/driver-documents/route";
 import adminReviewDocumentRoute from "./routes/admin/review-document/route";
+import adminRidesRoute from "./routes/admin/rides/route";
+import adminPayoutsListRoute from "./routes/admin/payouts/list/route";
+import adminPayoutsUpdateStatusRoute from "./routes/admin/payouts/update-status/route";
 import notifyDriversRoute from "./routes/notifications/notify-drivers/route";
 
 export const appRouter = createTRPCRouter({
@@ -29,6 +32,11 @@ export const appRouter = createTRPCRouter({
     users: adminUsersRoute,
     driverDocuments: adminDriverDocumentsRoute,
     reviewDocument: adminReviewDocumentRoute,
+    rides: adminRidesRoute,
+    payouts: createTRPCRouter({
+      list: adminPayoutsListRoute,
+      updateStatus: adminPayoutsUpdateStatusRoute,
+    }),
   }),
   notifications: createTRPCRouter({
     notifyDrivers: notifyDriversRoute,

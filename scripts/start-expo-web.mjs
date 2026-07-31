@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 
 const isWindows = process.platform === 'win32';
-const command = isWindows ? '.\\node_modules\\.bin\\expo.cmd' : './node_modules/.bin/expo';
+const command = isWindows ? '.\\node_modules\\.bin\\expo' : './node_modules/.bin/expo';
 const child = spawn(command, ['start', '--web', '--localhost', '--port', '8081'], {
   cwd: process.cwd(),
   env: {

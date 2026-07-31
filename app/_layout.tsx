@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import { View } from "react-native";
 import Toast from 'react-native-toast-message';
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { ResponsiveShell } from "@/components/ResponsiveShell";
 import { LocationProvider } from "@/hooks/useLocationStore";
 import { RideProvider } from "@/hooks/useRideStore";
 import { AuthProvider, useAuth } from "@/hooks/useAuthStore";
@@ -50,7 +51,7 @@ function PushTokenRegistrar() {
 
 function RootLayoutNav() {
   return (
-    <>
+    <ResponsiveShell>
       <Stack screenOptions={{ headerBackTitle: "Back" }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="welcome" options={{ headerShown: false }} />
@@ -104,7 +105,7 @@ function RootLayoutNav() {
 
       </Stack>
       <Toast />
-    </>
+    </ResponsiveShell>
   );
 }
 
