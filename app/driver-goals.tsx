@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -21,84 +21,91 @@ import {
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
+import { useDriverStore } from '@/hooks/useDriverStore';
 
-interface Goal {
+type GoalType = 'earnings' | 'trips' | 'hours' | 'rating';
+
+interface GoalDefinition {
   id: string;
   title: string;
   description: string;
-  type: 'earnings' | 'trips' | 'hours' | 'rating';
+  type: GoalType;
   target: number;
-  current: number;
   deadline: string;
-  icon: React.ReactNode;
-  color: string;
   unit: string;
-  completed: boolean;
 }
 
-export default function DriverGoals() {
-  const [goals, setGoals] = useState<Goal[]>([
-    {
-      id: '1',
-      title: 'Weekly Earnings',
-      description: 'Earn ₦1,000 this week',
-      type: 'earnings',
-      target: 1000,
-      current: 892.30,
-      deadline: 'Dec 15, 2024',
-      icon: <DollarSign size={24} color="#4CAF50" />,
-      color: '#4CAF50',
-      unit: '₦',
-      completed: false,
-    },
-    {
-      id: '2',
-      title: 'Monthly Trips',
-      description: 'Complete 200 trips this month',
-      type: 'trips',
-      target: 200,
-      current: 156,
-      deadline: 'Dec 31, 2024',
-      icon: <MapPin size={24} color="#2196F3" />,
-      color: '#2196F3',
-      unit: '',
-      completed: false,
-    },
-    {
-      id: '3',
-      title: 'Daily Hours',
-      description: 'Drive 8 hours today',
-      type: 'hours',
-      target: 8,
-      current: 8,
-      deadline: 'Today',
-      icon: <Clock size={24} color="#FF9800" />,
-      color: '#FF9800',
-      unit: 'h',
-      completed: true,
-    },
-    {
-      id: '4',
-      title: 'Rating Goal',
-      description: 'Maintain 4.9+ rating',
-      type: 'rating',
-      target: 4.9,
-      current: 4.8,
-      deadline: 'Ongoing',
-      icon: <TrendingUp size={24} color="#9C27B0" />,
-      color: '#9C27B0',
-      unit: '',
-      completed: false,
-    },
-  ]);
+const GOAL_TYPE_CONFIG: Record<GoalType, { icon: (color: string) => React.ReactNode; color: string; unit: string }> = {
+  earnings: { icon: (color) => <DollarSign size={24} color={color} />, color: '#4CAF50', unit: '₦' },
+  trips: { icon: (color) => <MapPin size={24} color={color} />, color: '#2196F3', unit: '' },
+  hours: { icon: (color) => <Clock size={24} color={color} />, color: '#FF9800', unit: 'h' },
+  rating: { icon: (color) => <TrendingUp size={24} color={color} />, color: '#9C27B0', unit: '' },
+};
 
+const DEFAULT_GOALS: GoalDefinition[] = [
+  {
+    id: 'weekly-earnings',
+    title: 'Weekly Earnings',
+    description: 'Earn ₦1,000 this week',
+    type: 'earnings',
+    target: 1000,
+    deadline: 'This week',
+    unit: '₦',
+  },
+  {
+    id: 'total-trips',
+    title: 'Trip Milestone',
+    description: 'Complete 200 trips',
+    type: 'trips',
+    target: 200,
+    deadline: 'Ongoing',
+    unit: '',
+  },
+  {
+    id: 'online-hours',
+    title: 'Online Hours',
+    description: 'Spend 8 hours online',
+    type: 'hours',
+    target: 8,
+    deadline: 'Ongoing',
+    unit: 'h',
+  },
+  {
+    id: 'rating-goal',
+    title: 'Rating Goal',
+    description: 'Maintain 4.9+ rating',
+    type: 'rating',
+    target: 4.9,
+    deadline: 'Ongoing',
+    unit: '',
+  },
+];
+
+export default function DriverGoals() {
+  const { stats } = useDriverStore();
+  const [customGoals, setCustomGoals] = useState<GoalDefinition[]>([]);
   const [showAddGoal, setShowAddGoal] = useState(false);
   const [newGoal, setNewGoal] = useState({
     title: '',
     target: '',
     deadline: '',
-    type: 'earnings' as Goal['type'],
+    type: 'earnings' as GoalType,
   });
+
+  const getCurrentForType = (type: GoalType): number => {
+    switch (type) {
+      case 'earnings':
+        return stats?.weekEarnings ?? 0;
+      case 'trips':
+        return stats?.totalRides ?? 0;
+      case 'hours':
+        return stats?.onlineHours ?? 0;
+      case 'rating':
+        return stats?.averageRating ?? 0;
+    }
+  };
+
+  const goals = useMemo(() => [...DEFAULT_GOALS, ...customGoals], [customGoals]);
 
   const getProgressPercentage = (current: number, target: number) => {
     return Math.min((current / target) * 100, 100);
@@ -117,52 +124,44 @@ export default function DriverGoals() {
       return;
     }
 
-    const goalConfig = {
-      earnings: { icon: <DollarSign size={24} color="#4CAF50" />, color: '#4CAF50', unit: '₦' },
-      trips: { icon: <MapPin size={24} color="#2196F3" />, color: '#2196F3', unit: '' },
-      hours: { icon: <Clock size={24} color="#FF9800" />, color: '#FF9800', unit: 'h' },
-      rating: { icon: <TrendingUp size={24} color="#9C27B0" />, color: '#9C27B0', unit: '' },
-    };
+    const config = GOAL_TYPE_CONFIG[newGoal.type];
 
-    const config = goalConfig[newGoal.type];
-    
-    const goal: Goal = {
+    const goal: GoalDefinition = {
       id: Date.now().toString(),
       title: newGoal.title,
       description: `${newGoal.type === 'earnings' ? 'Earn' : newGoal.type === 'trips' ? 'Complete' : newGoal.type === 'hours' ? 'Drive' : 'Achieve'} ${newGoal.target}${config.unit}`,
       type: newGoal.type,
       target: parseFloat(newGoal.target),
-      current: 0,
       deadline: newGoal.deadline,
-      icon: config.icon,
-      color: config.color,
       unit: config.unit,
-      completed: false,
     };
 
-    setGoals([...goals, goal]);
+    setCustomGoals(prev => [...prev, goal]);
     setNewGoal({ title: '', target: '', deadline: '', type: 'earnings' });
     setShowAddGoal(false);
   };
 
-  const GoalCard = ({ goal }: { goal: Goal }) => {
-    const percentage = getProgressPercentage(goal.current, goal.target);
+  const GoalCard = ({ goal }: { goal: GoalDefinition }) => {
+    const config = GOAL_TYPE_CONFIG[goal.type];
+    const current = getCurrentForType(goal.type);
+    const completed = current >= goal.target;
+    const percentage = getProgressPercentage(current, goal.target);
     const progressColor = getProgressColor(percentage);
 
     return (
-      <View style={[styles.goalCard, goal.completed && styles.completedCard]}>
+      <View style={[styles.goalCard, completed && styles.completedCard]}>
         <View style={styles.goalHeader}>
-          <View style={[styles.goalIcon, { backgroundColor: goal.color + '20' }]}>
-            {goal.icon}
+          <View style={[styles.goalIcon, { backgroundColor: config.color + '20' }]}>
+            {config.icon(config.color)}
           </View>
           <View style={styles.goalInfo}>
-            <Text style={[styles.goalTitle, goal.completed && styles.completedText]}>
+            <Text style={[styles.goalTitle, completed && styles.completedText]}>
               {goal.title}
             </Text>
             <Text style={styles.goalDescription}>{goal.description}</Text>
-            <Text style={styles.goalDeadline}>Due: {goal.deadline}</Text>
+            <Text style={styles.goalDeadline}>{goal.deadline}</Text>
           </View>
-          {goal.completed && (
+          {completed && (
             <CheckCircle size={24} color={Colors.light.success} />
           )}
         </View>
@@ -174,7 +173,7 @@ export default function DriverGoals() {
                 <Star size={12} fill={Colors.light.warning} color={Colors.light.warning} />
               )}
               <Text style={styles.progressText}>
-                {goal.unit}{goal.current.toFixed(goal.type === 'rating' ? 1 : 0)} / {goal.unit}{goal.target.toFixed(goal.type === 'rating' ? 1 : 0)}
+                {goal.unit}{current.toFixed(goal.type === 'rating' ? 1 : 0)} / {goal.unit}{goal.target.toFixed(goal.type === 'rating' ? 1 : 0)}
               </Text>
             </View>
             <Text style={[styles.percentageText, { color: progressColor }]}>
@@ -182,14 +181,14 @@ export default function DriverGoals() {
             </Text>
           </View>
           <View style={styles.progressBar}>
-            <View 
+            <View
               style={[
-                styles.progressFill, 
-                { 
+                styles.progressFill,
+                {
                   width: `${percentage}%`,
                   backgroundColor: progressColor
                 }
-              ]} 
+              ]}
             />
           </View>
         </View>
@@ -200,14 +199,14 @@ export default function DriverGoals() {
   const AddGoalForm = () => (
     <View style={styles.addGoalForm}>
       <Text style={styles.formTitle}>Add New Goal</Text>
-      
+
       <TextInput
         style={styles.input}
         placeholder="Goal title"
         value={newGoal.title}
         onChangeText={(text) => setNewGoal({ ...newGoal, title: text })}
       />
-      
+
       <View style={styles.typeSelector}>
         {(['earnings', 'trips', 'hours', 'rating'] as const).map((type) => (
           <TouchableOpacity
@@ -227,7 +226,7 @@ export default function DriverGoals() {
           </TouchableOpacity>
         ))}
       </View>
-      
+
       <TextInput
         style={styles.input}
         placeholder="Target amount"
@@ -235,22 +234,22 @@ export default function DriverGoals() {
         onChangeText={(text) => setNewGoal({ ...newGoal, target: text })}
         keyboardType="numeric"
       />
-      
+
       <TextInput
         style={styles.input}
         placeholder="Deadline (e.g., Dec 31, 2024)"
         value={newGoal.deadline}
         onChangeText={(text) => setNewGoal({ ...newGoal, deadline: text })}
       />
-      
+
       <View style={styles.formButtons}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.cancelButton}
           onPress={() => setShowAddGoal(false)}
         >
           <Text style={styles.cancelButtonText}>Cancel</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.addButton}
           onPress={handleAddGoal}
         >
@@ -260,18 +259,23 @@ export default function DriverGoals() {
     </View>
   );
 
+  const completedCount = goals.filter(g => getCurrentForType(g.type) >= g.target).length;
+  const avgProgress = goals.length > 0
+    ? Math.round(goals.reduce((acc, goal) => acc + getProgressPercentage(getCurrentForType(goal.type), goal.target), 0) / goals.length)
+    : 0;
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
           <ArrowLeft size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Goals</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.addGoalButton}
           onPress={() => setShowAddGoal(true)}
         >
@@ -282,32 +286,26 @@ export default function DriverGoals() {
       {/* Stats */}
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>
-            {goals.filter(g => g.completed).length}
-          </Text>
+          <Text style={styles.statNumber}>{completedCount}</Text>
           <Text style={styles.statLabel}>Completed</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>
-            {goals.filter(g => !g.completed).length}
-          </Text>
+          <Text style={styles.statNumber}>{goals.length - completedCount}</Text>
           <Text style={styles.statLabel}>In Progress</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>
-            {Math.round(goals.reduce((acc, goal) => acc + getProgressPercentage(goal.current, goal.target), 0) / goals.length)}%
-          </Text>
+          <Text style={styles.statNumber}>{avgProgress}%</Text>
           <Text style={styles.statLabel}>Avg Progress</Text>
         </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {showAddGoal && <AddGoalForm />}
-        
+
         {goals.map((goal) => (
           <GoalCard key={goal.id} goal={goal} />
         ))}

@@ -14,7 +14,6 @@ import {
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  TrendingUp,
   Star,
   Clock,
   DollarSign,
@@ -39,6 +38,8 @@ const DRIVING_VIDEOS = [
   'https://videos.pexels.com/video-files/3571264/3571264-uhd_2560_1440_30fps.mp4',
 ];
 
+const WEEKLY_GOAL_NGN = 1000;
+
 export default function DriverDashboard() {
   const { driver } = useDriverAuth();
   const { driverProfile, stats, earnings, isOnline, toggleOnlineStatus } = useDriverStore();
@@ -52,7 +53,7 @@ export default function DriverDashboard() {
   const todayEarnings = stats?.todayEarnings || driverProfile?.earnings?.today || 0;
   const weeklyEarnings = stats?.weekEarnings || driverProfile?.earnings?.thisWeek || 0;
   const monthlyEarnings = stats?.monthEarnings || driverProfile?.earnings?.thisMonth || 0;
-  const rating = stats?.averageRating || driver?.rating || 5.0;
+  const rating = stats?.averageRating ?? driver?.rating ?? null;
   const completedTrips = stats?.totalRides || driverProfile?.totalRides || 0;
   const totalEarnings = stats?.totalEarnings || 0;
   const onlineHours = stats?.onlineHours || 0;
@@ -170,10 +171,6 @@ export default function DriverDashboard() {
               <Text style={styles.earningsLabel}>Today&apos;s Earnings</Text>
               <Text style={styles.earningsAmount}>₦{todayEarnings.toFixed(2)}</Text>
             </View>
-            <View style={styles.earningsBadge}>
-              <TrendingUp size={16} color="#10B981" strokeWidth={2.5} />
-              <Text style={styles.earningsTrend}>{todayEarnings > 0 ? '+' : ''}{((todayEarnings / (todayEarnings + 1)) * 100).toFixed(0)}%</Text>
-            </View>
           </View>
           <View style={styles.earningsStats}>
             <View style={styles.earningsStat}>
@@ -235,7 +232,7 @@ export default function DriverDashboard() {
               <View style={styles.performanceIcon}>
                 <Star size={20} color="#F59E0B" strokeWidth={2.5} />
               </View>
-              <Text style={styles.performanceValue}>{rating}</Text>
+              <Text style={styles.performanceValue}>{rating != null ? rating.toFixed(1) : 'New'}</Text>
               <Text style={styles.performanceLabel}>Rating</Text>
             </View>
             
@@ -304,14 +301,14 @@ export default function DriverDashboard() {
           <Text style={styles.sectionTitle}>Weekly Goal Progress</Text>
           <View style={styles.goalCard}>
             <View style={styles.goalHeader}>
-              <Text style={styles.goalTitle}>₦1,000 Weekly Target</Text>
-              <Text style={styles.goalPercentage}>{Math.round((weeklyEarnings / 1000) * 100)}%</Text>
+              <Text style={styles.goalTitle}>₦{WEEKLY_GOAL_NGN.toLocaleString()} Weekly Target</Text>
+              <Text style={styles.goalPercentage}>{Math.round((weeklyEarnings / WEEKLY_GOAL_NGN) * 100)}%</Text>
             </View>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${Math.min((weeklyEarnings / 1000) * 100, 100)}%` }]} />
+              <View style={[styles.progressFill, { width: `${Math.min((weeklyEarnings / WEEKLY_GOAL_NGN) * 100, 100)}%` }]} />
             </View>
             <Text style={styles.goalSubtext}>
-              {weeklyEarnings >= 1000 ? 'Goal completed!' : `₦${(1000 - weeklyEarnings).toFixed(2)} to go`}
+              {weeklyEarnings >= WEEKLY_GOAL_NGN ? 'Goal completed!' : `₦${(WEEKLY_GOAL_NGN - weeklyEarnings).toFixed(2)} to go`}
             </Text>
           </View>
         </View>

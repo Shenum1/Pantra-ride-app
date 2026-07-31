@@ -339,7 +339,11 @@ export default function DriverWallet() {
             <View style={[styles.statIconContainer, { backgroundColor: '#4CAF50' + '20' }]}>
               <Clock size={22} color="#4CAF50" />
             </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>—</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>
+              {stats.onlineHours > 0
+                ? `${Math.floor(stats.onlineHours)}h ${Math.round((stats.onlineHours % 1) * 60)}m`
+                : '—'}
+            </Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Online Time</Text>
           </View>
 

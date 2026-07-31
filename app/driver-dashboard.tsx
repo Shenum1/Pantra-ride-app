@@ -31,6 +31,7 @@ export default function DriverDashboard() {
   const {
     rideRequests,
     currentRide,
+    stats,
     isLoading,
     acceptRideRequest,
     declineRideRequest,
@@ -143,7 +144,7 @@ export default function DriverDashboard() {
               <Text style={styles.driverName}>{driver.name}</Text>
               <View style={styles.ratingContainer}>
                 <Star size={16} color={Colors.light.primary} fill={Colors.light.primary} />
-                <Text style={styles.rating}>{driver.rating.toFixed(1)}</Text>
+                <Text style={styles.rating}>{driver.rating != null ? driver.rating.toFixed(1) : 'New'}</Text>
                 <Text style={styles.totalRides}>• {driver.totalRides} rides</Text>
               </View>
             </View>
@@ -164,11 +165,11 @@ export default function DriverDashboard() {
         {/* Earnings Summary */}
         <View style={styles.earningsCard}>
           <Text style={styles.cardTitle}>Today&apos;s Earnings</Text>
-          <Text style={styles.earningsAmount}>₦{(driver.totalEarnings * 0.1).toFixed(2)}</Text>
+          <Text style={styles.earningsAmount}>₦{(stats?.todayEarnings ?? 0).toFixed(2)}</Text>
           <View style={styles.earningsRow}>
             <View style={styles.earningsStat}>
               <Text style={styles.earningsLabel}>This Week</Text>
-              <Text style={styles.earningsValue}>₦{(driver.totalEarnings * 0.3).toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{(stats?.weekEarnings ?? 0).toFixed(2)}</Text>
             </View>
             <View style={styles.earningsStat}>
               <Text style={styles.earningsLabel}>Total</Text>
@@ -193,7 +194,7 @@ export default function DriverDashboard() {
                   <Text style={styles.passengerName}>{currentRide.passenger.name}</Text>
                   <View style={styles.passengerRating}>
                     <Star size={14} color={Colors.light.primary} fill={Colors.light.primary} />
-                    <Text style={styles.passengerRatingText}>{currentRide.passenger.rating}</Text>
+                    <Text style={styles.passengerRatingText}>{currentRide.passenger.rating != null ? currentRide.passenger.rating : 'New'}</Text>
                   </View>
                 </View>
               </View>
@@ -278,7 +279,7 @@ export default function DriverDashboard() {
                       <Text style={styles.passengerName}>{request.passenger.name}</Text>
                       <View style={styles.passengerRating}>
                         <Star size={14} color={Colors.light.primary} fill={Colors.light.primary} />
-                        <Text style={styles.passengerRatingText}>{request.passenger.rating}</Text>
+                        <Text style={styles.passengerRatingText}>{request.passenger.rating != null ? request.passenger.rating : 'New'}</Text>
                       </View>
                     </View>
                   </View>

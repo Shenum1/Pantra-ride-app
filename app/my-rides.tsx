@@ -144,7 +144,7 @@ export default function MyRidesScreen() {
           <View style={styles.ratingContainer}>
             <Star size={14} color={colors.warning} fill={colors.warning} />
             <Text style={[styles.rating, { color: colors.text }]}>
-              {ride.driver.rating.toFixed(1)}
+              {ride.driver.rating != null ? ride.driver.rating.toFixed(1) : 'New'}
             </Text>
           </View>
         </View>

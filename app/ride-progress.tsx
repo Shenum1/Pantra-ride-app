@@ -423,7 +423,7 @@ export default function RideProgressScreen() {
           : {
               id: driverId,
               name: 'Your driver',
-              rating: 5,
+              rating: null,
               location: driverLoc,
               carType: 'Standard',
               carModel: '',

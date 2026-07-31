@@ -46,7 +46,7 @@ export interface Review {
 export interface Driver {
   id: string;
   name: string;
-  rating: number;
+  rating: number | null;
   location: Location;
   carType: string;
   carModel: string;
@@ -59,7 +59,7 @@ export interface Driver {
 export interface PassengerInfo {
   id: string;
   name: string;
-  rating: number;
+  rating: number | null;
   photo?: string;
   phone?: string;
 }
@@ -106,48 +106,13 @@ export interface RideRequest {
   cancelReasonDetails?: string;
 }
 
-export interface EarnTask {
-  id: string;
-  title: string;
-  description: string;
-  type: 'video' | 'social' | 'survey' | 'referral' | 'daily_check' | 'app_download';
-  points: number;
-  estimatedTime: number;
-  icon: string;
-  isCompleted: boolean;
-  completedAt?: Date;
-  expiresAt?: Date;
-  url?: string;
-  requirements?: string[];
-  category: 'entertainment' | 'social' | 'engagement' | 'referral';
-}
-
-export interface UserEarnings {
-  totalPoints: number;
-  availablePoints: number;
-  usedPoints: number;
-  completedTasks: number;
-  freeRidesEarned: number;
-  currentStreak: number;
-  lastActivity: Date;
-}
-
-export interface PointsTransaction {
-  id: string;
-  type: 'earned' | 'redeemed';
-  points: number;
-  description: string;
-  taskId?: string;
-  createdAt: Date;
-}
-
 export interface DriverProfile {
   id: string;
   name: string;
   email: string;
   phone: string;
   photo?: string;
-  rating: number;
+  rating: number | null;
   totalRides: number;
   isOnline: boolean;
   isVerified: boolean;
@@ -209,7 +174,7 @@ export interface DriverEarnings {
 export interface DriverStats {
   totalRides: number;
   totalEarnings: number;
-  averageRating: number;
+  averageRating: number | null;
   acceptanceRate: number;
   cancellationRate: number;
   onlineHours: number;

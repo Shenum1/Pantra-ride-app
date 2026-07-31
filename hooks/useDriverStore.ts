@@ -15,7 +15,7 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
   const [stats, setStats] = useState<DriverStats>({
     totalRides: 0,
     totalEarnings: 0,
-    averageRating: 5.0,
+    averageRating: null,
     acceptanceRate: 0,
     cancellationRate: 0,
     onlineHours: 0,
@@ -154,6 +154,11 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
 
       const newStatus = !isOnline;
       await FirebaseDriverService.setDriverOnlineStatus(driverProfile.id, newStatus);
+      if (newStatus) {
+        await FirebaseDriverService.startOnlineSession(driverProfile.id);
+      } else {
+        await FirebaseDriverService.endOnlineSession(driverProfile.id);
+      }
       setIsOnline(newStatus);
 
       if (!newStatus) {

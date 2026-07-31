@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,12 @@ import {
   Award,
   Trophy,
   Target,
-  Zap,
-  Moon,
   ArrowLeft,
   CheckCircle,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
+import { useDriverStore } from '@/hooks/useDriverStore';
 
 interface Achievement {
   id: string;
@@ -26,78 +25,58 @@ interface Achievement {
   description: string;
   icon: React.ReactNode;
   earned: boolean;
-  progress?: number;
-  total?: number;
+  progress: number;
+  total: number;
   color: string;
-  earnedDate?: string;
-  reward?: string;
 }
 
 export default function DriverAchievements() {
-  const achievements: Achievement[] = [
+  const { stats } = useDriverStore();
+  const totalRides = stats?.totalRides ?? 0;
+  const averageRating = stats?.averageRating ?? null;
+
+  const achievements: Achievement[] = useMemo(() => [
     {
-      id: '1',
+      id: 'first-ride',
       title: 'First Ride',
       description: 'Complete your first ride',
       icon: <Star size={24} color="#FFD700" />,
-      earned: true,
+      earned: totalRides >= 1,
+      progress: Math.min(totalRides, 1),
+      total: 1,
       color: '#FFD700',
-      earnedDate: 'Jan 15, 2022',
-      reward: '₦5 Bonus',
     },
     {
-      id: '2',
+      id: 'century-club',
       title: 'Century Club',
       description: 'Complete 100 rides',
       icon: <Trophy size={24} color="#FF9800" />,
-      earned: true,
+      earned: totalRides >= 100,
+      progress: Math.min(totalRides, 100),
+      total: 100,
       color: '#FF9800',
-      earnedDate: 'Mar 22, 2022',
-      reward: '₦25 Bonus',
     },
     {
-      id: '3',
-      title: 'Speed Demon',
-      description: 'Complete 10 rides in one day',
-      icon: <Zap size={24} color="#2196F3" />,
-      earned: true,
-      color: '#2196F3',
-      earnedDate: 'Apr 8, 2022',
-      reward: '₦15 Bonus',
-    },
-    {
-      id: '4',
-      title: 'Perfect Rating',
-      description: 'Maintain 5.0 rating for 50 rides',
+      id: 'perfect-rating',
+      title: 'Highly Rated',
+      description: 'Maintain a 4.9+ rating across 50 rides',
       icon: <Award size={24} color="#4CAF50" />,
-      earned: false,
-      progress: 32,
+      earned: totalRides >= 50 && (averageRating ?? 0) >= 4.9,
+      progress: Math.min(totalRides, 50),
       total: 50,
       color: '#4CAF50',
-      reward: '₦50 Bonus',
     },
     {
-      id: '5',
-      title: 'Night Owl',
-      description: 'Complete 25 rides after midnight',
-      icon: <Moon size={24} color="#9C27B0" />,
-      earned: false,
-      progress: 18,
-      total: 25,
-      color: '#9C27B0',
-      reward: '₦30 Bonus',
-    },
-    {
-      id: '6',
+      id: 'thousand-club',
       title: 'Thousand Club',
       description: 'Complete 1000 rides',
       icon: <Target size={24} color="#FF5722" />,
-      earned: true,
+      earned: totalRides >= 1000,
+      progress: Math.min(totalRides, 1000),
+      total: 1000,
       color: '#FF5722',
-      earnedDate: 'Nov 12, 2023',
-      reward: '₦100 Bonus',
     },
-  ];
+  ], [totalRides, averageRating]);
 
   const AchievementCard = ({ achievement }: { achievement: Achievement }) => (
     <View style={[
@@ -124,50 +103,44 @@ export default function DriverAchievements() {
           ]}>
             {achievement.description}
           </Text>
-          {achievement.reward && (
-            <Text style={styles.rewardText}>Reward: {achievement.reward}</Text>
-          )}
         </View>
       </View>
-      
+
       {achievement.earned ? (
         <View style={styles.earnedContainer}>
           <View style={styles.earnedRow}>
             <CheckCircle size={14} color={Colors.light.success} />
             <Text style={styles.earnedText}>Earned</Text>
           </View>
-          {achievement.earnedDate && (
-            <Text style={styles.earnedDate}>{achievement.earnedDate}</Text>
-          )}
         </View>
       ) : (
-        achievement.progress && achievement.total && (
-          <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { 
-                    width: `${(achievement.progress / achievement.total) * 100}%`,
-                    backgroundColor: achievement.color 
-                  }
-                ]} 
-              />
-            </View>
-            <Text style={styles.progressText}>
-              {achievement.progress}/{achievement.total} completed
-            </Text>
+        <View style={styles.progressContainer}>
+          <View style={styles.progressBar}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${(achievement.progress / achievement.total) * 100}%`,
+                  backgroundColor: achievement.color
+                }
+              ]}
+            />
           </View>
-        )
+          <Text style={styles.progressText}>
+            {achievement.progress}/{achievement.total} completed
+          </Text>
+        </View>
       )}
     </View>
   );
+
+  const earnedCount = achievements.filter(a => a.earned).length;
 
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
@@ -180,15 +153,11 @@ export default function DriverAchievements() {
       {/* Stats */}
       <View style={styles.statsContainer}>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>
-            {achievements.filter(a => a.earned).length}
-          </Text>
+          <Text style={styles.statNumber}>{earnedCount}</Text>
           <Text style={styles.statLabel}>Earned</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={styles.statNumber}>
-            {achievements.length - achievements.filter(a => a.earned).length}
-          </Text>
+          <Text style={styles.statNumber}>{achievements.length - earnedCount}</Text>
           <Text style={styles.statLabel}>In Progress</Text>
         </View>
         <View style={styles.statItem}>
@@ -198,7 +167,7 @@ export default function DriverAchievements() {
       </View>
 
       {/* Achievements List */}
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -304,11 +273,6 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     marginBottom: 8,
   },
-  rewardText: {
-    fontSize: 12,
-    color: Colors.light.success,
-    fontWeight: '600',
-  },
   lockedText: {
     color: Colors.light.gray,
   },
@@ -325,10 +289,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: Colors.light.success,
-  },
-  earnedDate: {
-    fontSize: 12,
-    color: Colors.light.textSecondary,
   },
   progressContainer: {
     marginTop: 8,

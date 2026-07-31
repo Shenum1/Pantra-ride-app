@@ -12,7 +12,8 @@ export interface User {
   name: string;
   email: string;
   phone: string;
-  rating: number;
+  rating: number | null;
+  totalRatings?: number;
   profileImage?: string;
   authProvider?: 'email' | 'google' | 'phone';
 }
@@ -74,7 +75,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             name: profile?.displayName || session.user.email?.split('@')[0] || 'User',
             email: session.user.email || '',
             phone: profile?.phoneNumber || '',
-            rating: 5.0,
+            rating: profile?.rating ?? null,
+            totalRatings: profile?.totalRatings ?? 0,
             profileImage: profile?.photoURL,
             authProvider: 'email',
           };
@@ -117,7 +119,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       if (normalizedEmail === TEST_RIDER_EMAIL && password === TEST_RIDER_PASSWORD) {
         const testUserData: User = {
           id: 'test-rider', name: 'Test Rider', email: TEST_RIDER_EMAIL,
-          phone: '+234 123 456 7890', rating: 5.0, authProvider: 'email',
+          phone: '+234 123 456 7890', rating: null, authProvider: 'email',
         };
         await saveUser(testUserData);
         Toast.show({ type: 'success', text1: 'Welcome back!', text2: 'Logged in as Test Rider', position: 'top' });
@@ -138,7 +140,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         name: profile?.displayName || supabaseUser.email?.split('@')[0] || 'User',
         email: supabaseUser.email || email,
         phone: profile?.phoneNumber || '',
-        rating: 5.0,
+        rating: profile?.rating ?? null,
+        totalRatings: profile?.totalRatings ?? 0,
         profileImage: profile?.photoURL,
         authProvider: 'email',
       };
@@ -175,7 +178,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await AuthService.updateUserProfile(supabaseUser.id, { phoneNumber: phone, photoURL: storedProfileImage } as any);
 
       const userData: User = {
-        id: supabaseUser.id, name, email, phone, rating: 5.0,
+        id: supabaseUser.id, name, email, phone, rating: null,
         profileImage: storedProfileImage, authProvider: 'email',
       };
       await saveUser(userData);
@@ -273,7 +276,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         name: profile?.displayName || 'Phone User',
         email: profile?.email || '',
         phone: pendingPhoneNumber,
-        rating: 5.0,
+        rating: profile?.rating ?? null,
+        totalRatings: profile?.totalRatings ?? 0,
         authProvider: 'phone',
       };
       await saveUser(userData);

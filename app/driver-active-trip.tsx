@@ -335,8 +335,20 @@ export default function DriverActiveTrip() {
         text: 'Complete',
         onPress: async () => {
           try {
+            const completedRide = currentRide;
             await updateRideStatus('completed');
-            router.replace('/(driver-tabs)/trips');
+            if (completedRide?.id && completedRide?.passenger?.id) {
+              router.replace({
+                pathname: '/rate-rider',
+                params: {
+                  rideId: completedRide.id,
+                  riderId: completedRide.passenger.id,
+                  riderName: completedRide.passenger.name,
+                },
+              });
+            } else {
+              router.replace('/(driver-tabs)/trips');
+            }
           } catch (error) {
             console.error('Error completing trip:', error);
             Alert.alert('Error', 'Failed to complete trip');
@@ -407,7 +419,7 @@ export default function DriverActiveTrip() {
             <Text style={styles.passengerName}>{currentRide.passenger?.name || 'Passenger'}</Text>
             <View style={styles.ratingContainer}>
               <Star size={14} color="#FFD700" fill="#FFD700" />
-              <Text style={styles.rating}>{currentRide.passenger?.rating?.toFixed(1) || '5.0'}</Text>
+              <Text style={styles.rating}>{currentRide.passenger?.rating != null ? currentRide.passenger.rating.toFixed(1) : 'New'}</Text>
             </View>
           </View>
           <View style={styles.contactButtons}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,61 +7,62 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { Stack } from 'expo-router';
-import { 
+import {
   CheckCircle,
   TrendingDown,
   TrendingUp,
   Calendar,
   Star,
-  Gift
+  Gift,
+  Youtube,
+  Share2,
 } from 'lucide-react-native';
-import { useEarn } from '@/hooks/useEarnStore';
+import { useAuth } from '@/hooks/useAuthStore';
+import { usePoints } from '@/hooks/usePointsStore';
 import Colors from '@/constants/colors';
-import EarnTaskIcon from '@/components/EarnTaskIcon';
+import { RewardTask, PointsTransaction } from '@/lib/rewards-service';
 
 export default function EarnHistoryScreen() {
-  const {
-    getCompletedTasks,
-    transactions,
-    userEarnings,
-    isLoading
-  } = useEarn();
+  const { user } = useAuth();
+  const { tasks, completedTaskIds, transactions, balance, isLoading, loadPoints } = usePoints();
 
   const [selectedTab, setSelectedTab] = useState<'tasks' | 'transactions'>('tasks');
 
-  const completedTasks = getCompletedTasks();
-  const sortedTransactions = [...transactions].sort((a, b) => 
+  useEffect(() => {
+    if (user?.id && user.id !== 'test-rider') {
+      loadPoints(user.id);
+    }
+  }, [user?.id]);
+
+  const completedTasks = tasks.filter(t => completedTaskIds.includes(t.id));
+  const sortedTransactions = [...transactions].sort((a, b) =>
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
-  const renderTaskItem = (task: any) => (
+  const renderTaskItem = (task: RewardTask) => (
     <View key={task.id} style={styles.historyItem}>
       <View style={styles.itemIconContainer}>
-        <EarnTaskIcon icon={task.icon} size={18} color={Colors.light.primary} />
+        {task.type === 'youtube_video'
+          ? <Youtube size={18} color="#FF0000" />
+          : <Share2 size={18} color={Colors.light.primary} />}
       </View>
       <View style={styles.itemContent}>
         <Text style={styles.itemTitle}>{task.title}</Text>
         <Text style={styles.itemDescription}>{task.description}</Text>
-        <View style={styles.itemMeta}>
-          <Calendar size={12} color={Colors.light.textSecondary} />
-          <Text style={styles.itemDate}>
-            {task.completedAt?.toLocaleDateString()}
-          </Text>
-        </View>
       </View>
       <View style={styles.itemPoints}>
         <View style={styles.pointsBadge}>
           <Star size={12} color={Colors.light.primary} />
-          <Text style={styles.pointsText}>+{task.points}</Text>
+          <Text style={styles.pointsText}>+{task.pointsReward}</Text>
         </View>
       </View>
     </View>
   );
 
-  const renderTransactionItem = (transaction: any) => (
+  const renderTransactionItem = (transaction: PointsTransaction) => (
     <View key={transaction.id} style={styles.historyItem}>
       <View style={styles.itemIconContainer}>
-        {transaction.type === 'earned' ? (
+        {transaction.amount > 0 ? (
           <TrendingUp size={20} color={Colors.light.success} />
         ) : (
           <TrendingDown size={20} color={Colors.light.error} />
@@ -72,16 +73,16 @@ export default function EarnHistoryScreen() {
         <View style={styles.itemMeta}>
           <Calendar size={12} color={Colors.light.textSecondary} />
           <Text style={styles.itemDate}>
-            {transaction.createdAt.toLocaleDateString()}
+            {new Date(transaction.createdAt).toLocaleDateString()}
           </Text>
         </View>
       </View>
       <View style={styles.itemPoints}>
         <Text style={[
           styles.transactionPoints,
-          transaction.type === 'earned' ? styles.earnedPoints : styles.spentPoints
+          transaction.amount > 0 ? styles.earnedPoints : styles.spentPoints
         ]}>
-          {transaction.type === 'earned' ? '+' : '-'}{transaction.points}
+          {transaction.amount > 0 ? '+' : ''}{transaction.amount}
         </Text>
       </View>
     </View>
@@ -97,28 +98,28 @@ export default function EarnHistoryScreen() {
 
   return (
     <View style={styles.container}>
-      <Stack.Screen 
-        options={{ 
+      <Stack.Screen
+        options={{
           title: 'Earning History',
           headerStyle: { backgroundColor: Colors.light.background },
           headerTintColor: Colors.light.text
-        }} 
+        }}
       />
 
       {/* Summary Stats */}
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{userEarnings.totalPoints}</Text>
-            <Text style={styles.summaryLabel}>Total Earned</Text>
+            <Text style={styles.summaryValue}>{balance}</Text>
+            <Text style={styles.summaryLabel}>Points Balance</Text>
           </View>
           <View style={styles.summaryItem}>
             <Text style={styles.summaryValue}>{completedTasks.length}</Text>
             <Text style={styles.summaryLabel}>Tasks Done</Text>
           </View>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{userEarnings.freeRidesEarned}</Text>
-            <Text style={styles.summaryLabel}>Free Rides</Text>
+            <Text style={styles.summaryValue}>{sortedTransactions.length}</Text>
+            <Text style={styles.summaryLabel}>Transactions</Text>
           </View>
         </View>
       </View>
@@ -132,9 +133,9 @@ export default function EarnHistoryScreen() {
           ]}
           onPress={() => setSelectedTab('tasks')}
         >
-          <CheckCircle 
-            size={16} 
-            color={selectedTab === 'tasks' ? 'white' : Colors.light.textSecondary} 
+          <CheckCircle
+            size={16}
+            color={selectedTab === 'tasks' ? 'white' : Colors.light.textSecondary}
           />
           <Text style={[
             styles.tabText,
@@ -143,7 +144,7 @@ export default function EarnHistoryScreen() {
             Completed Tasks
           </Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity
           style={[
             styles.tab,
@@ -151,9 +152,9 @@ export default function EarnHistoryScreen() {
           ]}
           onPress={() => setSelectedTab('transactions')}
         >
-          <Gift 
-            size={16} 
-            color={selectedTab === 'transactions' ? 'white' : Colors.light.textSecondary} 
+          <Gift
+            size={16}
+            color={selectedTab === 'transactions' ? 'white' : Colors.light.textSecondary}
           />
           <Text style={[
             styles.tabText,

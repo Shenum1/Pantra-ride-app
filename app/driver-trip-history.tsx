@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import {
   MapPin,
@@ -14,118 +15,57 @@ import {
   Star,
   Calendar,
   ArrowLeft,
-  Filter,
   Navigation,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
-
-interface Trip {
-  id: string;
-  passengerName: string;
-  pickup: string;
-  destination: string;
-  date: string;
-  time: string;
-  duration: string;
-  distance: string;
-  fare: number;
-  tip: number;
-  rating: number;
-  status: 'completed' | 'cancelled';
-}
+import { useDriverAuth } from '@/hooks/useDriverAuthStore';
+import { FirebaseDriverService, DriverTripRecord } from '@/lib/firebase-driver-service';
 
 export default function TripHistory() {
+  const { driver } = useDriverAuth();
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [trips, setTrips] = useState<DriverTripRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const trips: Trip[] = [
-    {
-      id: '1',
-      passengerName: 'Sarah Johnson',
-      pickup: '123 Main St',
-      destination: 'Downtown Mall',
-      date: 'Dec 11, 2024',
-      time: '2:30 PM',
-      duration: '15 min',
-      distance: '2.3 mi',
-      fare: 12.50,
-      tip: 3.00,
-      rating: 5.0,
-      status: 'completed',
-    },
-    {
-      id: '2',
-      passengerName: 'Mike Chen',
-      pickup: 'Airport Terminal',
-      destination: 'Hotel District',
-      date: 'Dec 11, 2024',
-      time: '1:45 PM',
-      duration: '25 min',
-      distance: '5.1 mi',
-      fare: 28.75,
-      tip: 5.00,
-      rating: 4.8,
-      status: 'completed',
-    },
-    {
-      id: '3',
-      passengerName: 'Emma Davis',
-      pickup: 'University Campus',
-      destination: 'Shopping Center',
-      date: 'Dec 11, 2024',
-      time: '12:15 PM',
-      duration: '18 min',
-      distance: '3.7 mi',
-      fare: 18.25,
-      tip: 2.50,
-      rating: 4.9,
-      status: 'completed',
-    },
-    {
-      id: '4',
-      passengerName: 'John Smith',
-      pickup: 'City Center',
-      destination: 'Residential Area',
-      date: 'Dec 10, 2024',
-      time: '6:20 PM',
-      duration: '12 min',
-      distance: '1.8 mi',
-      fare: 9.75,
-      tip: 0.00,
-      rating: 0,
-      status: 'cancelled',
-    },
-    {
-      id: '5',
-      passengerName: 'Lisa Wong',
-      pickup: 'Business District',
-      destination: 'Train Station',
-      date: 'Dec 10, 2024',
-      time: '4:30 PM',
-      duration: '22 min',
-      distance: '4.2 mi',
-      fare: 22.00,
-      tip: 4.00,
-      rating: 5.0,
-      status: 'completed',
-    },
-  ];
+  const loadTrips = useCallback(async () => {
+    if (!driver?.id) return;
+    setIsLoading(true);
+    try {
+      const data = await FirebaseDriverService.getDriverTripHistory(driver.id);
+      setTrips(data);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [driver?.id]);
 
-  const filterTrips = (trips: Trip[]) => {
+  useEffect(() => {
+    loadTrips();
+  }, [loadTrips]);
+
+  const formatDistance = (distanceKm: number) => `${distanceKm.toFixed(1)} km`;
+  const formatDuration = (durationMin: number) => {
+    if (durationMin < 60) return `${Math.round(durationMin)} min`;
+    const hours = Math.floor(durationMin / 60);
+    const mins = Math.round(durationMin % 60);
+    return `${hours}h ${mins}m`;
+  };
+
+  const filterTrips = (trips: DriverTripRecord[]) => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     return trips.filter(trip => {
-      const tripDate = new Date(trip.date);
+      if (!trip.completedAt) return selectedFilter === 'all';
       switch (selectedFilter) {
         case 'today':
-          return tripDate >= today;
+          return trip.completedAt >= today;
         case 'week':
-          return tripDate >= weekAgo;
+          return trip.completedAt >= weekAgo;
         case 'month':
-          return tripDate >= monthAgo;
+          return trip.completedAt >= monthAgo;
         default:
           return true;
       }
@@ -134,8 +74,8 @@ export default function TripHistory() {
 
   const filteredTrips = filterTrips(trips);
   const completedTrips = filteredTrips.filter(t => t.status === 'completed');
-  const totalEarnings = completedTrips.reduce((sum, trip) => sum + trip.fare + trip.tip, 0);
-  const totalDistance = completedTrips.reduce((sum, trip) => sum + parseFloat(trip.distance), 0);
+  const totalEarnings = completedTrips.reduce((sum, trip) => sum + trip.fare, 0);
+  const totalDistance = completedTrips.reduce((sum, trip) => sum + trip.distance, 0);
 
   const FilterButton = ({ filter, label }: { filter: typeof selectedFilter; label: string }) => (
     <TouchableOpacity
@@ -154,21 +94,26 @@ export default function TripHistory() {
     </TouchableOpacity>
   );
 
-  const TripCard = ({ trip }: { trip: Trip }) => (
+  const TripCard = ({ trip }: { trip: DriverTripRecord }) => (
     <View style={[
       styles.tripCard,
       trip.status === 'cancelled' && styles.cancelledCard
     ]}>
       <View style={styles.tripHeader}>
         <View style={styles.passengerInfo}>
-          <Text style={styles.passengerName}>{trip.passengerName}</Text>
-          <Text style={styles.tripDateTime}>{trip.date} • {trip.time}</Text>
+          <Text style={styles.passengerName}>Passenger</Text>
+          <Text style={styles.tripDateTime}>
+            {trip.completedAt
+              ? trip.completedAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) +
+                ' • ' + trip.completedAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+              : ''}
+          </Text>
         </View>
         <View style={styles.tripStatus}>
           {trip.status === 'completed' ? (
             <View style={styles.ratingContainer}>
               <Star size={14} color="#FFD700" fill="#FFD700" />
-              <Text style={styles.rating}>{trip.rating.toFixed(1)}</Text>
+              <Text style={styles.rating}>{trip.rating != null ? trip.rating.toFixed(1) : '—'}</Text>
             </View>
           ) : (
             <Text style={styles.cancelledText}>Cancelled</Text>
@@ -179,29 +124,26 @@ export default function TripHistory() {
       <View style={styles.routeInfo}>
         <View style={styles.locationRow}>
           <View style={[styles.locationDot, { backgroundColor: '#4CAF50' }]} />
-          <Text style={styles.locationText} numberOfLines={1}>{trip.pickup}</Text>
+          <Text style={styles.locationText} numberOfLines={1}>{trip.pickupAddress || 'Pickup location'}</Text>
         </View>
         <View style={styles.routeLine} />
         <View style={styles.locationRow}>
           <View style={[styles.locationDot, { backgroundColor: '#FF5722' }]} />
-          <Text style={styles.locationText} numberOfLines={1}>{trip.destination}</Text>
+          <Text style={styles.locationText} numberOfLines={1}>{trip.dropoffAddress || 'Dropoff location'}</Text>
         </View>
       </View>
 
       <View style={styles.tripDetails}>
         <View style={styles.detailItem}>
           <Navigation size={14} color={Colors.light.textSecondary} />
-          <Text style={styles.detailText}>{trip.distance}</Text>
+          <Text style={styles.detailText}>{formatDistance(trip.distance)}</Text>
         </View>
         <View style={styles.detailItem}>
           <Clock size={14} color={Colors.light.textSecondary} />
-          <Text style={styles.detailText}>{trip.duration}</Text>
+          <Text style={styles.detailText}>{formatDuration(trip.duration)}</Text>
         </View>
         <View style={styles.earningsContainer}>
           <Text style={styles.fareText}>₦{trip.fare.toFixed(2)}</Text>
-          {trip.tip > 0 && (
-            <Text style={styles.tipText}>+₦{trip.tip.toFixed(2)} tip</Text>
-          )}
         </View>
       </View>
     </View>
@@ -211,16 +153,14 @@ export default function TripHistory() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
           <ArrowLeft size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Trip History</Text>
-        <TouchableOpacity style={styles.filterIcon}>
-          <Filter size={24} color={Colors.light.primary} />
-        </TouchableOpacity>
+        <View style={styles.filterIcon} />
       </View>
 
       {/* Filter Buttons */}
@@ -253,27 +193,31 @@ export default function TripHistory() {
           <View style={styles.statIcon}>
             <Navigation size={20} color={Colors.light.primary} />
           </View>
-          <Text style={styles.statValue}>{totalDistance.toFixed(1)} mi</Text>
+          <Text style={styles.statValue}>{totalDistance.toFixed(1)} km</Text>
           <Text style={styles.statLabel}>Distance</Text>
         </View>
       </View>
 
       {/* Trips List */}
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {filteredTrips.length > 0 ? (
+        {isLoading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator color={Colors.light.primary} />
+          </View>
+        ) : filteredTrips.length > 0 ? (
           filteredTrips.map((trip) => (
             <TripCard key={trip.id} trip={trip} />
           ))
         ) : (
           <View style={styles.emptyState}>
             <Calendar size={48} color={Colors.light.lightGray} />
-            <Text style={styles.emptyStateText}>No trips found</Text>
+            <Text style={styles.emptyStateText}>No trips yet</Text>
             <Text style={styles.emptyStateSubtext}>
-              Try adjusting your filter or check back later
+              Trips you complete will show up here
             </Text>
           </View>
         )}
@@ -307,6 +251,7 @@ const styles = StyleSheet.create({
   },
   filterIcon: {
     padding: 8,
+    width: 40,
   },
   filterContainer: {
     backgroundColor: Colors.light.white,
@@ -469,11 +414,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: Colors.light.success,
-  },
-  tipText: {
-    fontSize: 12,
-    color: Colors.light.textSecondary,
-    marginTop: 2,
   },
   emptyState: {
     alignItems: 'center',

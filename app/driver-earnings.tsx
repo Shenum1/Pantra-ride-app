@@ -123,7 +123,7 @@ export default function DriverEarnings() {
               <Text style={styles.statLabel}>Total Rides</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.averageRating.toFixed(1)}</Text>
+              <Text style={styles.statValue}>{stats.averageRating != null ? stats.averageRating.toFixed(1) : 'New'}</Text>
               <Text style={styles.statLabel}>Rating</Text>
             </View>
             <View style={styles.statItem}>

@@ -28,7 +28,6 @@ import {
   ChevronRight,
   Trophy,
   Target,
-  Zap,
   FileCheck,
   Check,
 } from 'lucide-react-native';
@@ -61,64 +60,55 @@ export default function DriverProfile() {
   const [notifications, setNotifications] = useState<boolean>(true);
   const [selectedTheme, setSelectedTheme] = useState<string>('default');
 
+  const totalTrips = driver?.totalRides ?? 0;
   const driverStats = {
-    rating: driver?.rating ?? 5.0,
-    totalTrips: driver?.totalRides ?? 0,
+    rating: driver?.rating ?? null,
+    totalTrips,
     totalEarnings: driver?.totalEarnings ?? 0,
-    yearsActive: 0,
+    yearsActive: driver?.createdAt
+      ? Math.floor((Date.now() - new Date(driver.createdAt).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+      : 0,
   };
 
   const achievements: Achievement[] = [
     {
-      id: '1',
+      id: 'first-ride',
       title: 'First Ride',
       description: 'Complete your first ride',
       icon: <Star size={20} color="#FFD700" />,
-      earned: true,
+      earned: totalTrips >= 1,
+      progress: Math.min(totalTrips, 1),
+      total: 1,
       color: '#FFD700',
     },
     {
-      id: '2',
+      id: 'century-club',
       title: 'Century Club',
       description: 'Complete 100 rides',
       icon: <Trophy size={20} color="#FF9800" />,
-      earned: true,
+      earned: totalTrips >= 100,
+      progress: Math.min(totalTrips, 100),
+      total: 100,
       color: '#FF9800',
     },
     {
-      id: '3',
-      title: 'Speed Demon',
-      description: 'Complete 10 rides in one day',
-      icon: <Zap size={20} color="#2196F3" />,
-      earned: true,
-      color: '#2196F3',
-    },
-    {
-      id: '4',
-      title: 'Perfect Rating',
-      description: 'Maintain 5.0 rating for 50 rides',
+      id: 'perfect-rating',
+      title: 'Highly Rated',
+      description: 'Maintain a 4.9+ rating across 50 rides',
       icon: <Award size={20} color="#4CAF50" />,
-      earned: false,
-      progress: 32,
+      earned: totalTrips >= 50 && (driverStats.rating ?? 0) >= 4.9,
+      progress: Math.min(totalTrips, 50),
       total: 50,
       color: '#4CAF50',
     },
     {
-      id: '5',
-      title: 'Night Owl',
-      description: 'Complete 25 rides after midnight',
-      icon: <Moon size={20} color="#9C27B0" />,
-      earned: false,
-      progress: 18,
-      total: 25,
-      color: '#9C27B0',
-    },
-    {
-      id: '6',
+      id: 'thousand-club',
       title: 'Thousand Club',
       description: 'Complete 1000 rides',
       icon: <Target size={20} color="#FF5722" />,
-      earned: true,
+      earned: totalTrips >= 1000,
+      progress: Math.min(totalTrips, 1000),
+      total: 1000,
       color: '#FF5722',
     },
   ];
@@ -292,7 +282,7 @@ export default function DriverProfile() {
           <Text style={styles.driverInfo}>{driver?.vehicle ? `${driver.vehicle.make} ${driver.vehicle.model}` : 'Vehicle not set'}</Text>
           <View style={styles.ratingContainer}>
             <Star size={16} color="#FFD700" fill="#FFD700" />
-            <Text style={styles.rating}>{driverStats.rating}</Text>
+            <Text style={styles.rating}>{driverStats.rating != null ? driverStats.rating.toFixed(1) : 'New'}</Text>
             <Text style={styles.ratingCount}>({driverStats.totalTrips} trips)</Text>
           </View>
         </View>
@@ -313,7 +303,7 @@ export default function DriverProfile() {
             />
             <ProfileStat
               label="Rating"
-              value={driverStats.rating.toString()}
+              value={driverStats.rating != null ? driverStats.rating.toFixed(1) : 'New'}
               icon={<Star size={20} color="#FFD700" />}
             />
             <ProfileStat

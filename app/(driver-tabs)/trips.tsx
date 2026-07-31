@@ -20,7 +20,6 @@ import {
   Phone,
   MessageCircle,
   Star,
-  Gift,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import Map from '@/components/Map';
@@ -48,8 +47,6 @@ interface RideRequest {
 
 export default function DriverTrips() {
   const [panelHeight] = useState(new Animated.Value(PANEL_MIN_HEIGHT));
-  const [showSpinWheel, setShowSpinWheel] = useState(false);
-  const [spinValue] = useState(new Animated.Value(0));
   const { userLocation, setUserLocation } = useLocation();
   const { 
     rideRequests, 
@@ -169,20 +166,6 @@ export default function DriverTrips() {
     })
   ).current;
 
-  const spinWheel = () => {
-    setShowSpinWheel(true);
-    Animated.timing(spinValue, {
-      toValue: 1,
-      duration: 2000,
-      useNativeDriver: true,
-    }).start(() => {
-      setTimeout(() => {
-        setShowSpinWheel(false);
-        spinValue.setValue(0);
-      }, 1000);
-    });
-  };
-
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'premium':
@@ -206,7 +189,7 @@ export default function DriverTrips() {
           <Text style={styles.passengerName}>{ride.passenger?.name || 'Passenger'}</Text>
           <View style={styles.ratingContainer}>
             <Star size={14} color="#FFD700" fill="#FFD700" />
-            <Text style={styles.rating}>{ride.passenger?.rating?.toFixed(1) || '5.0'}</Text>
+            <Text style={styles.rating}>{ride.passenger?.rating != null ? ride.passenger.rating.toFixed(1) : 'New'}</Text>
           </View>
         </View>
         <View style={styles.fareContainer}>
@@ -271,32 +254,6 @@ export default function DriverTrips() {
     </View>
   );
 
-  const SpinWheel = () => {
-    const rotation = spinValue.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['0deg', '1440deg'],
-    });
-
-    return (
-      <View style={styles.spinWheelOverlay}>
-        <View style={styles.spinWheelContainer}>
-          <Text style={styles.spinWheelTitle}>Bonus Spin!</Text>
-          <Animated.View 
-            style={[
-              styles.wheel,
-              { transform: [{ rotate: rotation }] }
-            ]}
-          >
-            <View style={styles.wheelSegment}>
-              <Text style={styles.wheelText}>₦5</Text>
-            </View>
-          </Animated.View>
-          <Text style={styles.spinWheelSubtitle}>You earned a ₦5 bonus!</Text>
-        </View>
-      </View>
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Map Area */}
@@ -314,16 +271,6 @@ export default function DriverTrips() {
             initialRegion={userLocation || undefined}
           />
         )}
-        
-        {/* Map Controls */}
-        <View style={styles.mapControls}>
-          <TouchableOpacity 
-            style={styles.bonusButton}
-            onPress={spinWheel}
-          >
-            <Gift size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
       </View>
 
       {/* Slide-up Panel */}
@@ -363,11 +310,6 @@ export default function DriverTrips() {
           )}
         </Animated.ScrollView>
       </Animated.View>
-
-
-
-      {/* Spin Wheel */}
-      {showSpinWheel && <SpinWheel />}
     </SafeAreaView>
   );
 }
@@ -399,25 +341,6 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     marginTop: 5,
     textAlign: 'center',
-  },
-  mapControls: {
-    position: 'absolute',
-    bottom: 140,
-    right: 20,
-    gap: 10,
-  },
-  bonusButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FF9800',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   panel: {
     position: 'absolute',
@@ -670,48 +593,6 @@ const styles = StyleSheet.create({
     color: Colors.light.white,
     fontWeight: 'bold',
     fontSize: 16,
-  },
-  spinWheelOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  spinWheelContainer: {
-    alignItems: 'center',
-  },
-  spinWheelTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.light.white,
-    marginBottom: 20,
-  },
-  wheel: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: '#FFD700',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  wheelSegment: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  wheelText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.light.text,
-  },
-  spinWheelSubtitle: {
-    fontSize: 18,
-    color: Colors.light.white,
-    textAlign: 'center',
   },
   offlineContainer: {
     alignItems: 'center',

@@ -14,7 +14,6 @@ import { SavedLocationsProvider } from "@/hooks/useSavedLocationsStore";
 import { PromotionsProvider } from "@/hooks/usePromotionsStore";
 import { PointsProvider } from "@/hooks/usePointsStore";
 import { RatingsProvider } from "@/hooks/useRatingsStore";
-import { EarnProvider } from "@/hooks/useEarnStore";
 import { DriverStoreProvider } from "@/hooks/useDriverStore";
 import { DriverAuthProvider, useDriverAuth } from "@/hooks/useDriverAuthStore";
 import { AdminAuthProvider } from "@/hooks/useAdminAuthStore";
@@ -72,6 +71,7 @@ function RootLayoutNav() {
         <Stack.Screen name="add-location" options={{ title: "Add Location" }} />
         <Stack.Screen name="promotions" options={{ title: "Promotions" }} />
         <Stack.Screen name="rate-driver" options={{ title: "Rate Your Driver" }} />
+        <Stack.Screen name="rate-rider" options={{ title: "Rate Your Rider" }} />
         <Stack.Screen name="share-ride" options={{ title: "Share Your Ride" }} />
         <Stack.Screen name="earn-history" options={{ title: "Earning History" }} />
         <Stack.Screen name="driver-dashboard" options={{ headerShown: false }} />
@@ -141,19 +141,17 @@ export default function RootLayout() {
                 <PromotionsProvider>
                 <PointsProvider>
                   <SavedLocationsProvider>
-                    <EarnProvider>
-                      <DriverStoreProvider>
-                        <LocationProvider>
-                          <WeatherProvider>
-                            <RatingsProvider>
-                              <RideProvider>
-                                <RootLayoutNav />
-                              </RideProvider>
-                            </RatingsProvider>
-                          </WeatherProvider>
-                        </LocationProvider>
-                      </DriverStoreProvider>
-                    </EarnProvider>
+                    <DriverStoreProvider>
+                      <LocationProvider>
+                        <WeatherProvider>
+                          <RatingsProvider>
+                            <RideProvider>
+                              <RootLayoutNav />
+                            </RideProvider>
+                          </RatingsProvider>
+                        </WeatherProvider>
+                      </LocationProvider>
+                    </DriverStoreProvider>
                   </SavedLocationsProvider>
                 </PointsProvider>
                 </PromotionsProvider>

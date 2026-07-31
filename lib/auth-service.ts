@@ -9,6 +9,8 @@ export interface UserProfile {
   photoURL?: string;
   phoneNumber?: string;
   role: UserRole;
+  rating: number | null;
+  totalRatings: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -174,7 +174,9 @@ export default function AccountScreen() {
 
         <View style={styles.ratingSection}>
           <Star size={16} color={colors.primary} fill={colors.primary} />
-          <Text style={[styles.ratingText, { color: colors.text }]}>{user?.rating?.toFixed(2) || '5.00'} Rating</Text>
+          <Text style={[styles.ratingText, { color: colors.text }]}>
+            {user?.rating != null ? `${user.rating.toFixed(2)} Rating` : 'No ratings yet'}
+          </Text>
         </View>
 
         <View style={styles.menuSection}>

@@ -21,7 +21,7 @@ export interface DriverRow {
   name: string;
   email: string;
   phone: string;
-  rating: number;
+  rating: number | null;
   driverLicense: string;
   vehicle: {
     make: string;
@@ -35,6 +35,7 @@ export interface DriverRow {
   totalEarnings: number;
   totalRides: number;
   profileImage?: string;
+  createdAt?: string;
 }
 
 function mapRowToDriver(row: any): DriverRow {
@@ -43,7 +44,7 @@ function mapRowToDriver(row: any): DriverRow {
     name: row.name ?? '',
     email: row.email ?? '',
     phone: row.phone ?? '',
-    rating: row.rating ?? 5.0,
+    rating: row.rating ?? null,
     driverLicense: row.documents?.driverLicense ?? '',
     vehicle: {
       make: row.vehicle?.make ?? '',
@@ -57,6 +58,7 @@ function mapRowToDriver(row: any): DriverRow {
     totalEarnings: row.earnings?.total ?? 0,
     totalRides: row.totalRides ?? 0,
     profileImage: row.profileImage ?? undefined,
+    createdAt: row.createdAt ?? undefined,
   };
 }
 

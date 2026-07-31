@@ -1,6 +1,18 @@
 import { supabase } from './supabase';
 import { Driver, DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
 
+export interface DriverTripRecord {
+  id: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  distance: number;
+  duration: number;
+  fare: number;
+  rating: number | null;
+  status: 'completed' | 'cancelled';
+  completedAt: Date | null;
+}
+
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -25,7 +37,7 @@ export class FirebaseDriverService {
     const profile = {
       ...driverData,
       userId,
-      rating: 5.0,
+      rating: null,
       totalRides: 0,
       isOnline: false,
       isVerified: false,
@@ -69,6 +81,34 @@ export class FirebaseDriverService {
     if (error) throw new Error(error.message);
   }
 
+  // Tracks a continuous online shift for DriverStats.onlineHours. Deliberately
+  // separate from setDriverOnlineStatus, which also flips isOnline off/on while
+  // a driver is mid-ride (busy vs available for new pickups) — using that signal
+  // here would fragment one shift into a new session every time a ride is
+  // accepted/completed. Only call these from an explicit driver-initiated
+  // online/offline toggle.
+  static async startOnlineSession(driverId: string): Promise<void> {
+    const { data: openSession } = await supabase
+      .from('driver_online_sessions')
+      .select('id')
+      .eq('driverId', driverId)
+      .is('endedAt', null)
+      .maybeSingle();
+    if (!openSession) {
+      const { error } = await supabase.from('driver_online_sessions').insert({ driverId });
+      if (error) throw new Error(error.message);
+    }
+  }
+
+  static async endOnlineSession(driverId: string): Promise<void> {
+    const { error } = await supabase
+      .from('driver_online_sessions')
+      .update({ endedAt: new Date().toISOString() })
+      .eq('driverId', driverId)
+      .is('endedAt', null);
+    if (error) throw new Error(error.message);
+  }
+
   static async getNearbyDrivers(latitude: number, longitude: number, radiusKm = 10): Promise<Driver[]> {
     const { data, error } = await supabase
       .from('drivers')
@@ -88,7 +128,7 @@ export class FirebaseDriverService {
         return {
           id: d.id,
           name: d.name || '',
-          rating: d.rating || 5.0,
+          rating: d.rating ?? null,
           location: { latitude: d.location.latitude, longitude: d.location.longitude },
           carType: d.vehicle?.type || 'Standard',
           carModel: `${d.vehicle?.make || ''} ${d.vehicle?.model || ''}`,
@@ -193,7 +233,7 @@ export class FirebaseDriverService {
         passenger: {
           id: ride.userId,
           name: passenger.displayName || 'Passenger',
-          rating: passenger.rating || 5.0,
+          rating: passenger.rating ?? null,
           photo: passenger.photoURL,
           phone: passenger.phone || '',
         },
@@ -240,6 +280,34 @@ export class FirebaseDriverService {
     }
   }
 
+  static async getDriverTripHistory(driverId: string, limitCount = 100): Promise<DriverTripRecord[]> {
+    const { data, error } = await supabase
+      .from('rides')
+      .select('id, pickupAddress, dropoffAddress, distance, duration, fare, driverRating, status, completedAt, cancelledAt')
+      .eq('driverId', driverId)
+      .in('status', ['completed', 'cancelled'])
+      .order('createdAt', { ascending: false })
+      .limit(limitCount);
+
+    if (error || !data) return [];
+
+    return data.map((ride: any) => ({
+      id: ride.id,
+      pickupAddress: ride.pickupAddress || '',
+      dropoffAddress: ride.dropoffAddress || '',
+      distance: ride.distance || 0,
+      duration: ride.duration || 0,
+      fare: ride.fare || 0,
+      rating: ride.driverRating ?? null,
+      status: ride.status === 'cancelled' ? 'cancelled' : 'completed',
+      completedAt: ride.completedAt
+        ? new Date(ride.completedAt)
+        : ride.cancelledAt
+          ? new Date(ride.cancelledAt)
+          : null,
+    }));
+  }
+
   static async getDriverEarnings(driverId: string, limitCount = 50): Promise<DriverEarnings[]> {
     const { data, error } = await supabase
       .from('rides')
@@ -269,13 +337,27 @@ export class FirebaseDriverService {
   }
 
   static async getDriverStats(driverId: string): Promise<DriverStats> {
-    const { data, error } = await supabase
-      .from('rides')
-      .select('fare, completedAt, driverRating')
-      .eq('driverId', driverId)
-      .eq('status', 'completed');
+    const [ridesResult, assignedResult, declinedResult, sessionsResult] = await Promise.all([
+      supabase
+        .from('rides')
+        .select('fare, completedAt, driverRating, status')
+        .eq('driverId', driverId)
+        .in('status', ['completed', 'cancelled']),
+      supabase
+        .from('rides')
+        .select('id', { count: 'exact', head: true })
+        .eq('driverId', driverId),
+      supabase
+        .from('ride_declines')
+        .select('id', { count: 'exact', head: true })
+        .eq('driverId', driverId),
+      supabase
+        .from('driver_online_sessions')
+        .select('startedAt, endedAt')
+        .eq('driverId', driverId),
+    ]);
 
-    if (error || !data) return defaultStats();
+    if (ridesResult.error || !ridesResult.data) return defaultStats();
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -283,17 +365,24 @@ export class FirebaseDriverService {
     weekStart.setDate(weekStart.getDate() - weekStart.getDay());
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    let totalRides = 0, totalEarnings = 0, totalRating = 0;
+    let completedCount = 0, cancelledCount = 0, totalEarnings = 0, totalRating = 0, ratedRides = 0;
     let todayEarnings = 0, weekEarnings = 0, monthEarnings = 0;
 
-    for (const ride of data) {
+    for (const ride of ridesResult.data) {
+      if (ride.status === 'cancelled') {
+        cancelledCount++;
+        continue;
+      }
+      completedCount++;
       const amount = (ride.fare || 0) * 0.8;
       const completedAt = ride.completedAt ? new Date(ride.completedAt) : null;
       const rating = ride.driverRating || 0;
 
-      totalRides++;
       totalEarnings += amount;
-      if (rating > 0) totalRating += rating;
+      if (rating > 0) {
+        totalRating += rating;
+        ratedRides++;
+      }
 
       if (completedAt) {
         if (completedAt >= today) todayEarnings += amount;
@@ -302,14 +391,35 @@ export class FirebaseDriverService {
       }
     }
 
+    // Pull-model marketplace has no per-driver "offer" event to measure acceptance
+    // against, so this approximates it from the two events that ARE recorded:
+    // rides this driver ended up assigned to vs. rides they explicitly declined.
+    const assignedCount = assignedResult.count ?? 0;
+    const declinedCount = declinedResult.count ?? 0;
+    const respondedCount = assignedCount + declinedCount;
+    const settledCount = completedCount + cancelledCount;
+
+    // Cap any single session at 12h so a crashed app that never closed its
+    // session (no endedAt) doesn't inflate this indefinitely.
+    const MAX_SESSION_HOURS = 12;
+    let onlineHours = 0;
+    if (!sessionsResult.error && sessionsResult.data) {
+      for (const session of sessionsResult.data as { startedAt: string; endedAt: string | null }[]) {
+        const start = new Date(session.startedAt).getTime();
+        const end = session.endedAt ? new Date(session.endedAt).getTime() : Date.now();
+        const hours = Math.min((end - start) / (1000 * 60 * 60), MAX_SESSION_HOURS);
+        if (hours > 0) onlineHours += hours;
+      }
+    }
+
     return {
-      totalRides,
+      totalRides: completedCount,
       totalEarnings,
-      averageRating: totalRides > 0 ? totalRating / totalRides : 5.0,
-      acceptanceRate: 92,
-      cancellationRate: 3,
-      onlineHours: 156,
-      completionRate: 97,
+      averageRating: ratedRides > 0 ? totalRating / ratedRides : null,
+      acceptanceRate: respondedCount > 0 ? Math.round((assignedCount / respondedCount) * 100) : 0,
+      cancellationRate: settledCount > 0 ? Math.round((cancelledCount / settledCount) * 100) : 0,
+      onlineHours,
+      completionRate: settledCount > 0 ? Math.round((completedCount / settledCount) * 100) : 0,
       todayEarnings,
       weekEarnings,
       monthEarnings,
@@ -337,7 +447,7 @@ export class FirebaseDriverService {
 
 function defaultStats(): DriverStats {
   return {
-    totalRides: 0, totalEarnings: 0, averageRating: 5.0,
+    totalRides: 0, totalEarnings: 0, averageRating: null,
     acceptanceRate: 0, cancellationRate: 0, onlineHours: 0,
     completionRate: 0, todayEarnings: 0, weekEarnings: 0, monthEarnings: 0,
   };
