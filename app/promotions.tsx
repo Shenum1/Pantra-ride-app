@@ -169,34 +169,36 @@ export default function PromotionsScreen() {
         )}
 
         {/* Available promo list */}
+        <Text style={styles.sectionTitle}>Available codes</Text>
         {promosLoading ? (
           <ActivityIndicator style={styles.loader} color={Colors.light.primary} />
         ) : promotions.length > 0 ? (
-          <>
-            <Text style={styles.sectionTitle}>Available codes</Text>
-            {promotions.map(promo => (
-              <View key={promo.id} style={styles.promoCard}>
-                <View style={styles.promoHeader}>
-                  <View style={styles.iconContainer}>
-                    <Tag size={18} color={Colors.light.primary} />
-                  </View>
-                  <View style={styles.promoInfo}>
-                    <Text style={styles.promoCode}>{promo.code}</Text>
-                    <Text style={styles.promoDescription}>{promo.description}</Text>
-                  </View>
+          promotions.map(promo => (
+            <View key={promo.id} style={styles.promoCard}>
+              <View style={styles.promoHeader}>
+                <View style={styles.iconContainer}>
+                  <Tag size={18} color={Colors.light.primary} />
                 </View>
-                <View style={styles.promoMeta}>
-                  <Text style={styles.promoDiscount}>{promo.discountPercentage}% off
-                    {promo.maxDiscountNGN ? ` (max ₦${promo.maxDiscountNGN.toLocaleString()})` : ''}
-                  </Text>
-                  <Text style={styles.promoExpiry}>
-                    Until {new Date(promo.validUntil).toLocaleDateString()}
-                  </Text>
+                <View style={styles.promoInfo}>
+                  <Text style={styles.promoCode}>{promo.code}</Text>
+                  <Text style={styles.promoDescription}>{promo.description}</Text>
                 </View>
               </View>
-            ))}
-          </>
-        ) : null}
+              <View style={styles.promoMeta}>
+                <Text style={styles.promoDiscount}>{promo.discountPercentage}% off
+                  {promo.maxDiscountNGN ? ` (max ₦${promo.maxDiscountNGN.toLocaleString()})` : ''}
+                </Text>
+                <Text style={styles.promoExpiry}>
+                  Until {new Date(promo.validUntil).toLocaleDateString()}
+                </Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No promo codes available right now. Check back soon!</Text>
+          </View>
+        )}
 
         <View style={{ height: 32 }} />
       </ScrollView>

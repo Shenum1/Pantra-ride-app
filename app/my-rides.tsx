@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -16,7 +17,7 @@ import { RideRequest } from '@/types';
 export default function MyRidesScreen() {
 
   const { colors } = useTheme();
-  const { pastRides } = useRide();
+  const { pastRides, isLoadingPastRides } = useRide();
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
 
   const filteredRides = pastRides.filter(ride => {
@@ -190,7 +191,11 @@ export default function MyRidesScreen() {
       </View>
 
       <ScrollView style={styles.content}>
-        {filteredRides.length === 0 ? (
+        {isLoadingPastRides ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : filteredRides.length === 0 ? (
           <View style={styles.emptyState}>
             <Calendar size={48} color={colors.gray} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No rides found</Text>

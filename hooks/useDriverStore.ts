@@ -102,6 +102,8 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
         unsubscribeRequests();
       };
     }
+
+    setIsLoading(false);
   }, [activeDriverId, isOnline, loadDriverData]);
 
   // Realtime subscriptions can miss events while the app is backgrounded (mobile OSes

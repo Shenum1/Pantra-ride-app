@@ -78,6 +78,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const [selectedRideType, setSelectedRideType] = useState<string>('standard');
   const [currentRide, setCurrentRide] = useState<RideRequest | null>(null);
   const [pastRides, setPastRides] = useState<RideRequest[]>([]);
+  const [isLoadingPastRides, setIsLoadingPastRides] = useState<boolean>(true);
   const [estimatedPrice, setEstimatedPrice] = useState<number>(0);
   const [baseEstimatedPrice, setBaseEstimatedPrice] = useState<number>(0);
   const [minEstimatedPrice, setMinEstimatedPrice] = useState<number>(0);
@@ -199,21 +200,26 @@ export const [RideProvider, useRide] = createContextHook(() => {
   }, []);
 
   const loadPastRides = useCallback(async () => {
-    try {
-      if (!user) {
-        return;
-      }
+    if (!user) {
+      setIsLoadingPastRides(false);
+      return;
+    }
 
+    try {
       const rides = await RideHistoryService.getUserRides(user.id, undefined, 50);
       setPastRides(rides.map(mapRideToRequest));
     } catch (error) {
       console.error('Error loading past rides:', error);
+    } finally {
+      setIsLoadingPastRides(false);
     }
   }, [mapRideToRequest, user]);
 
   useEffect(() => {
     if (user) {
       void loadPastRides();
+    } else {
+      setIsLoadingPastRides(false);
     }
   }, [loadPastRides, user]);
 
@@ -628,6 +634,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     setSelectedRideType,
     currentRide,
     pastRides,
+    isLoadingPastRides,
     estimatedPrice,
     baseEstimatedPrice,
     minEstimatedPrice,
@@ -661,6 +668,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     selectedRideType,
     currentRide,
     pastRides,
+    isLoadingPastRides,
     estimatedPrice,
     baseEstimatedPrice,
     minEstimatedPrice,

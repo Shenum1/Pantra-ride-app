@@ -29,7 +29,10 @@ export default function TripHistory() {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadTrips = useCallback(async () => {
-    if (!driver?.id) return;
+    if (!driver?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const data = await FirebaseDriverService.getDriverTripHistory(driver.id);

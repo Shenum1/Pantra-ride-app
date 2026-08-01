@@ -79,7 +79,10 @@ export default function DriverDocumentsScreen() {
   const [uploadingType, setUploadingType] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    if (!driver?.id) return;
+    if (!driver?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const [docs, verificationStatus] = await Promise.all([
