@@ -101,7 +101,6 @@ function RootLayoutNav() {
         <Stack.Screen name="wallet-add-bank" options={{ title: "Add Bank Account" }} />
         <Stack.Screen name="wallet-bank-accounts" options={{ title: "Bank Accounts" }} />
         <Stack.Screen name="backend-test" options={{ title: "Backend Test" }} />
-        <Stack.Screen name="firebase-diagnostics" options={{ title: "Firebase Diagnostics" }} />
         <Stack.Screen name="admin" options={{ headerShown: false }} />
 
       </Stack>

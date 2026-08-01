@@ -23,7 +23,6 @@ import {
   ShieldCheck,
   Camera,
   Wallet,
-  Activity
 } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -309,16 +308,6 @@ export default function AccountScreen() {
             icon={<Calendar size={20} color={colors.text} />}
             title="Calendars"
             onPress={() => router.push('/calendars')}
-          />
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: colors.text, backgroundColor: colors.background }]}>Developer</Text>
-        <View style={styles.legalSection}>
-          <MenuItem
-            icon={<Activity size={20} color={colors.text} />}
-            title="Firebase Diagnostics"
-            subtitle="Check connection status"
-            onPress={() => router.push('/firebase-diagnostics' as any)}
           />
         </View>
 
