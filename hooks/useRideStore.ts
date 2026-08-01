@@ -24,7 +24,8 @@ interface FareBounds {
   adjustedPrice: number;
 }
 
-const ACTIVE_RIDE_STORAGE_KEY = 'active_ride_session_v2';
+const ACTIVE_RIDE_STORAGE_PREFIX = 'active_ride_session_v2';
+const getActiveRideStorageKey = (userId: string) => `${ACTIVE_RIDE_STORAGE_PREFIX}:${userId}`;
 
 interface SerializedRideRequest extends Omit<RideRequest, 'createdAt' | 'scheduledFor'> {
   createdAt?: string;
@@ -73,7 +74,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const { pickupLocation, dropoffLocation, pickupAddress, dropoffAddress, routeInfo } = useLocation();
   const { getDefaultPaymentMethod } = usePayment();
   const { getActivePromotion, markPromoAsUsed } = usePromotions();
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
 
   const [selectedRideType, setSelectedRideType] = useState<string>('standard');
   const [currentRide, setCurrentRide] = useState<RideRequest | null>(null);
@@ -117,51 +118,90 @@ export const [RideProvider, useRide] = createContextHook(() => {
   });
 
   useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+
+    const userId = user?.id;
+
+    if (!userId) {
+      setCurrentRide(null);
+      setIsHydratingRide(false);
+      return;
+    }
+
+    let cancelled = false;
+
     const loadStoredRide = async () => {
       try {
-        const storedRide = await AsyncStorage.getItem(ACTIVE_RIDE_STORAGE_KEY);
+        const storedRide = await AsyncStorage.getItem(getActiveRideStorageKey(userId));
         if (!storedRide) {
           return;
         }
 
         const parsedRide = JSON.parse(storedRide) as SerializedRideRequest;
         const hydratedRide = deserializeRide(parsedRide);
-        console.log('Hydrated active ride session:', hydratedRide);
-        setCurrentRide(hydratedRide);
+
+        // Local ride IDs (test/non-Supabase accounts) never exist as a real DB row —
+        // trust the local snapshot as-is. Otherwise, re-validate against the server
+        // before restoring it: a ride that finished/was cancelled in a previous
+        // session (or an app crash) must not resurrect a stuck "loading" screen.
+        if (hydratedRide.id && !hydratedRide.id.startsWith('local-ride-')) {
+          const row: any = await DatabaseService.get('rides', hydratedRide.id);
+          const isTerminal = row?.status === 'completed' || row?.status === 'cancelled';
+          if (!row || row.userId !== userId || isTerminal) {
+            await AsyncStorage.removeItem(getActiveRideStorageKey(userId));
+            return;
+          }
+        }
+
+        if (!cancelled) {
+          console.log('Hydrated active ride session:', hydratedRide);
+          setCurrentRide(hydratedRide);
+        }
       } catch (error) {
         console.error('Error hydrating stored ride session:', error);
       } finally {
-        setIsHydratingRide(false);
+        if (!cancelled) {
+          setIsHydratingRide(false);
+        }
       }
     };
 
+    setIsHydratingRide(true);
     void loadStoredRide();
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, isAuthLoading]);
 
   useEffect(() => {
     currentRideRef.current = currentRide;
   }, [currentRide]);
 
   useEffect(() => {
-    if (isHydratingRide) {
+    if (isHydratingRide || !user?.id) {
       return;
     }
+
+    const userId = user.id;
 
     const persistRide = async () => {
       try {
         if (!currentRide) {
-          await AsyncStorage.removeItem(ACTIVE_RIDE_STORAGE_KEY);
+          await AsyncStorage.removeItem(getActiveRideStorageKey(userId));
           return;
         }
 
-        await AsyncStorage.setItem(ACTIVE_RIDE_STORAGE_KEY, JSON.stringify(serializeRide(currentRide)));
+        await AsyncStorage.setItem(getActiveRideStorageKey(userId), JSON.stringify(serializeRide(currentRide)));
       } catch (error) {
         console.error('Error persisting current ride session:', error);
       }
     };
 
     void persistRide();
-  }, [currentRide, isHydratingRide]);
+  }, [currentRide, isHydratingRide, user?.id]);
 
   const mapRideToRequest = useCallback((ride: any): RideRequest => {
     return {
