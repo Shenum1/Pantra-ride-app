@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from 'react-native-toast-message';
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ResponsiveShell } from "@/components/ResponsiveShell";
@@ -127,43 +128,45 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ErrorBoundary>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <View style={{ flex: 1 }}>
-            <ThemeProvider>
-              <AuthProvider>
-              <DriverAuthProvider>
-              <PushTokenRegistrar />
-              <AdminAuthProvider>
-                <PaymentProvider>
-                <WalletProvider>
-                <PromotionsProvider>
-                <PointsProvider>
-                  <SavedLocationsProvider>
-                    <DriverStoreProvider>
-                      <LocationProvider>
-                        <WeatherProvider>
-                          <RatingsProvider>
-                            <RideProvider>
-                              <RootLayoutNav />
-                            </RideProvider>
-                          </RatingsProvider>
-                        </WeatherProvider>
-                      </LocationProvider>
-                    </DriverStoreProvider>
-                  </SavedLocationsProvider>
-                </PointsProvider>
-                </PromotionsProvider>
-                </WalletProvider>
-              </PaymentProvider>
-              </AdminAuthProvider>
-              </DriverAuthProvider>
-              </AuthProvider>
-            </ThemeProvider>
-          </View>
-        </QueryClientProvider>
-      </trpc.Provider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <View style={{ flex: 1 }}>
+              <ThemeProvider>
+                <AuthProvider>
+                <DriverAuthProvider>
+                <PushTokenRegistrar />
+                <AdminAuthProvider>
+                  <PaymentProvider>
+                  <WalletProvider>
+                  <PromotionsProvider>
+                  <PointsProvider>
+                    <SavedLocationsProvider>
+                      <DriverStoreProvider>
+                        <LocationProvider>
+                          <WeatherProvider>
+                            <RatingsProvider>
+                              <RideProvider>
+                                <RootLayoutNav />
+                              </RideProvider>
+                            </RatingsProvider>
+                          </WeatherProvider>
+                        </LocationProvider>
+                      </DriverStoreProvider>
+                    </SavedLocationsProvider>
+                  </PointsProvider>
+                  </PromotionsProvider>
+                  </WalletProvider>
+                </PaymentProvider>
+                </AdminAuthProvider>
+                </DriverAuthProvider>
+                </AuthProvider>
+              </ThemeProvider>
+            </View>
+          </QueryClientProvider>
+        </trpc.Provider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

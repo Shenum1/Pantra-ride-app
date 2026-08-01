@@ -73,6 +73,7 @@ export class DriverAuthService {
         name: data.name,
         email: data.email,
         phone: data.phone,
+        rating: null,
         vehicle: {
           make: data.vehicle.make,
           model: data.vehicle.model,

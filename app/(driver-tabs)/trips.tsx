@@ -1,16 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
-  Animated,
-  PanResponder,
   SafeAreaView,
   Platform,
   Alert,
 } from 'react-native';
+import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 import {
   MapPin,
   Navigation,
@@ -27,44 +25,29 @@ import { useLocation } from '@/hooks/useLocationStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
 import { router } from 'expo-router';
 import * as ExpoLocation from 'expo-location';
-
-const { width, height } = Dimensions.get('window');
-const PANEL_MIN_HEIGHT = 120;
-const PANEL_MAX_HEIGHT = height * 0.6;
-
-interface RideRequest {
-  id: string;
-  passengerName: string;
-  rating: number;
-  pickup: string;
-  destination: string;
-  distance: string;
-  duration: string;
-  fare: number;
-  type: 'standard' | 'premium' | 'xl';
-  surge?: number;
-}
+import { RideRequestForDriver } from '@/types';
 
 export default function DriverTrips() {
-  const [panelHeight] = useState(new Animated.Value(PANEL_MIN_HEIGHT));
   const { userLocation, setUserLocation } = useLocation();
-  const { 
-    rideRequests, 
+  const {
+    rideRequests,
     currentRide,
-    isOnline, 
-    acceptRideRequest, 
+    isOnline,
+    acceptRideRequest,
     declineRideRequest,
-    updateLocation 
+    updateLocation
   } = useDriverStore();
   const [locationPermission, setLocationPermission] = useState(false);
+
+  const snapPoints = useMemo(() => ['15%', '87%'], []);
 
   useEffect(() => {
     (async () => {
       if (Platform.OS === 'web') return;
-      
+
       const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
       setLocationPermission(status === 'granted');
-      
+
       if (status === 'granted') {
         const location = await ExpoLocation.getCurrentPositionAsync({});
         const newLocation = {
@@ -136,36 +119,6 @@ export default function DriverTrips() {
     }
   };
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dy) > 10;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        const newHeight = PANEL_MIN_HEIGHT - gestureState.dy;
-        if (newHeight >= PANEL_MIN_HEIGHT && newHeight <= PANEL_MAX_HEIGHT) {
-          panelHeight.setValue(newHeight);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        const velocity = gestureState.vy;
-        const newHeight = PANEL_MIN_HEIGHT - gestureState.dy;
-        
-        if (velocity < -0.5 || newHeight > PANEL_MAX_HEIGHT * 0.5) {
-          Animated.spring(panelHeight, {
-            toValue: PANEL_MAX_HEIGHT,
-            useNativeDriver: false,
-          }).start();
-        } else {
-          Animated.spring(panelHeight, {
-            toValue: PANEL_MIN_HEIGHT,
-            useNativeDriver: false,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'premium':
@@ -199,7 +152,7 @@ export default function DriverTrips() {
           )}
         </View>
       </View>
-      
+
       <View style={styles.routeInfo}>
         <View style={styles.locationRow}>
           <View style={[styles.locationDot, { backgroundColor: '#4CAF50' }]} />
@@ -215,7 +168,7 @@ export default function DriverTrips() {
           </Text>
         </View>
       </View>
-      
+
       <View style={styles.rideDetails}>
         <View style={styles.detailItem}>
           <Navigation size={16} color={Colors.light.textSecondary} />
@@ -236,15 +189,15 @@ export default function DriverTrips() {
           </Text>
         </View>
       </View>
-      
+
       <View style={styles.actionButtons}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.declineButton}
           onPress={() => handleDeclineRide(ride.id!)}
         >
           <Text style={styles.declineText}>Decline</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.acceptButton}
           onPress={() => handleAcceptRide(ride.id!)}
         >
@@ -252,6 +205,34 @@ export default function DriverTrips() {
         </TouchableOpacity>
       </View>
     </View>
+  );
+
+  const PanelHandle = () => (
+    <View>
+      <View style={styles.panelHandle} />
+      <View style={styles.panelHeader}>
+        <Text style={styles.panelTitle}>Available Rides</Text>
+        <View style={styles.rideCount}>
+          <Text style={styles.rideCountText}>{rideRequests.length}</Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const EmptyListState = () => (
+    !isOnline ? (
+      <View style={styles.offlineContainer}>
+        <MapPin size={48} color={Colors.light.textSecondary} />
+        <Text style={styles.offlineText}>You are offline</Text>
+        <Text style={styles.offlineSubtext}>Go online to receive ride requests</Text>
+      </View>
+    ) : (
+      <View style={styles.emptyContainer}>
+        <MapPin size={48} color={Colors.light.textSecondary} />
+        <Text style={styles.emptyText}>No rides available</Text>
+        <Text style={styles.emptySubtext}>Waiting for ride requests...</Text>
+      </View>
+    )
   );
 
   return (
@@ -273,43 +254,24 @@ export default function DriverTrips() {
         )}
       </View>
 
-      {/* Slide-up Panel */}
-      <Animated.View 
-        style={[styles.panel, { height: panelHeight }]}
-        {...panResponder.panHandlers}
+      {/* Slide-up Bottom Sheet */}
+      <BottomSheet
+        index={0}
+        snapPoints={snapPoints}
+        enablePanDownToClose={false}
+        handleComponent={PanelHandle}
+        backgroundStyle={styles.panelBackground}
+        style={styles.panelShadow}
       >
-        <View style={styles.panelHandle} />
-        
-        <View style={styles.panelHeader}>
-          <Text style={styles.panelTitle}>Available Rides</Text>
-          <View style={styles.rideCount}>
-            <Text style={styles.rideCountText}>{rideRequests.length}</Text>
-          </View>
-        </View>
-
-        <Animated.ScrollView 
-          style={styles.ridesContainer}
+        <BottomSheetFlatList
+          data={rideRequests}
+          keyExtractor={(item: RideRequestForDriver) => item.id!}
+          renderItem={({ item }: { item: RideRequestForDriver }) => <RideCard ride={item} />}
+          contentContainerStyle={styles.ridesContainer}
           showsVerticalScrollIndicator={false}
-        >
-          {!isOnline ? (
-            <View style={styles.offlineContainer}>
-              <MapPin size={48} color={Colors.light.textSecondary} />
-              <Text style={styles.offlineText}>You are offline</Text>
-              <Text style={styles.offlineSubtext}>Go online to receive ride requests</Text>
-            </View>
-          ) : rideRequests.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <MapPin size={48} color={Colors.light.textSecondary} />
-              <Text style={styles.emptyText}>No rides available</Text>
-              <Text style={styles.emptySubtext}>Waiting for ride requests...</Text>
-            </View>
-          ) : (
-            rideRequests.map((ride) => (
-              <RideCard key={ride.id} ride={ride} />
-            ))
-          )}
-        </Animated.ScrollView>
-      </Animated.View>
+          ListEmptyComponent={EmptyListState}
+        />
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -342,14 +304,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
-  panel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+  panelBackground: {
     backgroundColor: Colors.light.white,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+  },
+  panelShadow: {
     elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
@@ -389,7 +349,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   ridesContainer: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 20,
   },
   rideCard: {

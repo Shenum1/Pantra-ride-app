@@ -41,8 +41,8 @@ interface Achievement {
   description: string;
   icon: React.ReactNode;
   earned: boolean;
-  progress?: number;
-  total?: number;
+  progress: number;
+  total: number;
   color: string;
 }
 
@@ -171,7 +171,7 @@ export default function DriverProfile() {
       ]} numberOfLines={2}>
         {achievement.title}
       </Text>
-      {!achievement.earned && achievement.progress && achievement.total && (
+      {!achievement.earned && (
         <View style={styles.progressContainer}>
           <View style={styles.progressBar}>
             <View 

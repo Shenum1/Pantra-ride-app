@@ -154,11 +154,6 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
 
       const newStatus = !isOnline;
       await FirebaseDriverService.setDriverOnlineStatus(driverProfile.id, newStatus);
-      if (newStatus) {
-        await FirebaseDriverService.startOnlineSession(driverProfile.id);
-      } else {
-        await FirebaseDriverService.endOnlineSession(driverProfile.id);
-      }
       setIsOnline(newStatus);
 
       if (!newStatus) {
@@ -171,6 +166,20 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       }
     } catch (error) {
       console.error('Error toggling online status:', error);
+      return;
+    }
+
+    // Online-session tracking only feeds DriverStats.onlineHours — it must never
+    // block the toggle above, which is what actually lets the driver see/take rides.
+    try {
+      if (!driverProfile) return;
+      if (!isOnline) {
+        await FirebaseDriverService.startOnlineSession(driverProfile.id);
+      } else {
+        await FirebaseDriverService.endOnlineSession(driverProfile.id);
+      }
+    } catch (error) {
+      console.error('Error tracking online session:', error);
     }
   }, [isOnline, driverProfile]);
 
