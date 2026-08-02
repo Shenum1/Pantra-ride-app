@@ -89,6 +89,8 @@ export interface RideRequest {
   minPrice?: number;
   maxPrice?: number;
   fareAdjustmentPercent?: number;
+  bookingFee?: number;
+  serviceFee?: number;
   distance?: number;
   duration?: number;
   status?: 'pending' | 'confirmed' | 'accepted' | 'in_progress' | 'in-progress' | 'completed' | 'cancelled';

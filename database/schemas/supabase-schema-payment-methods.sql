@@ -27,11 +27,18 @@ create index if not exists idx_payment_methods_userId on public.payment_methods(
 -- 3. ROW LEVEL SECURITY
 alter table public.payment_methods enable row level security;
 
+drop policy if exists "Users can read own payment methods" on public.payment_methods;
 create policy "Users can read own payment methods"
   on public.payment_methods for select using (auth.uid() = "userId");
+
+drop policy if exists "Users can insert own payment methods" on public.payment_methods;
 create policy "Users can insert own payment methods"
   on public.payment_methods for insert with check (auth.uid() = "userId");
+
+drop policy if exists "Users can update own payment methods" on public.payment_methods;
 create policy "Users can update own payment methods"
   on public.payment_methods for update using (auth.uid() = "userId");
+
+drop policy if exists "Users can delete own payment methods" on public.payment_methods;
 create policy "Users can delete own payment methods"
   on public.payment_methods for delete using (auth.uid() = "userId");

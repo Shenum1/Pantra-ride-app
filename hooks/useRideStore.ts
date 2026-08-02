@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { mockRideTypes } from '@/mocks/rideTypes';
 import { Location, PaymentMethod, RideCancellationReason, RideRequest, RideTrackingStage, RideType } from '@/types';
-import { calculateFare, calculateAllTierFares } from '@/lib/fare-calculator';
+import { calculateFareBreakdown, calculateAllTierFares, applyRideDiscounts } from '@/lib/fare-calculator';
+import { SHARED_RIDE_DISCOUNT_MULTIPLIER } from '@/lib/pricing-config';
 import { useLocation } from './useLocationStore';
 import { usePayment } from './usePaymentStore';
 import { usePromotions } from './usePromotionsStore';
@@ -84,6 +85,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const [baseEstimatedPrice, setBaseEstimatedPrice] = useState<number>(0);
   const [minEstimatedPrice, setMinEstimatedPrice] = useState<number>(0);
   const [maxEstimatedPrice, setMaxEstimatedPrice] = useState<number>(0);
+  const [estimatedBookingFee, setEstimatedBookingFee] = useState<number>(0);
+  const [estimatedServiceFee, setEstimatedServiceFee] = useState<number>(0);
   const [fareAdjustmentPercent, setFareAdjustmentPercent] = useState<number>(0);
   const [estimatedDistance, setEstimatedDistance] = useState<number>(0);
   const [estimatedDuration, setEstimatedDuration] = useState<number>(0);
@@ -277,15 +280,25 @@ export const [RideProvider, useRide] = createContextHook(() => {
     };
   }, []);
 
-  const updateEstimatedFare = useCallback((rawPrice: number, distanceKm: number, durationMinutes: number) => {
-    const adjustedFare = applyFareAdjustment(rawPrice, fareAdjustmentPercent);
+  // Rider fare adjustment (the ±10% slider) is, like promo/shared-ride, a
+  // discount applied to the metered fare only — never to flat platform fees.
+  const updateEstimatedFare = useCallback((
+    discountedMeteredFare: number,
+    distanceKm: number,
+    durationMinutes: number,
+    bookingFee: number,
+    serviceFee: number
+  ) => {
+    const adjustedFare = applyFareAdjustment(discountedMeteredFare, fareAdjustmentPercent);
 
     console.log('Updating fare estimate:', {
-      rawPrice,
+      discountedMeteredFare,
       adjustedFare,
       distanceKm,
       durationMinutes,
       fareAdjustmentPercent,
+      bookingFee,
+      serviceFee,
     });
 
     setEstimatedDistance(parseFloat(distanceKm.toFixed(1)));
@@ -293,7 +306,10 @@ export const [RideProvider, useRide] = createContextHook(() => {
     setBaseEstimatedPrice(adjustedFare.basePrice);
     setMinEstimatedPrice(adjustedFare.minPrice);
     setMaxEstimatedPrice(adjustedFare.maxPrice);
-    setEstimatedPrice(adjustedFare.adjustedPrice);
+    setEstimatedBookingFee(bookingFee);
+    setEstimatedServiceFee(serviceFee);
+    // Final amount payable = discounted/negotiated metered fare + undiscounted flat fees.
+    setEstimatedPrice(adjustedFare.adjustedPrice + bookingFee + serviceFee);
   }, [applyFareAdjustment, fareAdjustmentPercent]);
 
   const calculatePriceFromRoute = useCallback((
@@ -304,21 +320,18 @@ export const [RideProvider, useRide] = createContextHook(() => {
     const distanceKm = distanceMeters / 1000;
     const durationMinutes = durationSeconds / 60;
 
-    let computedPrice = calculateFare(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
+    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
     setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
 
-    if (isSharedRide) {
-      computedPrice = Math.round(computedPrice * 0.8);
-    }
-
     const activePromo = getActivePromotion();
-    if (activePromo) {
-      const rawDiscount = computedPrice * (activePromo.discountPercentage / 100);
-      const maxCap = activePromo.maxDiscountNGN ?? Infinity;
-      computedPrice = Math.round(computedPrice - Math.min(rawDiscount, maxCap));
-    }
+    const discountedMetered = applyRideDiscounts(breakdown.meteredSubtotal, rideTypeId, {
+      sharedRideDiscountMultiplier: isSharedRide ? SHARED_RIDE_DISCOUNT_MULTIPLIER : 1,
+      promo: activePromo
+        ? { discountPercentage: activePromo.discountPercentage, maxDiscountNGN: activePromo.maxDiscountNGN }
+        : null,
+    });
 
-    updateEstimatedFare(computedPrice, distanceKm, durationMinutes);
+    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee);
   }, [fareAdjustmentPercent, getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare]);
 
   const calculateRideEstimates = useCallback((pickup: typeof pickupLocation, dropoff: typeof dropoffLocation, rideTypeId: string) => {
@@ -339,21 +352,18 @@ export const [RideProvider, useRide] = createContextHook(() => {
     const distanceKm = earthRadiusKm * c;
     const durationMinutes = (distanceKm / 30) * 60;
 
-    let computedPrice = calculateFare(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
+    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
     setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
 
-    if (isSharedRide) {
-      computedPrice = Math.round(computedPrice * 0.8);
-    }
-
     const activePromo = getActivePromotion();
-    if (activePromo) {
-      const rawDiscount = computedPrice * (activePromo.discountPercentage / 100);
-      const maxCap = activePromo.maxDiscountNGN ?? Infinity;
-      computedPrice = Math.round(computedPrice - Math.min(rawDiscount, maxCap));
-    }
+    const discountedMetered = applyRideDiscounts(breakdown.meteredSubtotal, rideTypeId, {
+      sharedRideDiscountMultiplier: isSharedRide ? SHARED_RIDE_DISCOUNT_MULTIPLIER : 1,
+      promo: activePromo
+        ? { discountPercentage: activePromo.discountPercentage, maxDiscountNGN: activePromo.maxDiscountNGN }
+        : null,
+    });
 
-    updateEstimatedFare(computedPrice, distanceKm, durationMinutes);
+    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee);
   }, [getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare]);
 
   useEffect(() => {
@@ -483,6 +493,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
       baseFare: baseEstimatedPrice,
       minFare: minEstimatedPrice,
       maxFare: maxEstimatedPrice,
+      bookingFee: estimatedBookingFee,
+      serviceFee: estimatedServiceFee,
       fareAdjustmentPercent,
       distance: estimatedDistance,
       duration: estimatedDuration,
@@ -532,6 +544,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
       basePrice: baseEstimatedPrice,
       minPrice: minEstimatedPrice,
       maxPrice: maxEstimatedPrice,
+      bookingFee: estimatedBookingFee,
+      serviceFee: estimatedServiceFee,
       fareAdjustmentPercent,
       distance: estimatedDistance,
       duration: estimatedDuration,
@@ -572,6 +586,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
     baseEstimatedPrice,
     dropoffAddress,
     dropoffLocation,
+    estimatedBookingFee,
+    estimatedServiceFee,
     estimatedDistance,
     estimatedDuration,
     estimatedPrice,
@@ -679,6 +695,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
     baseEstimatedPrice,
     minEstimatedPrice,
     maxEstimatedPrice,
+    estimatedBookingFee,
+    estimatedServiceFee,
     fareAdjustmentPercent,
     estimatedDistance,
     estimatedDuration,
@@ -713,6 +731,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
     baseEstimatedPrice,
     minEstimatedPrice,
     maxEstimatedPrice,
+    estimatedBookingFee,
+    estimatedServiceFee,
     fareAdjustmentPercent,
     estimatedDistance,
     estimatedDuration,

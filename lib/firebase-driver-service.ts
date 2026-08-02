@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Driver, DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
+import { calculateDriverPayout } from './fare-calculator';
 
 export interface DriverTripRecord {
   id: string;
@@ -237,7 +238,7 @@ export class FirebaseDriverService {
           photo: passenger.photoURL,
           phone: passenger.phone || '',
         },
-        estimatedEarnings: (ride.fare || 0) * 0.8,
+        estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0).netAmount,
         distanceToPickup,
         createdAt: ride.createdAt ? new Date(ride.createdAt) : new Date(),
       });
@@ -311,7 +312,7 @@ export class FirebaseDriverService {
   static async getDriverEarnings(driverId: string, limitCount = 50): Promise<DriverEarnings[]> {
     const { data, error } = await supabase
       .from('rides')
-      .select('id, fare, completedAt, createdAt')
+      .select('id, fare, bookingFee, serviceFee, completedAt, createdAt')
       .eq('driverId', driverId)
       .eq('status', 'completed')
       .order('completedAt', { ascending: false })
@@ -321,14 +322,14 @@ export class FirebaseDriverService {
 
     return data.map((ride: any) => {
       const amount = ride.fare || 0;
-      const commission = amount * 0.2;
+      const { commission, netAmount } = calculateDriverPayout(amount, ride.bookingFee || 0, ride.serviceFee || 0);
       return {
         id: ride.id,
         driverId,
         rideId: ride.id,
         amount,
         commission,
-        netAmount: amount - commission,
+        netAmount,
         payoutStatus: 'completed',
         payoutDate: ride.completedAt ? new Date(ride.completedAt) : undefined,
         createdAt: new Date(ride.createdAt),
@@ -340,7 +341,7 @@ export class FirebaseDriverService {
     const [ridesResult, assignedResult, declinedResult, sessionsResult] = await Promise.all([
       supabase
         .from('rides')
-        .select('fare, completedAt, driverRating, status')
+        .select('fare, bookingFee, serviceFee, completedAt, driverRating, status')
         .eq('driverId', driverId)
         .in('status', ['completed', 'cancelled']),
       supabase
@@ -374,7 +375,7 @@ export class FirebaseDriverService {
         continue;
       }
       completedCount++;
-      const amount = (ride.fare || 0) * 0.8;
+      const amount = calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0).netAmount;
       const completedAt = ride.completedAt ? new Date(ride.completedAt) : null;
       const rating = ride.driverRating || 0;
 
