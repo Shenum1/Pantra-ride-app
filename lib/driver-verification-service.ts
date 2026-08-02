@@ -223,32 +223,26 @@ export class DriverVerificationService {
     }
   }
 
-  static async runBackgroundCheck(driverId: string): Promise<boolean> {
+  // Submits a background check request for manual admin review — there is no
+  // real background-check vendor integrated in this app, so this must not
+  // auto-decide pass/fail. It creates a 'pending' document identical in shape
+  // to the other document types, reviewed via the same admin pipeline
+  // (app/(admin-tabs)/verification.tsx -> trpc.admin.reviewDocument).
+  static async requestBackgroundCheck(driverId: string): Promise<void> {
     try {
-      console.log('Running background check for driver:', driverId);
-
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      const passed = Math.random() > 0.1;
-
       const document: Omit<DriverDocument, 'id'> = {
         driverId,
         type: 'background_check',
         documentUrl: 'system_generated',
-        status: passed ? 'approved' : 'rejected',
+        status: 'pending',
         uploadedAt: new Date(),
-        reviewedAt: new Date(),
-        reviewedBy: 'system',
-        rejectionReason: passed ? undefined : 'Background check failed',
       };
 
       await DatabaseService.create('driver_documents', document);
       await this.updateVerificationStatus(driverId);
-
-      return passed;
     } catch (error) {
-      console.error('Error running background check:', error);
-      return false;
+      console.error('Error requesting background check:', error);
+      throw error;
     }
   }
 }

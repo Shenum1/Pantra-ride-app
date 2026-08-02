@@ -140,16 +140,12 @@ export default function DriverDocumentsScreen() {
 
     setUploadingType('background_check');
     try {
-      const passed = await DriverVerificationService.runBackgroundCheck(driver.id);
+      await DriverVerificationService.requestBackgroundCheck(driver.id);
       await loadData();
-      if (passed) {
-        Alert.alert('Background Check Complete', 'Your background check passed.');
-      } else {
-        Alert.alert('Background Check Complete', 'Your background check did not pass. Please contact support.');
-      }
+      Alert.alert('Background Check Requested', 'Your background check has been submitted for review. We will notify you once it is complete.');
     } catch (error) {
-      console.error('Error running background check:', error);
-      Alert.alert('Error', 'Could not run the background check. Please try again.');
+      console.error('Error requesting background check:', error);
+      Alert.alert('Error', 'Could not submit your background check request. Please try again.');
     } finally {
       setUploadingType(null);
     }
@@ -210,7 +206,7 @@ export default function DriverDocumentsScreen() {
                         <ActivityIndicator size="small" color={Colors.light.white} />
                       ) : (
                         <Text style={styles.uploadButtonText}>
-                          {doc ? 'Run Again' : 'Run Check'}
+                          {doc ? 'Request Again' : 'Request Check'}
                         </Text>
                       )}
                     </TouchableOpacity>

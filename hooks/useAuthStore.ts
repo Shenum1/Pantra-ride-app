@@ -116,7 +116,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await AsyncStorage.removeItem('driver_auth_user');
 
       const normalizedEmail = email.trim().toLowerCase();
-      if (normalizedEmail === TEST_RIDER_EMAIL && password === TEST_RIDER_PASSWORD) {
+      // __DEV__ is compiled to `false` in production/release builds (App Store,
+      // Play Store, EAS production), so this demo login can never be reached
+      // by a real user — only in local development / Expo Go.
+      if (__DEV__ && normalizedEmail === TEST_RIDER_EMAIL && password === TEST_RIDER_PASSWORD) {
         const testUserData: User = {
           id: 'test-rider', name: 'Test Rider', email: TEST_RIDER_EMAIL,
           phone: '+234 123 456 7890', rating: null, authProvider: 'email',
