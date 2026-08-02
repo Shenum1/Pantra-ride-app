@@ -91,6 +91,13 @@ export interface RideRequest {
   fareAdjustmentPercent?: number;
   bookingFee?: number;
   serviceFee?: number;
+  zoneFee?: number;
+  waitingCharge?: number;
+  arrivedAt?: Date;
+  cancellationFee?: number;
+  offeredFare?: number;
+  negotiationStatus?: 'pending' | 'accepted' | 'rejected' | 'expired';
+  offerExpiresAt?: Date;
   distance?: number;
   duration?: number;
   status?: 'pending' | 'confirmed' | 'accepted' | 'in_progress' | 'in-progress' | 'completed' | 'cancelled';

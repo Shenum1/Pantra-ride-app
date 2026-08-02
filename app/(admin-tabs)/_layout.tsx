@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
-import { BarChart3, Users, MessageSquare, TrendingUp, Settings, ShieldCheck } from 'lucide-react-native';
+import { BarChart3, Users, MessageSquare, TrendingUp, Settings, ShieldCheck, Receipt } from 'lucide-react-native';
 import { useAdminAuth } from '@/hooks/useAdminAuthStore';
 import AdminLogin from '@/components/AdminLogin';
 
@@ -61,6 +61,15 @@ export default function AdminTabsLayout() {
           title: 'Verify',
           tabBarIcon: ({ color, size }) => (
             <ShieldCheck size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="rides"
+        options={{
+          title: 'Rides',
+          tabBarIcon: ({ color, size }) => (
+            <Receipt size={size} color={color} />
           ),
         }}
       />

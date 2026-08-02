@@ -6,8 +6,11 @@ import {
   clampToMinFare,
   applyRideDiscounts,
   calculateDriverPayout,
+  calculateWaitingCharge,
+  getOfferPresets,
+  validateOfferedFare,
 } from '@/lib/fare-calculator';
-import { TIER_RATES, PLATFORM_COMMISSION_RATE, DRIVER_PAYOUT_RATE, SHARED_RIDE_DISCOUNT_MULTIPLIER } from '@/lib/pricing-config';
+import { TIER_RATES, PLATFORM_COMMISSION_RATE, DRIVER_PAYOUT_RATE, SHARED_RIDE_DISCOUNT_MULTIPLIER, ZONE_FEES, WAITING_CHARGE_CONFIG } from '@/lib/pricing-config';
 
 describe('calculateFareBreakdown — core meter math (backward compatible)', () => {
   it('computes base/distance/time exactly as before, unaffected by fees or reordering', () => {
@@ -197,5 +200,133 @@ describe('calculateDriverPayout', () => {
     const { commission, netAmount } = calculateDriverPayout(finalFare, breakdown.bookingFee, breakdown.serviceFee);
     expect(commission).toBe(903 * PLATFORM_COMMISSION_RATE); // commission on the metered 903 only, not on 1003
     expect(netAmount).toBe(finalFare - commission); // driver gets everything else, including the full booking fee
+  });
+
+  it('excludes zoneFee from the commission base too', () => {
+    // 1000 metered + 100 booking + 500 zone (e.g. airport pickup) = 1600 total
+    const { meteredFare, commission, netAmount } = calculateDriverPayout(1600, 100, 0, 500);
+    expect(meteredFare).toBe(1000);
+    expect(commission).toBe(200); // 20% of the 1000 metered portion only
+    expect(netAmount).toBe(1400); // driver keeps 800 metered + booking fee + zone fee in full
+  });
+});
+
+describe('zoneFee — flat, platform-owned, same treatment as bookingFee/serviceFee', () => {
+  it('defaults to 0 when not provided (backward compatible)', () => {
+    const breakdown = calculateFareBreakdown(5, 15, 'standard');
+    expect(breakdown.zoneFee).toBe(0);
+    expect(breakdown.total).toBe(breakdown.meteredSubtotal + breakdown.bookingFee);
+  });
+
+  it('is added to the total on top of the other fees', () => {
+    const breakdown = calculateFareBreakdown(5, 15, 'standard', 1, ZONE_FEES.airportPickup);
+    expect(breakdown.zoneFee).toBe(500);
+    expect(breakdown.total).toBe(breakdown.meteredSubtotal + breakdown.bookingFee + 500);
+  });
+
+  it('is never surged', () => {
+    const breakdown = calculateFareBreakdown(5, 15, 'standard', 3, ZONE_FEES.airportPickup);
+    expect(breakdown.zoneFee).toBe(500);
+  });
+
+  it('is excluded from rider discounts, same as booking/service fee', () => {
+    const breakdown = calculateFareBreakdown(5, 15, 'standard', 1, ZONE_FEES.airportPickup);
+    const discountedMetered = applyRideDiscounts(breakdown.meteredSubtotal, 'standard', {
+      sharedRideDiscountMultiplier: SHARED_RIDE_DISCOUNT_MULTIPLIER,
+      promo: { discountPercentage: 50 },
+    });
+    const finalTotal = discountedMetered + breakdown.bookingFee + breakdown.serviceFee + breakdown.zoneFee;
+    expect(finalTotal - discountedMetered).toBe(breakdown.bookingFee + breakdown.zoneFee);
+    expect(breakdown.zoneFee).toBe(500);
+  });
+});
+
+describe('calculateWaitingCharge', () => {
+  it('is 0 when arrivedAt or startedAt is missing', () => {
+    expect(calculateWaitingCharge(null, new Date())).toBe(0);
+    expect(calculateWaitingCharge(new Date(), null)).toBe(0);
+    expect(calculateWaitingCharge(undefined, undefined)).toBe(0);
+  });
+
+  it('is 0 within the grace period', () => {
+    const arrivedAt = new Date('2026-01-01T10:00:00Z');
+    const startedAt = new Date('2026-01-01T10:03:00Z'); // exactly at the 3-minute grace boundary
+    expect(calculateWaitingCharge(arrivedAt, startedAt)).toBe(0);
+  });
+
+  it('charges per minute only for time beyond the grace period', () => {
+    const arrivedAt = new Date('2026-01-01T10:00:00Z');
+    const startedAt = new Date('2026-01-01T10:08:00Z'); // 8 minutes waited, 3 free -> 5 chargeable
+    expect(calculateWaitingCharge(arrivedAt, startedAt)).toBe(5 * WAITING_CHARGE_CONFIG.perMinuteRate);
+  });
+
+  it('never charges negative (started before arrived, e.g. clock skew)', () => {
+    const arrivedAt = new Date('2026-01-01T10:05:00Z');
+    const startedAt = new Date('2026-01-01T10:00:00Z');
+    expect(calculateWaitingCharge(arrivedAt, startedAt)).toBe(0);
+  });
+});
+
+describe('waiting charge is excluded from commission, same mechanism as platform fees', () => {
+  it('driver keeps the waiting charge in full', () => {
+    // 1000 metered + 100 booking fee + 200 waiting charge = 1300 total
+    const { meteredFare, commission, netAmount } = calculateDriverPayout(1300, 100, 0, 0, 200);
+    expect(meteredFare).toBe(1000);
+    expect(commission).toBe(200); // 20% of the 1000 metered portion only
+    expect(netAmount).toBe(1100); // driver keeps 800 metered + booking fee + all of the waiting charge
+  });
+
+  it('backward compatible: defaults to 0 and matches the old payout when omitted', () => {
+    const withDefault = calculateDriverPayout(1000, 100);
+    const withExplicitZero = calculateDriverPayout(1000, 100, 0, 0, 0);
+    expect(withDefault).toEqual(withExplicitZero);
+  });
+});
+
+describe('cancellation fees get the NORMAL 80/20 split, unlike the other fees', () => {
+  it('a cancelled ride\'s fare (== the cancellation fee) is commissioned like any other fare', () => {
+    // A cancelled ride has fare == cancellationFee, no other fees involved.
+    const { meteredFare, commission, netAmount } = calculateDriverPayout(200);
+    expect(meteredFare).toBe(200); // the whole cancellation fee counts as "metered" for commission purposes
+    expect(commission).toBe(40);   // normal 20%
+    expect(netAmount).toBe(160);   // driver gets the normal 80%
+  });
+});
+
+describe('getOfferPresets', () => {
+  it('returns the 5 preset percentages relative to the metered fare', () => {
+    const presets = getOfferPresets(1000, 'standard');
+    expect(presets.map((p) => p.percent)).toEqual([-20, -10, 0, 10, 20]);
+    expect(presets.map((p) => p.amount)).toEqual([800, 900, 1000, 1100, 1200]);
+  });
+
+  it('floor-guards presets that would fall below the tier minimum', () => {
+    // -20% of 700 = 560, below standard's 665 minFare -> clamped up to 665
+    const presets = getOfferPresets(700, 'standard');
+    const minus20 = presets.find((p) => p.percent === -20)!;
+    expect(minus20.amount).toBe(TIER_RATES.standard.minFare);
+  });
+});
+
+describe('validateOfferedFare', () => {
+  it('accepts a reasonable offer within range', () => {
+    expect(validateOfferedFare(1000, 900, 'standard')).toEqual({ valid: true });
+  });
+
+  it('rejects an offer below the tier minimum fare', () => {
+    const result = validateOfferedFare(1000, 100, 'standard');
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain(String(TIER_RATES.standard.minFare));
+  });
+
+  it('rejects an unreasonably high offer', () => {
+    const result = validateOfferedFare(1000, 5000, 'standard');
+    expect(result.valid).toBe(false);
+  });
+
+  it('rejects zero, negative, or non-finite amounts', () => {
+    expect(validateOfferedFare(1000, 0, 'standard').valid).toBe(false);
+    expect(validateOfferedFare(1000, -50, 'standard').valid).toBe(false);
+    expect(validateOfferedFare(1000, NaN, 'standard').valid).toBe(false);
   });
 });

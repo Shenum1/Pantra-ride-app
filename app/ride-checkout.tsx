@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { ArrowRight, Minus, Plus, Wallet, Clock3, CreditCard, MapPin, Star } from 'lucide-react-native';
+import { ArrowRight, Minus, Plus, Wallet, Clock3, CreditCard, MapPin, Star, Zap } from 'lucide-react-native';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import { useRide } from '@/hooks/useRideStore';
@@ -28,6 +28,7 @@ export default function RideCheckoutScreen() {
     scheduledDate,
     selectedPaymentMethod,
     setFareAdjustment,
+    surgeMultiplier,
   } = useRide();
   const { pickupAddress, dropoffAddress, pickupLocation, dropoffLocation } = useLocation();
   const { balance, balanceNGN, redeemForRide } = usePoints();
@@ -140,6 +141,14 @@ export default function RideCheckoutScreen() {
               <Text style={styles.priceValue}>₦{estimatedPrice.toFixed(0)}</Text>
               <Text style={styles.priceMeta}>{priceNote}</Text>
               <Text style={styles.priceBounds}>Allowed range ₦{minEstimatedPrice.toFixed(0)} - ₦{maxEstimatedPrice.toFixed(0)}</Text>
+              {surgeMultiplier > 1 && (
+                <View style={styles.surgeBadge} testID="surge-badge">
+                  <Zap size={14} color={Colors.light.warning} fill={Colors.light.warning} />
+                  <Text style={styles.surgeBadgeText}>
+                    Prices are higher due to high demand ({surgeMultiplier.toFixed(1)}×)
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.adjustmentGrid}>
@@ -428,6 +437,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#CBD5E1',
     marginTop: 8,
+  },
+  surgeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: 'rgba(255, 149, 0, 0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  surgeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.warning,
   },
   adjustmentGrid: {
     flexDirection: 'row',

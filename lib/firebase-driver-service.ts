@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { Driver, DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
-import { calculateDriverPayout } from './fare-calculator';
+import { calculateDriverPayout, calculateWaitingCharge } from './fare-calculator';
 
 export interface DriverTripRecord {
   id: string;
@@ -228,6 +228,8 @@ export class FirebaseDriverService {
         dropoffAddress: ride.dropoffAddress || '',
         rideType: ride.rideType || 'standard',
         price: ride.fare || 0,
+        offeredFare: ride.offeredFare ?? undefined,
+        negotiationStatus: ride.negotiationStatus ?? undefined,
         distance: ride.distance || 0,
         duration: ride.duration || 0,
         status: 'pending',
@@ -238,7 +240,7 @@ export class FirebaseDriverService {
           photo: passenger.photoURL,
           phone: passenger.phone || '',
         },
-        estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0).netAmount,
+        estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0).netAmount,
         distanceToPickup,
         createdAt: ride.createdAt ? new Date(ride.createdAt) : new Date(),
       });
@@ -247,10 +249,20 @@ export class FirebaseDriverService {
     return results.sort((a, b) => a.distanceToPickup - b.distanceToPickup);
   }
 
-  static async acceptRide(rideId: string, driverId: string): Promise<void> {
+  static async acceptRide(rideId: string, driverId: string, acceptedOfferedFare?: number): Promise<void> {
+    const updates: any = { driverId, status: 'accepted', acceptedAt: new Date().toISOString() };
+
+    // Accepting a negotiated ride locks in the rider's proposed price as the
+    // real fare from this point on — everything downstream (payout, admin
+    // breakdown, ride history) treats it identically to a normal metered ride.
+    if (acceptedOfferedFare !== undefined) {
+      updates.fare = acceptedOfferedFare;
+      updates.negotiationStatus = 'accepted';
+    }
+
     const { error } = await supabase
       .from('rides')
-      .update({ driverId, status: 'accepted', acceptedAt: new Date().toISOString() })
+      .update(updates)
       .eq('id', rideId);
     if (error) throw new Error(error.message);
     await this.setDriverOnlineStatus(driverId, false);
@@ -269,9 +281,31 @@ export class FirebaseDriverService {
     driverId?: string
   ): Promise<void> {
     const updates: any = { status: status === 'in_progress' ? 'in-progress' : status };
-    if (status === 'in_progress') updates.startedAt = new Date().toISOString();
-    else if (status === 'completed') updates.completedAt = new Date().toISOString();
-    else if (status === 'cancelled') updates.cancelledAt = new Date().toISOString();
+
+    if (status === 'in_progress') {
+      const startedAt = new Date();
+      updates.startedAt = startedAt.toISOString();
+
+      // Waiting charge can't be known upfront at booking time — compute it
+      // now, from arrivedAt (set when the driver reached pickup) to now.
+      const { data: rideRow } = await supabase
+        .from('rides')
+        .select('arrivedAt, fare')
+        .eq('id', rideId)
+        .single();
+
+      if (rideRow?.arrivedAt) {
+        const waitingCharge = calculateWaitingCharge(new Date(rideRow.arrivedAt), startedAt);
+        if (waitingCharge > 0) {
+          updates.waitingCharge = waitingCharge;
+          updates.fare = (rideRow.fare || 0) + waitingCharge;
+        }
+      }
+    } else if (status === 'completed') {
+      updates.completedAt = new Date().toISOString();
+    } else if (status === 'cancelled') {
+      updates.cancelledAt = new Date().toISOString();
+    }
 
     const { error } = await supabase.from('rides').update(updates).eq('id', rideId);
     if (error) throw new Error(error.message);
@@ -312,36 +346,45 @@ export class FirebaseDriverService {
   static async getDriverEarnings(driverId: string, limitCount = 50): Promise<DriverEarnings[]> {
     const { data, error } = await supabase
       .from('rides')
-      .select('id, fare, bookingFee, serviceFee, completedAt, createdAt')
+      .select('id, fare, bookingFee, serviceFee, zoneFee, waitingCharge, cancellationFee, status, completedAt, cancelledAt, createdAt')
       .eq('driverId', driverId)
-      .eq('status', 'completed')
-      .order('completedAt', { ascending: false })
+      .in('status', ['completed', 'cancelled'])
+      .order('createdAt', { ascending: false })
       .limit(limitCount);
 
     if (error || !data) return [];
 
-    return data.map((ride: any) => {
-      const amount = ride.fare || 0;
-      const { commission, netAmount } = calculateDriverPayout(amount, ride.bookingFee || 0, ride.serviceFee || 0);
-      return {
-        id: ride.id,
-        driverId,
-        rideId: ride.id,
-        amount,
-        commission,
-        netAmount,
-        payoutStatus: 'completed',
-        payoutDate: ride.completedAt ? new Date(ride.completedAt) : undefined,
-        createdAt: new Date(ride.createdAt),
-      };
-    });
+    return data
+      // A cancelled ride only counts as a payout if it actually charged a
+      // cancellation fee — free cancellations aren't a driver earning.
+      .filter((ride: any) => ride.status === 'completed' || (ride.cancellationFee || 0) > 0)
+      .map((ride: any) => {
+        const isCancelled = ride.status === 'cancelled';
+        const amount = isCancelled ? (ride.cancellationFee || 0) : (ride.fare || 0);
+        const { commission, netAmount } = isCancelled
+          ? calculateDriverPayout(amount)
+          : calculateDriverPayout(amount, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0);
+        return {
+          id: ride.id,
+          driverId,
+          rideId: ride.id,
+          amount,
+          commission,
+          netAmount,
+          payoutStatus: 'completed',
+          payoutDate: isCancelled
+            ? (ride.cancelledAt ? new Date(ride.cancelledAt) : undefined)
+            : (ride.completedAt ? new Date(ride.completedAt) : undefined),
+          createdAt: new Date(ride.createdAt),
+        };
+      });
   }
 
   static async getDriverStats(driverId: string): Promise<DriverStats> {
     const [ridesResult, assignedResult, declinedResult, sessionsResult] = await Promise.all([
       supabase
         .from('rides')
-        .select('fare, bookingFee, serviceFee, completedAt, driverRating, status')
+        .select('fare, bookingFee, serviceFee, zoneFee, waitingCharge, cancellationFee, completedAt, cancelledAt, driverRating, status')
         .eq('driverId', driverId)
         .in('status', ['completed', 'cancelled']),
       supabase
@@ -372,10 +415,23 @@ export class FirebaseDriverService {
     for (const ride of ridesResult.data) {
       if (ride.status === 'cancelled') {
         cancelledCount++;
+        // A cancellation fee (if any) still pays the driver via the normal
+        // 80/20 split — it just isn't a "completed ride" for the trip count.
+        const cancellationFee = (ride as any).cancellationFee || 0;
+        if (cancellationFee > 0) {
+          const amount = calculateDriverPayout(cancellationFee).netAmount;
+          const cancelledAt = (ride as any).cancelledAt ? new Date((ride as any).cancelledAt) : null;
+          totalEarnings += amount;
+          if (cancelledAt) {
+            if (cancelledAt >= today) todayEarnings += amount;
+            if (cancelledAt >= weekStart) weekEarnings += amount;
+            if (cancelledAt >= monthStart) monthEarnings += amount;
+          }
+        }
         continue;
       }
       completedCount++;
-      const amount = calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0).netAmount;
+      const amount = calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0).netAmount;
       const completedAt = ride.completedAt ? new Date(ride.completedAt) : null;
       const rating = ride.driverRating || 0;
 

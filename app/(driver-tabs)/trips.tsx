@@ -153,6 +153,15 @@ export default function DriverTrips() {
         </View>
       </View>
 
+      {ride.negotiationStatus === 'pending' && ride.offeredFare != null && (
+        <View style={styles.offerBadge}>
+          <DollarSign size={14} color={Colors.light.primary} />
+          <Text style={styles.offerBadgeText}>
+            Rider offered ₦{ride.offeredFare.toFixed(0)} (metered ₦{(ride.price || 0).toFixed(0)})
+          </Text>
+        </View>
+      )}
+
       <View style={styles.routeInfo}>
         <View style={styles.locationRow}>
           <View style={[styles.locationDot, { backgroundColor: '#4CAF50' }]} />
@@ -201,7 +210,11 @@ export default function DriverTrips() {
           style={styles.acceptButton}
           onPress={() => handleAcceptRide(ride.id!)}
         >
-          <Text style={styles.acceptText}>Accept</Text>
+          <Text style={styles.acceptText}>
+            {ride.negotiationStatus === 'pending' && ride.offeredFare != null
+              ? `Accept ₦${ride.offeredFare.toFixed(0)}`
+              : 'Accept'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -400,6 +413,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FF9800',
     fontWeight: '600',
+  },
+  offerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.light.lightGray,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  offerBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.light.primary,
+    flexShrink: 1,
   },
   routeInfo: {
     marginBottom: 12,

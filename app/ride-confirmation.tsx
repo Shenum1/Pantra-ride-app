@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Car, CarFront, Bus, ChevronDown, ChevronUp, Minus, Plus, Route, X } from 'lucide-react-native';
+import { Car, CarFront, Bus, ChevronDown, ChevronUp, Route, X, Zap } from 'lucide-react-native';
 
 const RIDE_TYPE_ICONS: Record<string, typeof Car> = {
   car: Car,
@@ -24,6 +24,7 @@ import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
+import { getOfferPresets } from '@/lib/fare-calculator';
 import { Location } from '@/types';
 
 const COLLAPSED_OFFSET = 188;
@@ -48,13 +49,12 @@ export default function RideConfirmationScreen() {
     estimatedDistance,
     estimatedDuration,
     estimatedPrice,
-    fareAdjustmentPercent,
     rideTypes,
     selectedRideType,
     setSelectedRideType,
     tierPrices,
     requestRide,
-    setFareAdjustment,
+    surgeMultiplier,
   } = useRide();
   const {
     pickupLocation,
@@ -67,6 +67,7 @@ export default function RideConfirmationScreen() {
     clearRoute,
   } = useLocation();
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [selectedOfferPercent, setSelectedOfferPercent] = useState<number>(0);
   const routeRequestRef = useRef<string | null>(null);
   const sheetOffset = useRef<Animated.Value>(new Animated.Value(COLLAPSED_OFFSET)).current;
   const lastSheetOffset = useRef<number>(COLLAPSED_OFFSET);
@@ -143,7 +144,15 @@ export default function RideConfirmationScreen() {
     return routeInfo.polyline ? 'Live direction' : 'Estimated direction';
   }, [routeInfo]);
 
-  const adjustmentLabel = `${fareAdjustmentPercent > 0 ? '+' : ''}${fareAdjustmentPercent}%`;
+  // Negotiation presets replace the old self-adjust slider: selecting a
+  // non-zero preset submits it as a rider offer that a driver must accept,
+  // rather than instantly discounting the fare. "Metered fare" (0%) books
+  // normally with no negotiation step.
+  const offerPresets = useMemo(
+    () => getOfferPresets(estimatedPrice, selectedRideType),
+    [estimatedPrice, selectedRideType]
+  );
+  const selectedOffer = offerPresets.find((p) => p.percent === selectedOfferPercent) ?? offerPresets[2];
 
   const toggleSheet = () => {
     const nextExpanded = !isExpanded;
@@ -166,7 +175,8 @@ export default function RideConfirmationScreen() {
     setIsSubmitting(true);
 
     try {
-      const ride = await requestRide();
+      const offerAmount = selectedOffer.percent !== 0 ? selectedOffer.amount : undefined;
+      const ride = await requestRide(offerAmount);
       if (!ride) {
         Alert.alert('Sign in required', 'Please sign in to book a ride.');
         return;
@@ -245,6 +255,15 @@ export default function RideConfirmationScreen() {
               </View>
             </View>
 
+            {surgeMultiplier > 1 && (
+              <View style={styles.surgeBadge} testID="surge-badge">
+                <Zap size={14} color="#FF9500" fill="#FF9500" />
+                <Text style={styles.surgeBadgeText}>
+                  Prices are higher due to high demand ({surgeMultiplier.toFixed(1)}×)
+                </Text>
+              </View>
+            )}
+
             <View style={styles.destinationCard} testID="ride-destination-card">
               <Text style={styles.destinationLabel}>Destination</Text>
               <Text style={styles.destinationValue} numberOfLines={isExpanded ? 2 : 1}>{dropoffAddress || 'Destination'}</Text>
@@ -284,50 +303,29 @@ export default function RideConfirmationScreen() {
             <View style={styles.adjustCard} testID="ride-map-fare-card">
               <View style={styles.adjustHeader}>
                 <View>
-                  <Text style={styles.adjustTitle}>Adjust price</Text>
-                  <Text style={styles.adjustSubtitle}>Only 10% down or 10% up.</Text>
+                  <Text style={styles.adjustTitle}>Propose a fare</Text>
+                  <Text style={styles.adjustSubtitle}>
+                    {selectedOffer.percent === 0
+                      ? 'Book now at the metered fare.'
+                      : `Your offer of ₦${selectedOffer.amount.toFixed(0)} must be accepted by a driver.`}
+                  </Text>
                 </View>
-                <Text style={styles.adjustBadge}>{adjustmentLabel}</Text>
-              </View>
-
-              <View style={styles.adjustControls}>
-                <Pressable
-                  style={[styles.adjustButton, fareAdjustmentPercent <= -10 && styles.adjustButtonDisabled]}
-                  onPress={() => setFareAdjustment(-10)}
-                  disabled={fareAdjustmentPercent <= -10}
-                  testID="ride-map-fare-down"
-                >
-                  <Minus size={18} color="#FFFFFF" />
-                </Pressable>
-
-                <View style={styles.sliderTrack}>
-                  <View style={[styles.sliderSegment, fareAdjustmentPercent === -10 && styles.sliderSegmentActive]} />
-                  <View style={[styles.sliderSegment, fareAdjustmentPercent === 0 && styles.sliderSegmentCenter]} />
-                  <View style={[styles.sliderSegment, fareAdjustmentPercent === 10 && styles.sliderSegmentActive]} />
-                </View>
-
-                <Pressable
-                  style={[styles.adjustButton, fareAdjustmentPercent >= 10 && styles.adjustButtonDisabled]}
-                  onPress={() => setFareAdjustment(10)}
-                  disabled={fareAdjustmentPercent >= 10}
-                  testID="ride-map-fare-up"
-                >
-                  <Plus size={18} color="#FFFFFF" />
-                </Pressable>
+                <Text style={styles.adjustBadge}>₦{selectedOffer.amount.toFixed(0)}</Text>
               </View>
 
               <View style={styles.adjustQuickRow}>
-                {[-10, 0, 10].map((option) => {
-                  const isActive = fareAdjustmentPercent === option;
-                  const label = `${option > 0 ? '+' : ''}${option}%`;
+                {offerPresets.map((preset) => {
+                  const isActive = selectedOfferPercent === preset.percent;
                   return (
                     <Pressable
-                      key={option}
+                      key={preset.percent}
                       style={[styles.adjustChip, isActive && styles.adjustChipActive]}
-                      onPress={() => setFareAdjustment(option)}
-                      testID={`ride-map-adjustment-${option}`}
+                      onPress={() => setSelectedOfferPercent(preset.percent)}
+                      testID={`ride-map-offer-${preset.percent}`}
                     >
-                      <Text style={[styles.adjustChipText, isActive && styles.adjustChipTextActive]}>{label}</Text>
+                      <Text style={[styles.adjustChipText, isActive && styles.adjustChipTextActive]}>
+                        {preset.percent === 0 ? 'Metered' : preset.label}
+                      </Text>
                     </Pressable>
                   );
                 })}
@@ -351,7 +349,7 @@ export default function RideConfirmationScreen() {
               </Pressable>
             </View>
             <Button
-              title="Book ride"
+              title={selectedOffer.percent === 0 ? 'Book ride' : 'Send offer to drivers'}
               onPress={handleBookRide}
               loading={isSubmitting}
               disabled={isSubmitting || isCalculatingRoute}
@@ -465,6 +463,21 @@ const styles = StyleSheet.create({
   summaryRow: {
     flexDirection: 'row',
     gap: 12,
+  },
+  surgeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    backgroundColor: 'rgba(255, 149, 0, 0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  surgeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF9500',
   },
   summaryCard: {
     flex: 1,

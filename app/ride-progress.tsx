@@ -115,6 +115,43 @@ export default function RideProgressScreen() {
     currentRideStatusRef.current = currentRideStatus;
   }, [currentRideDriver, currentRideDriverLocation, currentRideStatusText, currentRideStatus, currentRideTrackingStage]);
 
+  // Negotiated offers auto-expire client-side (no background job). Once the
+  // window passes with no driver having accepted, clear the offer so the ride
+  // becomes acceptable by any driver at the metered fare (already stored in
+  // `fare`) instead of staying gated behind an expired proposed price.
+  useEffect(() => {
+    if (
+      currentRide?.negotiationStatus !== 'pending' ||
+      !currentRide.offerExpiresAt ||
+      !currentRide.id ||
+      currentRide.id.startsWith('local-ride-')
+    ) {
+      return;
+    }
+
+    const rideId = currentRide.id;
+    const msUntilExpiry = currentRide.offerExpiresAt.getTime() - Date.now();
+
+    const timer = setTimeout(async () => {
+      try {
+        const row = await DatabaseService.get('rides', rideId) as
+          | { status?: string; negotiationStatus?: string }
+          | null;
+        if (row?.status === 'pending' && row.negotiationStatus === 'pending') {
+          await DatabaseService.update('rides', rideId, { negotiationStatus: 'expired' });
+          Alert.alert(
+            'No driver accepted your offer',
+            'Your ride is now open to any driver at the standard fare.'
+          );
+        }
+      } catch (error) {
+        console.error('Error expiring fare offer:', error);
+      }
+    }, Math.max(0, msUntilExpiry));
+
+    return () => clearTimeout(timer);
+  }, [currentRide?.id, currentRide?.negotiationStatus, currentRide?.offerExpiresAt]);
+
   useEffect(() => {
     cancelRideRef.current = cancelRide;
     completeRideRef.current = completeRide;
@@ -385,6 +422,18 @@ export default function RideProgressScreen() {
 
       if (status === 'completed') {
         isCancelled = true;
+
+        // The driver-side trip-start step may have added a waiting charge to
+        // the server's fare after this rider's local estimate was set — pull
+        // the authoritative final fare before snapshotting the completed ride.
+        const finalRow = await DatabaseService.get('rides', currentRideId) as { fare?: number; waitingCharge?: number } | null;
+        if (finalRow?.fare !== undefined) {
+          await updateRideSession({
+            price: finalRow.fare,
+            waitingCharge: finalRow.waitingCharge ?? 0,
+          });
+        }
+
         const completedRide = completeRideRef.current();
         void NotificationService.notifyRideCompleted(user?.id ?? '', completedRide?.price ?? 0);
         if (completedRide?.driver) {

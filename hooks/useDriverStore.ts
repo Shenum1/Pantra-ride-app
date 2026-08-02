@@ -192,8 +192,13 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       const ride = rideRequests.find(r => r.id === rideId);
       if (!ride) return;
 
-      await FirebaseDriverService.acceptRide(rideId, driverProfile.id);
-      setCurrentRide({ ...ride, status: 'confirmed' });
+      const acceptedOfferedFare = ride.negotiationStatus === 'pending' ? ride.offeredFare : undefined;
+      await FirebaseDriverService.acceptRide(rideId, driverProfile.id, acceptedOfferedFare);
+      setCurrentRide({
+        ...ride,
+        status: 'confirmed',
+        price: acceptedOfferedFare ?? ride.price,
+      });
       setRideRequests(prev => prev.filter(r => r.id !== rideId));
       
       console.log('Ride accepted:', rideId);

@@ -5,6 +5,8 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { mockRideTypes } from '@/mocks/rideTypes';
 import { Location, PaymentMethod, RideCancellationReason, RideRequest, RideTrackingStage, RideType } from '@/types';
 import { calculateFareBreakdown, calculateAllTierFares, applyRideDiscounts } from '@/lib/fare-calculator';
+import { calculateCancellationFee } from '@/lib/cancellation-calculator';
+import { calculateSurgeMultiplier } from '@/lib/surge-calculator';
 import { SHARED_RIDE_DISCOUNT_MULTIPLIER } from '@/lib/pricing-config';
 import { useLocation } from './useLocationStore';
 import { usePayment } from './usePaymentStore';
@@ -12,6 +14,7 @@ import { usePromotions } from './usePromotionsStore';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
 import { RideHistoryService } from '@/lib/ride-history-service';
 import { DatabaseService } from '@/lib/database-service';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from './useAuthStore';
 import { trpcClient } from '@/lib/trpc';
 
@@ -28,9 +31,11 @@ interface FareBounds {
 const ACTIVE_RIDE_STORAGE_PREFIX = 'active_ride_session_v2';
 const getActiveRideStorageKey = (userId: string) => `${ACTIVE_RIDE_STORAGE_PREFIX}:${userId}`;
 
-interface SerializedRideRequest extends Omit<RideRequest, 'createdAt' | 'scheduledFor'> {
+interface SerializedRideRequest extends Omit<RideRequest, 'createdAt' | 'scheduledFor' | 'arrivedAt' | 'offerExpiresAt'> {
   createdAt?: string;
   scheduledFor?: string;
+  arrivedAt?: string;
+  offerExpiresAt?: string;
 }
 
 function serializeRide(ride: RideRequest): SerializedRideRequest {
@@ -38,6 +43,8 @@ function serializeRide(ride: RideRequest): SerializedRideRequest {
     ...ride,
     createdAt: ride.createdAt?.toISOString(),
     scheduledFor: ride.scheduledFor?.toISOString(),
+    arrivedAt: ride.arrivedAt?.toISOString(),
+    offerExpiresAt: ride.offerExpiresAt?.toISOString(),
   };
 }
 
@@ -68,6 +75,8 @@ function deserializeRide(ride: SerializedRideRequest): RideRequest {
       : undefined,
     createdAt: ride.createdAt ? new Date(ride.createdAt) : undefined,
     scheduledFor: ride.scheduledFor ? new Date(ride.scheduledFor) : undefined,
+    arrivedAt: ride.arrivedAt ? new Date(ride.arrivedAt) : undefined,
+    offerExpiresAt: ride.offerExpiresAt ? new Date(ride.offerExpiresAt) : undefined,
   };
 }
 
@@ -87,6 +96,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const [maxEstimatedPrice, setMaxEstimatedPrice] = useState<number>(0);
   const [estimatedBookingFee, setEstimatedBookingFee] = useState<number>(0);
   const [estimatedServiceFee, setEstimatedServiceFee] = useState<number>(0);
+  const [estimatedZoneFee, setEstimatedZoneFee] = useState<number>(0);
+  const [zoneFee, setZoneFee] = useState<number>(0);
   const [fareAdjustmentPercent, setFareAdjustmentPercent] = useState<number>(0);
   const [estimatedDistance, setEstimatedDistance] = useState<number>(0);
   const [estimatedDuration, setEstimatedDuration] = useState<number>(0);
@@ -119,6 +130,42 @@ export const [RideProvider, useRide] = createContextHook(() => {
     queryKey: ['rideTypes'],
     queryFn: async () => mockRideTypes,
   });
+
+  // Computed on demand from two plain counts, no background job or geospatial
+  // indexing — only runs while the rider actually has a pickup location set
+  // (i.e. actively looking at a fare estimate), refreshed periodically.
+  const { data: liveSurgeMultiplier } = useQuery({
+    queryKey: ['surgeMultiplier'],
+    queryFn: async () => {
+      const [onlineDriversResult, pendingRidesResult, surgeConfigResult] = await Promise.all([
+        supabase.from('drivers').select('id', { count: 'exact', head: true }).eq('isOnline', true),
+        supabase.from('rides').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('surge_config').select('*').limit(1).maybeSingle(),
+      ]);
+
+      const config = surgeConfigResult.data;
+      if (!config) {
+        return 1;
+      }
+
+      return calculateSurgeMultiplier(onlineDriversResult.count ?? 0, pendingRidesResult.count ?? 0, {
+        minMultiplier: Number(config.minMultiplier),
+        maxMultiplier: Number(config.maxMultiplier),
+        highDemandRatio: Number(config.highDemandRatio),
+        lowDemandRatio: Number(config.lowDemandRatio),
+        isEnabled: !!config.isEnabled,
+      });
+    },
+    enabled: !!pickupLocation,
+    staleTime: 30_000,
+    refetchInterval: 30_000,
+  });
+
+  useEffect(() => {
+    if (liveSurgeMultiplier !== undefined) {
+      setSurgeMultiplier(liveSurgeMultiplier);
+    }
+  }, [liveSurgeMultiplier]);
 
   useEffect(() => {
     if (isAuthLoading) {
@@ -287,7 +334,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
     distanceKm: number,
     durationMinutes: number,
     bookingFee: number,
-    serviceFee: number
+    serviceFee: number,
+    zoneFeeAmount: number
   ) => {
     const adjustedFare = applyFareAdjustment(discountedMeteredFare, fareAdjustmentPercent);
 
@@ -299,6 +347,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
       fareAdjustmentPercent,
       bookingFee,
       serviceFee,
+      zoneFeeAmount,
     });
 
     setEstimatedDistance(parseFloat(distanceKm.toFixed(1)));
@@ -308,8 +357,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
     setMaxEstimatedPrice(adjustedFare.maxPrice);
     setEstimatedBookingFee(bookingFee);
     setEstimatedServiceFee(serviceFee);
+    setEstimatedZoneFee(zoneFeeAmount);
     // Final amount payable = discounted/negotiated metered fare + undiscounted flat fees.
-    setEstimatedPrice(adjustedFare.adjustedPrice + bookingFee + serviceFee);
+    setEstimatedPrice(adjustedFare.adjustedPrice + bookingFee + serviceFee + zoneFeeAmount);
   }, [applyFareAdjustment, fareAdjustmentPercent]);
 
   const calculatePriceFromRoute = useCallback((
@@ -320,7 +370,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     const distanceKm = distanceMeters / 1000;
     const durationMinutes = durationSeconds / 60;
 
-    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
+    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier, zoneFee);
     setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
 
     const activePromo = getActivePromotion();
@@ -331,8 +381,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
         : null,
     });
 
-    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee);
-  }, [fareAdjustmentPercent, getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare]);
+    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee, breakdown.zoneFee);
+  }, [fareAdjustmentPercent, getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare, zoneFee]);
 
   const calculateRideEstimates = useCallback((pickup: typeof pickupLocation, dropoff: typeof dropoffLocation, rideTypeId: string) => {
     if (!pickup || !dropoff) {
@@ -352,7 +402,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     const distanceKm = earthRadiusKm * c;
     const durationMinutes = (distanceKm / 30) * 60;
 
-    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier);
+    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier, zoneFee);
     setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
 
     const activePromo = getActivePromotion();
@@ -363,8 +413,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
         : null,
     });
 
-    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee);
-  }, [getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare]);
+    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee, breakdown.zoneFee);
+  }, [getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare, zoneFee]);
 
   useEffect(() => {
     if (routeInfo) {
@@ -396,6 +446,12 @@ export const [RideProvider, useRide] = createContextHook(() => {
                 longitude: ride.driverLocation.longitude,
               }
             : null,
+          // Both terminal states (cancel/complete) carry a final, authoritative
+          // `price` by this point — cancelRide() sets it to the cancellation
+          // fee, and the completed-ride path refetches the server fare
+          // (including any waiting charge) before calling completeRide().
+          fare: ride.price ?? 0,
+          cancellationFee: ride.cancellationFee ?? 0,
         });
       }
 
@@ -415,6 +471,13 @@ export const [RideProvider, useRide] = createContextHook(() => {
       return null;
     }
 
+    // Capture arrival time exactly once, the moment tracking first reaches
+    // 'driver_arrived' — needed to later compute a waiting charge. Guarded so
+    // repeated updates (GPS jitter, re-renders) never reset an already-set time.
+    const arrivedAt = !activeRide.arrivedAt && updates.trackingStage === 'driver_arrived'
+      ? new Date()
+      : activeRide.arrivedAt;
+
     const mergedRide: RideRequest = {
       ...activeRide,
       ...updates,
@@ -426,6 +489,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
           } as RideRequest['driver']
         : activeRide.driver,
       driverLocation: updates.driverLocation ?? activeRide.driverLocation,
+      arrivedAt,
     };
 
     console.log('Updating active ride session:', mergedRide);
@@ -433,9 +497,15 @@ export const [RideProvider, useRide] = createContextHook(() => {
 
     if (mergedRide.id) {
       try {
+        // Deliberately NOT writing `fare` here: no caller of updateRideSession
+        // ever changes `price`, so this would always just rewrite the original
+        // client-side estimate — and could clobber server-authoritative fare
+        // updates (e.g. the driver-side waiting-charge addition in
+        // FirebaseDriverService.updateRideStatus) if this fires around the
+        // same time. Fare changes belong exclusively to requestRide() (initial)
+        // and driver/admin-authoritative server updates from then on.
         await DatabaseService.update('rides', mergedRide.id, {
           status: mergedRide.status ?? 'pending',
-          fare: mergedRide.price ?? 0,
           fareAdjustmentPercent: mergedRide.fareAdjustmentPercent ?? 0,
           trackingStage: mergedRide.trackingStage ?? null,
           statusText: mergedRide.statusText ?? null,
@@ -448,6 +518,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
             : null,
           cancelReason: mergedRide.cancelReason ?? null,
           cancelReasonDetails: mergedRide.cancelReasonDetails ?? null,
+          arrivedAt: mergedRide.arrivedAt ? mergedRide.arrivedAt.toISOString() : null,
         });
       } catch (error) {
         console.error('Error syncing ride session update:', error);
@@ -457,7 +528,13 @@ export const [RideProvider, useRide] = createContextHook(() => {
     return mergedRide;
   }, []);
 
-  const requestRide = useCallback(async () => {
+  // offeredFare (optional): a rider-proposed price from the negotiation preset
+  // picker. Reuses the exact same pull-model broadcast as a normal ride — the
+  // ride is still visible to any online driver, just carrying an extra
+  // proposed amount alongside the metered reference fare. `fare` stays the
+  // metered reference until a driver accepts (see FirebaseDriverService.acceptRide,
+  // which overwrites it to offeredFare at that point).
+  const requestRide = useCallback(async (offeredFare?: number) => {
     if (!pickupLocation || !dropoffLocation || !user) {
       return null;
     }
@@ -469,6 +546,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
       latitude: pickupLocation.latitude - 0.028,
       longitude: pickupLocation.longitude - 0.02,
     };
+
+    const hasOffer = offeredFare !== undefined && offeredFare !== estimatedPrice;
+    const offerExpiresAt = hasOffer ? new Date(Date.now() + 60_000) : undefined;
 
     const rideData = {
       userId: user.id,
@@ -495,6 +575,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
       maxFare: maxEstimatedPrice,
       bookingFee: estimatedBookingFee,
       serviceFee: estimatedServiceFee,
+      zoneFee: estimatedZoneFee,
       fareAdjustmentPercent,
       distance: estimatedDistance,
       duration: estimatedDuration,
@@ -509,6 +590,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
       sharedWith: isSharedRide && sharedWith.length > 0 ? sharedWith : undefined,
       scheduledTime: scheduledDate && scheduledDate > new Date() ? scheduledDate : undefined,
       driverId: fallbackDriver?.id && isValidUuid(fallbackDriver.id) ? fallbackDriver.id : null,
+      offeredFare: hasOffer ? offeredFare : null,
+      negotiationStatus: hasOffer ? 'pending' : null,
+      offerExpiresAt: hasOffer ? offerExpiresAt!.toISOString() : null,
     };
 
     let rideId: string;
@@ -546,6 +630,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
       maxPrice: maxEstimatedPrice,
       bookingFee: estimatedBookingFee,
       serviceFee: estimatedServiceFee,
+      zoneFee: estimatedZoneFee,
       fareAdjustmentPercent,
       distance: estimatedDistance,
       duration: estimatedDuration,
@@ -560,6 +645,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
       promoCode: activePromo?.code,
       isShared: isSharedRide,
       sharedWith: isSharedRide ? sharedWith : undefined,
+      offeredFare: hasOffer ? offeredFare : undefined,
+      negotiationStatus: hasOffer ? 'pending' : undefined,
+      offerExpiresAt: hasOffer ? offerExpiresAt : undefined,
     };
 
     console.log('Created new ride request:', newRide);
@@ -588,6 +676,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     dropoffLocation,
     estimatedBookingFee,
     estimatedServiceFee,
+    estimatedZoneFee,
     estimatedDistance,
     estimatedDuration,
     estimatedPrice,
@@ -615,9 +704,30 @@ export const [RideProvider, useRide] = createContextHook(() => {
     setFareAdjustmentPercent(clampedAdjustment);
   }, []);
 
-  const cancelRide = useCallback((reason?: RideCancellationReason, details?: string) => {
+  const cancelRide = useCallback(async (reason?: RideCancellationReason, details?: string) => {
     if (!currentRide) {
       return;
+    }
+
+    // Compute the cancellation fee from server-authoritative timestamps —
+    // acceptedAt/arrivedAt are never reliably present on local state, so this
+    // reads the real row rather than trusting whatever currentRide has.
+    let cancellationFee = 0;
+    if (currentRide.id && !currentRide.id.startsWith('local-ride-')) {
+      try {
+        const row = await DatabaseService.get('rides', currentRide.id) as
+          | { status?: string; acceptedAt?: string; arrivedAt?: string }
+          | null;
+        if (row) {
+          cancellationFee = calculateCancellationFee({
+            status: row.status,
+            acceptedAt: row.acceptedAt,
+            arrivedAt: row.arrivedAt,
+          }).fee;
+        }
+      } catch (error) {
+        console.error('Error computing cancellation fee:', error);
+      }
     }
 
     const cancelledRide: RideRequest = {
@@ -627,6 +737,10 @@ export const [RideProvider, useRide] = createContextHook(() => {
       cancelReason: reason,
       cancelReasonDetails: details,
       statusText: 'Ride cancelled',
+      cancellationFee,
+      // A cancelled ride's payable amount IS the cancellation fee (0 if free)
+      // — the original trip was never actually taken.
+      price: cancellationFee,
     };
     console.log('Cancelling ride session:', cancelledRide);
     setCurrentRide(null);
@@ -697,6 +811,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     maxEstimatedPrice,
     estimatedBookingFee,
     estimatedServiceFee,
+    estimatedZoneFee,
     fareAdjustmentPercent,
     estimatedDistance,
     estimatedDuration,
@@ -720,6 +835,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
     surgeMultiplier,
     setSurgeMultiplier,
     setFareAdjustment,
+    zoneFee,
+    setZoneFee,
   }), [
     nearbyDrivers,
     rideTypes,
@@ -733,6 +850,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     maxEstimatedPrice,
     estimatedBookingFee,
     estimatedServiceFee,
+    estimatedZoneFee,
     fareAdjustmentPercent,
     estimatedDistance,
     estimatedDuration,
@@ -755,5 +873,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
     removeSharedRidePassenger,
     surgeMultiplier,
     setFareAdjustment,
+    zoneFee,
   ]);
 });
