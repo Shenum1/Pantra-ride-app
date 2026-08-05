@@ -62,6 +62,13 @@ export interface PassengerInfo {
   rating: number | null;
   photo?: string;
   phone?: string;
+  // Set only when this ride was booked for someone else: the real account
+  // holder's identity, distinct from `name`/`phone` above (which display the
+  // physical passenger). In-app messaging must always target the booker
+  // (bookerName/bookerPhone + id), since only the booker has an app account
+  // that can receive replies — Call and on-screen display use `name`/`phone`.
+  bookerName?: string;
+  bookerPhone?: string;
 }
 
 export interface RideType {
@@ -98,6 +105,8 @@ export interface RideRequest {
   offeredFare?: number;
   negotiationStatus?: 'pending' | 'accepted' | 'rejected' | 'expired';
   offerExpiresAt?: Date;
+  passengerName?: string;
+  passengerPhone?: string;
   distance?: number;
   duration?: number;
   status?: 'pending' | 'confirmed' | 'accepted' | 'in_progress' | 'in-progress' | 'completed' | 'cancelled';

@@ -165,6 +165,8 @@ export default function DiscoverScreen() {
     };
   }, [userLocation, selectedCategory]);
 
+  const selectedCategoryData = categories.find((category) => category.id === selectedCategory);
+
   const filteredPlaces = places.filter(place => {
     const matchesSearch = place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          place.address.toLowerCase().includes(searchQuery.toLowerCase());
@@ -393,6 +395,20 @@ export default function DiscoverScreen() {
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
+          ) : filteredPlaces.length === 0 ? (
+            <View style={styles.emptyState}>
+              <MapPin size={48} color={colors.textSecondary} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                {searchQuery
+                  ? 'No places match your search'
+                  : `No ${selectedCategoryData?.name ?? 'places'} found nearby`}
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                {searchQuery
+                  ? 'Try a different search term'
+                  : 'Try a different category or check back later'}
+              </Text>
+            </View>
           ) : (
             filteredPlaces.map((item) => (
               <View key={item.id} style={styles.placeItemContainer}>
@@ -507,6 +523,23 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    marginTop: 6,
+    textAlign: 'center',
   },
   placesList: {
     paddingHorizontal: 20,

@@ -259,10 +259,16 @@ export default function DriverActiveTrip() {
     }
 
     try {
+      // Message always targets the booker's real account — the physical
+      // passenger (currentRide.passenger.name/phone) has no app account of
+      // their own to receive a reply when this ride was booked for someone else.
+      const bookerName = currentRide.passenger.bookerName || currentRide.passenger.name;
+      const bookerPhone = currentRide.passenger.bookerPhone || currentRide.passenger.phone || '';
+
       const conversationId = await MessagingService.createConversation({
         userId: currentRide.passenger.id,
-        userName: currentRide.passenger.name,
-        userPhone: currentRide.passenger.phone || '',
+        userName: bookerName,
+        userPhone: bookerPhone,
         driverId: driver.id,
         driverName: driver.name,
         driverPhone: driver.phone,
@@ -273,8 +279,8 @@ export default function DriverActiveTrip() {
         pathname: '/driver-message',
         params: {
           conversationId,
-          passengerName: currentRide.passenger.name,
-          passengerPhone: currentRide.passenger.phone || '',
+          passengerName: bookerName,
+          passengerPhone: bookerPhone,
         },
       });
     } catch (error) {
@@ -421,6 +427,9 @@ export default function DriverActiveTrip() {
               <Star size={14} color="#FFD700" fill="#FFD700" />
               <Text style={styles.rating}>{currentRide.passenger?.rating != null ? currentRide.passenger.rating.toFixed(1) : 'New'}</Text>
             </View>
+            {currentRide.passenger?.bookerName && currentRide.passenger.bookerName !== currentRide.passenger.name ? (
+              <Text style={styles.bookedByText}>Booked by {currentRide.passenger.bookerName} · Message goes to booker</Text>
+            ) : null}
           </View>
           <View style={styles.contactButtons}>
             <Pressable style={styles.iconButton} onPress={handleCall} testID="driver-call-passenger-button">
@@ -562,6 +571,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.light.textSecondary,
     fontWeight: '600',
+  },
+  bookedByText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
   },
   contactButtons: {
     flexDirection: 'row',

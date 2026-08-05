@@ -871,6 +871,10 @@ export default function RideProgressScreen() {
               </View>
             )}
 
+            {currentRide?.passengerName ? (
+              <Text style={styles.bookedForText}>Booked for {currentRide.passengerName}</Text>
+            ) : null}
+
             {isExpanded ? (
               <View style={styles.expandedSection}>
                 <Text style={styles.expandedLabel}>Live status</Text>
@@ -1108,6 +1112,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     color: '#475569',
+    fontWeight: '600',
+  },
+  bookedForText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#64748B',
     fontWeight: '600',
   },
   etaPill: {

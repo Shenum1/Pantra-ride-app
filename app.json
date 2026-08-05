@@ -91,7 +91,9 @@
           "cameraPermission": "Pantra uses the camera to capture driver documents."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "expo-font",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

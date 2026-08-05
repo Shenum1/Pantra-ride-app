@@ -160,7 +160,7 @@ export class FirebaseDriverService {
 
     const { data: rides, error } = await supabase
       .from('rides')
-      .select('*')
+      .select('*, users:userId(displayName, phoneNumber, rating, photoURL)')
       .eq('status', 'pending')
       .order('createdAt', { ascending: false })
       .limit(20);
@@ -188,7 +188,7 @@ export class FirebaseDriverService {
 
           const { data: rides } = await supabase
             .from('rides')
-            .select('*')
+            .select('*, users:userId(displayName, phoneNumber, rating, photoURL)')
             .eq('status', 'pending')
             .order('createdAt', { ascending: false })
             .limit(20);
@@ -219,7 +219,12 @@ export class FirebaseDriverService {
         driver.location.latitude, driver.location.longitude, pickupLat, pickupLng
       );
 
-      const passenger = ride.users || {};
+      const booker = ride.users || {};
+      // A ride booked for someone else carries a passengerName/passengerPhone
+      // override on the ride row — that's who's physically in the car and
+      // who Call/display should show. bookerName/bookerPhone (the account
+      // holder) are kept separately since only the booker has an app account
+      // that in-app messaging can actually reach.
       results.push({
         id: ride.id,
         pickupLocation: { latitude: pickupLat, longitude: pickupLng },
@@ -230,15 +235,19 @@ export class FirebaseDriverService {
         price: ride.fare || 0,
         offeredFare: ride.offeredFare ?? undefined,
         negotiationStatus: ride.negotiationStatus ?? undefined,
+        passengerName: ride.passengerName ?? undefined,
+        passengerPhone: ride.passengerPhone ?? undefined,
         distance: ride.distance || 0,
         duration: ride.duration || 0,
         status: 'pending',
         passenger: {
           id: ride.userId,
-          name: passenger.displayName || 'Passenger',
-          rating: passenger.rating ?? null,
-          photo: passenger.photoURL,
-          phone: passenger.phone || '',
+          name: ride.passengerName || booker.displayName || 'Passenger',
+          rating: booker.rating ?? null,
+          photo: booker.photoURL,
+          phone: ride.passengerPhone || booker.phoneNumber || '',
+          bookerName: booker.displayName || undefined,
+          bookerPhone: booker.phoneNumber || undefined,
         },
         estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0).netAmount,
         distanceToPickup,

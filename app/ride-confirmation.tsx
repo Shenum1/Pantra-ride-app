@@ -7,24 +7,20 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Car, CarFront, Bus, ChevronDown, ChevronUp, Route, X, Zap } from 'lucide-react-native';
-
-const RIDE_TYPE_ICONS: Record<string, typeof Car> = {
-  car: Car,
-  'car-front': CarFront,
-  bus: Bus,
-};
+import { ChevronDown, ChevronUp, Route, X, Zap } from 'lucide-react-native';
 
 import Map from '@/components/Map';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
+import { getVehicleImageSource } from '@/assets/vehicles';
+import VehicleImage from '@/assets/vehicles/VehicleImage';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
-import { getOfferPresets } from '@/lib/fare-calculator';
 import { Location } from '@/types';
 
 const COLLAPSED_OFFSET = 188;
@@ -67,11 +63,13 @@ export default function RideConfirmationScreen() {
     clearRoute,
   } = useLocation();
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [selectedOfferPercent, setSelectedOfferPercent] = useState<number>(0);
   const routeRequestRef = useRef<string | null>(null);
   const sheetOffset = useRef<Animated.Value>(new Animated.Value(COLLAPSED_OFFSET)).current;
   const lastSheetOffset = useRef<number>(COLLAPSED_OFFSET);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
+  const [bookingFor, setBookingFor] = useState<'me' | 'other'>('me');
+  const [passengerName, setPassengerName] = useState<string>('');
+  const [passengerPhone, setPassengerPhone] = useState<string>('');
 
   useEffect(() => {
     const id = sheetOffset.addListener(({ value }) => {
@@ -144,16 +142,6 @@ export default function RideConfirmationScreen() {
     return routeInfo.polyline ? 'Live direction' : 'Estimated direction';
   }, [routeInfo]);
 
-  // Negotiation presets replace the old self-adjust slider: selecting a
-  // non-zero preset submits it as a rider offer that a driver must accept,
-  // rather than instantly discounting the fare. "Metered fare" (0%) books
-  // normally with no negotiation step.
-  const offerPresets = useMemo(
-    () => getOfferPresets(estimatedPrice, selectedRideType),
-    [estimatedPrice, selectedRideType]
-  );
-  const selectedOffer = offerPresets.find((p) => p.percent === selectedOfferPercent) ?? offerPresets[2];
-
   const toggleSheet = () => {
     const nextExpanded = !isExpanded;
     Animated.spring(sheetOffset, {
@@ -172,11 +160,27 @@ export default function RideConfirmationScreen() {
       return;
     }
 
+    const trimmedName = passengerName.trim();
+    const trimmedPhone = passengerPhone.trim();
+    if (bookingFor === 'other') {
+      if (!trimmedName) {
+        Alert.alert('Passenger name required', "Enter the name of the person you're booking this ride for.");
+        return;
+      }
+      if (trimmedPhone.replace(/\D/g, '').length < 7) {
+        Alert.alert('Passenger phone required', "Enter a valid phone number for the person you're booking this ride for.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
-      const offerAmount = selectedOffer.percent !== 0 ? selectedOffer.amount : undefined;
-      const ride = await requestRide(offerAmount);
+      const ride = await requestRide(
+        undefined,
+        bookingFor === 'other' ? trimmedName : undefined,
+        bookingFor === 'other' ? trimmedPhone : undefined
+      );
       if (!ride) {
         Alert.alert('Sign in required', 'Please sign in to book a ride.');
         return;
@@ -272,13 +276,54 @@ export default function RideConfirmationScreen() {
               ) : null}
             </View>
 
+            <View style={styles.bookingForCard} testID="booking-for-card">
+              <Text style={styles.destinationLabel}>Booking for</Text>
+              <View style={styles.bookingForToggle}>
+                <Pressable
+                  style={[styles.bookingForOption, bookingFor === 'me' && styles.bookingForOptionSelected]}
+                  onPress={() => setBookingFor('me')}
+                  testID="booking-for-me"
+                >
+                  <Text style={[styles.bookingForOptionText, bookingFor === 'me' && styles.bookingForOptionTextSelected]}>Me</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.bookingForOption, bookingFor === 'other' && styles.bookingForOptionSelected]}
+                  onPress={() => setBookingFor('other')}
+                  testID="booking-for-other"
+                >
+                  <Text style={[styles.bookingForOptionText, bookingFor === 'other' && styles.bookingForOptionTextSelected]}>Someone else</Text>
+                </Pressable>
+              </View>
+              {bookingFor === 'other' ? (
+                <View style={styles.passengerInputs}>
+                  <TextInput
+                    style={styles.passengerInput}
+                    placeholder="Passenger's name"
+                    placeholderTextColor="#64748B"
+                    value={passengerName}
+                    onChangeText={setPassengerName}
+                    testID="booking-for-passenger-name"
+                  />
+                  <TextInput
+                    style={styles.passengerInput}
+                    placeholder="Passenger's phone number"
+                    placeholderTextColor="#64748B"
+                    value={passengerPhone}
+                    onChangeText={setPassengerPhone}
+                    keyboardType="phone-pad"
+                    testID="booking-for-passenger-phone"
+                  />
+                </View>
+              ) : null}
+            </View>
+
             <View style={styles.tierContainer} testID="ride-type-picker">
               <Text style={styles.tierSectionTitle}>Select ride type</Text>
               <View style={styles.tierRow}>
                 {rideTypes.map((type) => {
                   const isSelected = selectedRideType === type.id;
                   const price = tierPrices[type.id];
-                  const TierIcon = RIDE_TYPE_ICONS[type.icon] ?? Car;
+                  const vehicleSource = getVehicleImageSource(type);
                   return (
                     <Pressable
                       key={type.id}
@@ -286,7 +331,7 @@ export default function RideConfirmationScreen() {
                       onPress={() => setSelectedRideType(type.id)}
                       testID={`tier-option-${type.id}`}
                     >
-                      <TierIcon size={18} color={isSelected ? '#14B8A6' : '#64748B'} />
+                      <VehicleImage source={vehicleSource} width={72} height={44} />
                       <Text style={[styles.tierName, isSelected && styles.tierNameSelected]}>
                         {type.name}
                       </Text>
@@ -294,38 +339,6 @@ export default function RideConfirmationScreen() {
                         {price ? `₦${price.toLocaleString()}` : '—'}
                       </Text>
                       <Text style={styles.tierEta}>{type.eta} min</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.adjustCard} testID="ride-map-fare-card">
-              <View style={styles.adjustHeader}>
-                <View>
-                  <Text style={styles.adjustTitle}>Propose a fare</Text>
-                  <Text style={styles.adjustSubtitle}>
-                    {selectedOffer.percent === 0
-                      ? 'Book now at the metered fare.'
-                      : `Your offer of ₦${selectedOffer.amount.toFixed(0)} must be accepted by a driver.`}
-                  </Text>
-                </View>
-                <Text style={styles.adjustBadge}>₦{selectedOffer.amount.toFixed(0)}</Text>
-              </View>
-
-              <View style={styles.adjustQuickRow}>
-                {offerPresets.map((preset) => {
-                  const isActive = selectedOfferPercent === preset.percent;
-                  return (
-                    <Pressable
-                      key={preset.percent}
-                      style={[styles.adjustChip, isActive && styles.adjustChipActive]}
-                      onPress={() => setSelectedOfferPercent(preset.percent)}
-                      testID={`ride-map-offer-${preset.percent}`}
-                    >
-                      <Text style={[styles.adjustChipText, isActive && styles.adjustChipTextActive]}>
-                        {preset.percent === 0 ? 'Metered' : preset.label}
-                      </Text>
                     </Pressable>
                   );
                 })}
@@ -349,7 +362,7 @@ export default function RideConfirmationScreen() {
               </Pressable>
             </View>
             <Button
-              title={selectedOffer.percent === 0 ? 'Book ride' : 'Send offer to drivers'}
+              title="Book ride"
               onPress={handleBookRide}
               loading={isSubmitting}
               disabled={isSubmitting || isCalculatingRoute}
@@ -523,95 +536,50 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontWeight: '500',
   },
-  adjustCard: {
-    backgroundColor: 'rgba(2,8,23,0.9)',
-    borderRadius: 22,
+  bookingForCard: {
+    backgroundColor: 'rgba(15,23,42,0.78)',
+    borderRadius: 18,
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.14)',
+    paddingVertical: 15,
+    gap: 10,
   },
-  adjustHeader: {
+  bookingForToggle: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  adjustTitle: {
-    color: '#F8FAFC',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  adjustSubtitle: {
-    color: '#94A3B8',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  adjustBadge: {
-    color: '#99F6E4',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  adjustControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  adjustButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.light.primary,
-  },
-  adjustButtonDisabled: {
-    opacity: 0.45,
-  },
-  sliderTrack: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
   },
-  sliderSegment: {
+  bookingForOption: {
     flex: 1,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(148,163,184,0.24)',
-  },
-  sliderSegmentActive: {
-    backgroundColor: '#14B8A6',
-  },
-  sliderSegmentCenter: {
-    backgroundColor: '#38BDF8',
-  },
-  adjustQuickRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 14,
-  },
-  adjustChip: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 999,
     alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
     backgroundColor: 'rgba(15,23,42,0.86)',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.18)',
+    borderColor: 'rgba(148,163,184,0.14)',
   },
-  adjustChipActive: {
-    backgroundColor: 'rgba(20,184,166,0.16)',
-    borderColor: 'rgba(20,184,166,0.46)',
+  bookingForOptionSelected: {
+    backgroundColor: 'rgba(20,184,166,0.12)',
+    borderColor: '#14B8A6',
   },
-  adjustChipText: {
-    color: '#CBD5E1',
+  bookingForOptionText: {
+    color: '#94A3B8',
     fontSize: 13,
     fontWeight: '700',
   },
-  adjustChipTextActive: {
+  bookingForOptionTextSelected: {
     color: '#F8FAFC',
+  },
+  passengerInputs: {
+    gap: 8,
+  },
+  passengerInput: {
+    backgroundColor: 'rgba(15,23,42,0.86)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.14)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#F8FAFC',
+    fontSize: 14,
   },
   expandedMetaRow: {
     flexDirection: 'row',
@@ -646,13 +614,13 @@ const styles = StyleSheet.create({
   tierCard: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 6,
     borderRadius: 16,
     backgroundColor: 'rgba(15,23,42,0.86)',
     borderWidth: 1,
     borderColor: 'rgba(148,163,184,0.14)',
-    gap: 4,
+    gap: 6,
   },
   tierCardSelected: {
     backgroundColor: 'rgba(20,184,166,0.12)',

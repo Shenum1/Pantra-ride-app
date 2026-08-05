@@ -534,7 +534,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
   // proposed amount alongside the metered reference fare. `fare` stays the
   // metered reference until a driver accepts (see FirebaseDriverService.acceptRide,
   // which overwrites it to offeredFare at that point).
-  const requestRide = useCallback(async (offeredFare?: number) => {
+  const requestRide = useCallback(async (offeredFare?: number, passengerName?: string, passengerPhone?: string) => {
     if (!pickupLocation || !dropoffLocation || !user) {
       return null;
     }
@@ -593,6 +593,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
       offeredFare: hasOffer ? offeredFare : null,
       negotiationStatus: hasOffer ? 'pending' : null,
       offerExpiresAt: hasOffer ? offerExpiresAt!.toISOString() : null,
+      passengerName: passengerName || null,
+      passengerPhone: passengerPhone || null,
     };
 
     let rideId: string;
@@ -648,6 +650,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
       offeredFare: hasOffer ? offeredFare : undefined,
       negotiationStatus: hasOffer ? 'pending' : undefined,
       offerExpiresAt: hasOffer ? offerExpiresAt : undefined,
+      passengerName: passengerName || undefined,
+      passengerPhone: passengerPhone || undefined,
     };
 
     console.log('Created new ride request:', newRide);
