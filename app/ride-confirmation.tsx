@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   PanResponder,
@@ -16,7 +15,7 @@ import { ChevronDown, ChevronUp, Route, X, Zap } from 'lucide-react-native';
 
 import Map from '@/components/Map';
 import Button from '@/components/Button';
-import Colors from '@/constants/colors';
+import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 import { getVehicleImageSource } from '@/assets/vehicles';
 import VehicleImage from '@/assets/vehicles/VehicleImage';
 import { useLocation } from '@/hooks/useLocationStore';
@@ -177,7 +176,6 @@ export default function RideConfirmationScreen() {
 
     try {
       const ride = await requestRide(
-        undefined,
         bookingFor === 'other' ? trimmedName : undefined,
         bookingFor === 'other' ? trimmedPhone : undefined
       );
@@ -202,9 +200,73 @@ export default function RideConfirmationScreen() {
 
   if (!pickupLocation || !dropoffLocation || !mapRegion) {
     return (
-      <View style={[styles.screen, styles.centered]}>
-        <ActivityIndicator size="large" color={Colors.light.primary} />
-        <Text style={styles.loadingText}>Preparing your trip...</Text>
+      <View style={styles.screen}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={StyleSheet.absoluteFillObject}>
+          <Skeleton width="100%" height="100%" borderRadius={0} />
+        </View>
+
+        <ShimmerGroup>
+          <View style={styles.topOverlay} pointerEvents="none">
+            <SafeAreaView edges={['top']}>
+              <View style={styles.topRow}>
+                <SkeletonCircle size={44} />
+                <Skeleton width={140} height={38} borderRadius={999} />
+              </View>
+            </SafeAreaView>
+          </View>
+
+          <SafeAreaView edges={['bottom']} style={styles.bottomOverlay} pointerEvents="none">
+            <View style={styles.sheet}>
+              <View style={styles.handleWrap}>
+                <View style={styles.handle} />
+              </View>
+
+              <View style={styles.sheetContent}>
+                <View style={styles.summaryRow}>
+                  <View style={styles.summaryCard}>
+                    <SkeletonLine width="50%" height={12} />
+                    <Skeleton width="70%" height={22} style={styles.skeletonValueSpacing} />
+                  </View>
+                  <View style={styles.summaryCard}>
+                    <SkeletonLine width="60%" height={12} />
+                    <Skeleton width="55%" height={22} style={styles.skeletonValueSpacing} />
+                  </View>
+                </View>
+
+                <View style={styles.destinationCard}>
+                  <SkeletonLine width="40%" height={11} />
+                  <SkeletonLine width="85%" height={16} style={styles.skeletonValueSpacing} />
+                </View>
+
+                <View style={styles.tierContainer}>
+                  <SkeletonLine width="35%" height={11} />
+                  <View style={styles.tierRow}>
+                    <View style={styles.tierCard}>
+                      <SkeletonCircle size={36} />
+                      <SkeletonLine width="70%" height={12} />
+                      <SkeletonLine width="50%" height={12} />
+                    </View>
+                    <View style={styles.tierCard}>
+                      <SkeletonCircle size={36} />
+                      <SkeletonLine width="70%" height={12} />
+                      <SkeletonLine width="50%" height={12} />
+                    </View>
+                    <View style={styles.tierCard}>
+                      <SkeletonCircle size={36} />
+                      <SkeletonLine width="70%" height={12} />
+                      <SkeletonLine width="50%" height={12} />
+                    </View>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.footer}>
+                <Skeleton width="100%" height={48} borderRadius={999} />
+              </View>
+            </View>
+          </SafeAreaView>
+        </ShimmerGroup>
       </View>
     );
   }
@@ -389,6 +451,9 @@ const styles = StyleSheet.create({
     color: '#D6E4F0',
     fontSize: 15,
     fontWeight: '600',
+  },
+  skeletonValueSpacing: {
+    marginTop: 8,
   },
   topOverlay: {
     position: 'absolute',

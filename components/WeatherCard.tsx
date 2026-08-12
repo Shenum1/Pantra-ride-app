@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import {
   Cloud,
@@ -15,6 +14,7 @@ import {
   Droplets,
   Thermometer,
 } from 'lucide-react-native';
+import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 import { useTheme } from '@/hooks/useThemeStore';
 import { useWeather } from '@/hooks/useWeatherStore';
 
@@ -49,19 +49,51 @@ export default function WeatherCard({
   };
 
   if (isLoading) {
-    return (
-      <TouchableOpacity 
-        style={[styles.card, { backgroundColor: colors.card }, compact && styles.compactCard]} 
-        onPress={onPress}
-        disabled={!onPress}
-      >
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Loading weather...
-          </Text>
+    if (compact) {
+      return (
+        <View style={[styles.card, styles.compactCard, { backgroundColor: colors.card }]}>
+          <ShimmerGroup>
+            <View style={styles.compactContent}>
+              <View style={styles.compactHeader}>
+                <SkeletonLine width="50%" height={12} />
+                <SkeletonCircle size={20} />
+              </View>
+              <View style={styles.compactDetails}>
+                <Skeleton width={44} height={18} />
+                <SkeletonLine width="40%" height={11} />
+              </View>
+            </View>
+          </ShimmerGroup>
         </View>
-      </TouchableOpacity>
+      );
+    }
+
+    return (
+      <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <ShimmerGroup>
+          <View style={styles.header}>
+            <View style={styles.titleContainer}>
+              <SkeletonLine width="50%" height={16} />
+              <SkeletonLine width="35%" height={14} style={styles.skeletonTitleSpacing} />
+            </View>
+            <View style={styles.mainWeather}>
+              <SkeletonCircle size={24} />
+              <Skeleton width={50} height={24} />
+            </View>
+          </View>
+
+          <SkeletonLine width="60%" height={14} style={styles.skeletonDescriptionSpacing} />
+
+          <View style={styles.details}>
+            {[0, 1, 2, 3].map((i) => (
+              <View key={i} style={styles.detailItem}>
+                <SkeletonCircle size={16} />
+                <SkeletonLine width="70%" height={12} />
+              </View>
+            ))}
+          </View>
+        </ShimmerGroup>
+      </View>
     );
   }
 
@@ -263,6 +295,12 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
+  },
+  skeletonTitleSpacing: {
+    marginTop: 4,
+  },
+  skeletonDescriptionSpacing: {
+    marginBottom: 12,
   },
   errorContainer: {
     flexDirection: 'row',

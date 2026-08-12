@@ -21,6 +21,7 @@ import { useAuth } from '@/hooks/useAuthStore';
 import { usePoints } from '@/hooks/usePointsStore';
 import { useTheme } from '@/hooks/useThemeStore';
 import { RewardTask, RewardsService } from '@/lib/rewards-service';
+import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function EarnScreen() {
   const { user } = useAuth();
@@ -72,8 +73,45 @@ export default function EarnScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.background, paddingTop: insets.top }]}>
-        <Text style={{ color: colors.text }}>Loading your earning opportunities...</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={{ paddingTop: insets.top }} />
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <ShimmerGroup>
+            <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
+              <View style={styles.summaryHeader}>
+                <Gift size={24} color={colors.primary} />
+                <Text style={[styles.summaryTitle, { color: colors.text }]}>Your Points</Text>
+              </View>
+              <View style={styles.pointsContainer}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={styles.pointsItem}>
+                    <SkeletonLine width={48} height={22} />
+                    <SkeletonLine width={70} height={11} style={styles.skeletonSpacing} />
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <TrendingUp size={20} color={colors.primary} />
+                <Text style={styles.sectionTitle}>Available Tasks</Text>
+              </View>
+              {[0, 1, 2].map((i) => (
+                <View key={i} style={styles.taskCard}>
+                  <View style={styles.taskHeader}>
+                    <SkeletonCircle size={40} style={styles.skeletonIcon} />
+                    <View style={styles.taskInfo}>
+                      <SkeletonLine width="70%" height={16} />
+                      <SkeletonLine width="90%" height={13} style={styles.skeletonSpacing} />
+                      <SkeletonLine width={100} height={13} style={styles.skeletonSpacing} />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ShimmerGroup>
+        </ScrollView>
       </View>
     );
   }
@@ -333,5 +371,11 @@ const getStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '500',
+  },
+  skeletonSpacing: {
+    marginTop: 6,
+  },
+  skeletonIcon: {
+    marginRight: 12,
   },
 });

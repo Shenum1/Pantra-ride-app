@@ -1,17 +1,27 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { ActivityIndicator, View } from 'react-native';
+import { View } from 'react-native';
 import { BarChart3, Users, MessageSquare, TrendingUp, Settings, ShieldCheck, Receipt } from 'lucide-react-native';
 import { useAdminAuth } from '@/hooks/useAdminAuthStore';
 import AdminLogin from '@/components/AdminLogin';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function AdminTabsLayout() {
   const { isAuthenticated, isLoading } = useAdminAuth();
 
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#667eea" />
+      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 24, backgroundColor: '#f8fafc' }}>
+        <ShimmerGroup>
+          <SkeletonLine
+            width="50%"
+            height={20}
+            style={{ marginBottom: 20, alignSelf: 'center', backgroundColor: '#e5e7eb' }}
+          />
+          <Skeleton width="100%" height={120} borderRadius={16} style={{ marginBottom: 12, backgroundColor: '#e5e7eb' }} />
+          <Skeleton width="100%" height={64} borderRadius={12} style={{ marginBottom: 12, backgroundColor: '#e5e7eb' }} />
+          <Skeleton width="100%" height={64} borderRadius={12} style={{ marginBottom: 12, backgroundColor: '#e5e7eb' }} />
+        </ShimmerGroup>
       </View>
     );
   }

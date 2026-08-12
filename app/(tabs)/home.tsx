@@ -1,11 +1,12 @@
 import { StatusBar } from "expo-status-bar";
 import React, { useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View, Pressable, Animated } from "react-native";
+import { StyleSheet, Text, View, Pressable, Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Search, CloudSun } from "lucide-react-native";
 
 import Map from "@/components/Map";
+import { Skeleton, SkeletonCircle, ShimmerGroup } from "@/components/skeletons";
 import { useTheme } from "@/hooks/useThemeStore";
 import { useLocation } from "@/hooks/useLocationStore";
 import { useWeather } from "@/hooks/useWeatherStore";
@@ -53,9 +54,17 @@ export default function HomeScreen() {
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Getting your location...</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.fullMapContainer}>
+          <Skeleton width="100%" height="100%" borderRadius={0} />
+        </View>
+
+        <ShimmerGroup>
+          <View style={[styles.floatingControls, { paddingTop: insets.top + 20 }]}>
+            <Skeleton style={styles.skeletonSearchButton} height={56} borderRadius={16} />
+            <SkeletonCircle size={52} />
+          </View>
+        </ShimmerGroup>
       </View>
     );
   }
@@ -170,6 +179,9 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 16,
     fontSize: 16,
+  },
+  skeletonSearchButton: {
+    flex: 1,
   },
   fullMapContainer: {
     position: 'absolute',

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   SafeAreaView,
   TextInput,
-  ActivityIndicator,
 } from 'react-native';
 import {
   MessageCircle,
@@ -20,6 +19,7 @@ import { useTheme } from '@/hooks/useThemeStore';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { MessagingService, Conversation } from '@/lib/messaging-service';
 import { router } from 'expo-router';
+import { SkeletonRow, ShimmerGroup } from '@/components/skeletons';
 
 export default function DriverMessages() {
   const { colors } = useTheme();
@@ -135,9 +135,12 @@ export default function DriverMessages() {
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.text }]}>Messages</Text>
         </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading messages...</Text>
+        <View style={styles.messagesList}>
+          <ShimmerGroup>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <SkeletonRow key={i} leadingSize={50} subtitleWidth="70%" style={styles.messageItemSkeleton} />
+            ))}
+          </ShimmerGroup>
         </View>
       </SafeAreaView>
     );
@@ -261,6 +264,10 @@ const styles = StyleSheet.create({
   },
   messagesList: {
     flex: 1,
+  },
+  messageItemSkeleton: {
+    marginHorizontal: 20,
+    marginBottom: 8,
   },
   messageItem: {
     flexDirection: 'row',

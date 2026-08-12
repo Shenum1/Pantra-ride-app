@@ -6,10 +6,11 @@ import { CreditCard, Plus, Trash2 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { usePayment } from '@/hooks/usePaymentStore';
 import Button from '@/components/Button';
+import { SkeletonRow, ShimmerGroup } from '@/components/skeletons';
 
 export default function PaymentMethodsScreen() {
   const router = useRouter();
-  const { paymentMethods, setDefaultPaymentMethod, removePaymentMethod } = usePayment();
+  const { paymentMethods, isLoading, setDefaultPaymentMethod, removePaymentMethod } = usePayment();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const handleSetDefault = () => {
@@ -56,8 +57,15 @@ export default function PaymentMethodsScreen() {
 
       <ScrollView style={styles.content}>
         <Text style={styles.sectionTitle}>Your payment methods</Text>
-        
-        {paymentMethods.map(method => (
+
+        {isLoading ? (
+          <View style={styles.skeletonContainer}>
+            <ShimmerGroup>
+              <SkeletonRow leadingSize={40} style={styles.skeletonRow} />
+              <SkeletonRow leadingSize={40} style={styles.skeletonRow} />
+            </ShimmerGroup>
+          </View>
+        ) : paymentMethods.map(method => (
           <Pressable 
             key={method.id}
             style={[styles.paymentCard, selectedId === method.id && styles.selectedCard]}
@@ -196,5 +204,12 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     borderTopColor: Colors.light.lightGray,
+  },
+  skeletonContainer: {
+    marginHorizontal: 16,
+    gap: 12,
+  },
+  skeletonRow: {
+    marginBottom: 0,
   },
 });

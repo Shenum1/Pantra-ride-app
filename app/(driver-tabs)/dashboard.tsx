@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Star,
   Clock,
-  DollarSign,
+  Wallet,
   MapPin,
   Award,
   Target,
@@ -29,6 +29,7 @@ import { router } from 'expo-router';
 
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
+import { SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 const { width } = Dimensions.get('window');
 
@@ -42,7 +43,7 @@ const WEEKLY_GOAL_NGN = 1000;
 
 export default function DriverDashboard() {
   const { driver } = useDriverAuth();
-  const { driverProfile, stats, earnings, isOnline, toggleOnlineStatus } = useDriverStore();
+  const { driverProfile, stats, earnings, isOnline, toggleOnlineStatus, isLoading } = useDriverStore();
   const player = useVideoPlayer(
     DRIVING_VIDEOS[Math.floor(Math.random() * DRIVING_VIDEOS.length)],
     (p) => { p.loop = true; p.muted = true; p.playbackRate = 0.7; p.play(); }
@@ -148,6 +149,7 @@ export default function DriverDashboard() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
+          <ShimmerGroup>
           {/* Header */}
           <View style={styles.header}>
           <View style={styles.greetingSection}>
@@ -169,26 +171,42 @@ export default function DriverDashboard() {
           <View style={styles.earningsHeader}>
             <View>
               <Text style={styles.earningsLabel}>Today&apos;s Earnings</Text>
-              <Text style={styles.earningsAmount}>₦{todayEarnings.toFixed(2)}</Text>
+              {isLoading ? (
+                <SkeletonLine width={140} height={30} style={{ marginTop: 4 }} />
+              ) : (
+                <Text style={styles.earningsAmount}>₦{todayEarnings.toFixed(2)}</Text>
+              )}
             </View>
           </View>
           <View style={styles.earningsStats}>
             <View style={styles.earningsStat}>
               <Clock size={14} color="rgba(255,255,255,0.6)" />
               <Text style={styles.earningsStatLabel}>Active Time</Text>
-              <Text style={styles.earningsStatValue}>{Math.floor(onlineHours)}h {Math.round((onlineHours % 1) * 60)}m</Text>
+              {isLoading ? (
+                <SkeletonLine width={60} height={15} style={{ marginTop: 2 }} />
+              ) : (
+                <Text style={styles.earningsStatValue}>{Math.floor(onlineHours)}h {Math.round((onlineHours % 1) * 60)}m</Text>
+              )}
             </View>
             <View style={styles.statDivider} />
             <View style={styles.earningsStat}>
               <Navigation size={14} color="rgba(255,255,255,0.6)" />
               <Text style={styles.earningsStatLabel}>Total Earned</Text>
-              <Text style={styles.earningsStatValue}>₦{totalEarnings.toFixed(0)}</Text>
+              {isLoading ? (
+                <SkeletonLine width={60} height={15} style={{ marginTop: 2 }} />
+              ) : (
+                <Text style={styles.earningsStatValue}>₦{totalEarnings.toFixed(0)}</Text>
+              )}
             </View>
             <View style={styles.statDivider} />
             <View style={styles.earningsStat}>
               <MapPin size={14} color="rgba(255,255,255,0.6)" />
               <Text style={styles.earningsStatLabel}>Trips</Text>
-              <Text style={styles.earningsStatValue}>{completedTrips}</Text>
+              {isLoading ? (
+                <SkeletonLine width={40} height={15} style={{ marginTop: 2 }} />
+              ) : (
+                <Text style={styles.earningsStatValue}>{completedTrips}</Text>
+              )}
             </View>
           </View>
         </View>
@@ -214,33 +232,49 @@ export default function DriverDashboard() {
           <View style={styles.performanceGrid}>
             <View style={[styles.performanceCard, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
               <View style={styles.performanceIcon}>
-                <DollarSign size={20} color="#10B981" strokeWidth={2.5} />
+                <Wallet size={20} color="#10B981" strokeWidth={2.5} />
               </View>
-              <Text style={styles.performanceValue}>₦{weeklyEarnings.toFixed(0)}</Text>
+              {isLoading ? (
+                <SkeletonLine width={70} height={22} style={{ marginBottom: 4 }} />
+              ) : (
+                <Text style={styles.performanceValue}>₦{weeklyEarnings.toFixed(0)}</Text>
+              )}
               <Text style={styles.performanceLabel}>This Week</Text>
             </View>
-            
+
             <View style={[styles.performanceCard, { backgroundColor: 'rgba(59, 130, 246, 0.2)' }]}>
               <View style={styles.performanceIcon}>
                 <Calendar size={20} color="#3B82F6" strokeWidth={2.5} />
               </View>
-              <Text style={styles.performanceValue}>₦{monthlyEarnings.toFixed(0)}</Text>
+              {isLoading ? (
+                <SkeletonLine width={70} height={22} style={{ marginBottom: 4 }} />
+              ) : (
+                <Text style={styles.performanceValue}>₦{monthlyEarnings.toFixed(0)}</Text>
+              )}
               <Text style={styles.performanceLabel}>This Month</Text>
             </View>
-            
+
             <View style={[styles.performanceCard, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
               <View style={styles.performanceIcon}>
                 <Star size={20} color="#F59E0B" strokeWidth={2.5} />
               </View>
-              <Text style={styles.performanceValue}>{rating != null ? rating.toFixed(1) : 'New'}</Text>
+              {isLoading ? (
+                <SkeletonLine width={50} height={22} style={{ marginBottom: 4 }} />
+              ) : (
+                <Text style={styles.performanceValue}>{rating != null ? rating.toFixed(1) : 'New'}</Text>
+              )}
               <Text style={styles.performanceLabel}>Rating</Text>
             </View>
-            
+
             <View style={[styles.performanceCard, { backgroundColor: 'rgba(139, 92, 246, 0.2)' }]}>
               <View style={styles.performanceIcon}>
                 <Users size={20} color="#8B5CF6" strokeWidth={2.5} />
               </View>
-              <Text style={styles.performanceValue}>{driver?.totalRides || 0}</Text>
+              {isLoading ? (
+                <SkeletonLine width={40} height={22} style={{ marginBottom: 4 }} />
+              ) : (
+                <Text style={styles.performanceValue}>{driver?.totalRides || 0}</Text>
+              )}
               <Text style={styles.performanceLabel}>Total Trips</Text>
             </View>
           </View>
@@ -267,7 +301,7 @@ export default function DriverDashboard() {
               activeOpacity={0.7}
             >
               <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-                <DollarSign size={22} color="#10B981" strokeWidth={2.5} />
+                <Wallet size={22} color="#10B981" strokeWidth={2.5} />
               </View>
               <Text style={styles.quickActionTitle}>Earnings</Text>
             </TouchableOpacity>
@@ -312,6 +346,7 @@ export default function DriverDashboard() {
             </Text>
           </View>
         </View>
+          </ShimmerGroup>
       </ScrollView>
     </SafeAreaView>
     </View>

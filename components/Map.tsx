@@ -1,10 +1,11 @@
 import { Car, Compass, MapPin, Navigation } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Camera, Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as ExpoLocation from 'expo-location';
 
 import Colors from '@/constants/colors';
+import { Skeleton } from '@/components/skeletons';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
 import { GoogleMapsService } from '@/lib/google-maps-service';
@@ -614,8 +615,7 @@ const Map: React.FC<MapProps> = ({
 
       {isLoadingRoute && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={Colors.light.primary} />
-          <Text style={styles.loadingText}>Loading route...</Text>
+          <Skeleton width={110} height={14} borderRadius={4} />
         </View>
       )}
 

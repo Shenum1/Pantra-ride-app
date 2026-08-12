@@ -13,7 +13,7 @@ import {
   Power,
   MapPin,
   Clock,
-  DollarSign,
+  Wallet,
   Star,
   Car,
 
@@ -25,6 +25,7 @@ import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
 import Colors from '@/constants/colors';
 import { router } from 'expo-router';
+import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function DriverDashboard() {
   const { driver, isLoading: authLoading, toggleOnlineStatus } = useDriverAuth();
@@ -107,9 +108,66 @@ export default function DriverDashboard() {
   if (authLoading || isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading driver dashboard...</Text>
-        </View>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <ShimmerGroup>
+            {/* Header skeleton */}
+            <View style={styles.header}>
+              <View style={styles.profileSection}>
+                <SkeletonCircle size={50} style={{ marginRight: 12 }} />
+                <View style={styles.profileInfo}>
+                  <SkeletonLine width={120} height={18} />
+                  <SkeletonLine width={90} height={14} style={{ marginTop: 6 }} />
+                </View>
+              </View>
+              <Skeleton width={90} height={36} borderRadius={20} />
+            </View>
+
+            {/* Earnings card skeleton */}
+            <View style={styles.earningsCard}>
+              <SkeletonLine width={140} height={16} />
+              <Skeleton width={160} height={32} style={{ marginTop: 12, marginBottom: 16 }} />
+              <View style={styles.earningsRow}>
+                <View style={styles.earningsStat}>
+                  <SkeletonLine width={70} height={14} />
+                  <SkeletonLine width={90} height={16} style={{ marginTop: 6 }} />
+                </View>
+                <View style={styles.earningsStat}>
+                  <SkeletonLine width={50} height={14} />
+                  <SkeletonLine width={90} height={16} style={{ marginTop: 6 }} />
+                </View>
+              </View>
+            </View>
+
+            {/* Ride requests skeleton */}
+            <View style={styles.requestsSection}>
+              <SkeletonLine width={140} height={18} style={{ marginBottom: 16 }} />
+              {[0, 1].map((i) => (
+                <View key={i} style={styles.requestCard}>
+                  <View style={styles.requestHeader}>
+                    <View style={styles.passengerInfo}>
+                      <SkeletonCircle size={40} style={{ marginRight: 12 }} />
+                      <View style={styles.passengerDetails}>
+                        <SkeletonLine width={110} height={15} />
+                        <SkeletonLine width={70} height={12} style={{ marginTop: 4 }} />
+                      </View>
+                    </View>
+                    <SkeletonLine width={60} height={12} />
+                  </View>
+                  <View style={styles.requestDetails}>
+                    <View style={styles.locationRow}>
+                      <Skeleton width={16} height={16} borderRadius={8} />
+                      <SkeletonLine width="70%" height={14} style={{ marginLeft: 8 }} />
+                    </View>
+                    <View style={styles.locationRow}>
+                      <Skeleton width={16} height={16} borderRadius={8} />
+                      <SkeletonLine width="60%" height={14} style={{ marginLeft: 8 }} />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ShimmerGroup>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -214,7 +272,7 @@ export default function DriverDashboard() {
                     <Text style={styles.metricText}>{currentRide.duration} min</Text>
                   </View>
                   <View style={styles.metric}>
-                    <DollarSign size={14} color={Colors.light.gray} />
+                    <Wallet size={14} color={Colors.light.gray} />
                     <Text style={styles.metricText}>₦{currentRide.estimatedEarnings?.toFixed(2)}</Text>
                   </View>
                 </View>
@@ -301,7 +359,7 @@ export default function DriverDashboard() {
                       <Text style={styles.metricText}>{request.duration} min</Text>
                     </View>
                     <View style={styles.metric}>
-                      <DollarSign size={14} color={Colors.light.gray} />
+                      <Wallet size={14} color={Colors.light.gray} />
                       <Text style={styles.metricText}>₦{request.estimatedEarnings.toFixed(2)}</Text>
                     </View>
                     <View style={styles.metric}>

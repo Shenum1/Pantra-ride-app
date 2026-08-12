@@ -24,6 +24,7 @@ import * as ExpoLocation from 'expo-location';
 
 import Map from '@/components/Map';
 import Colors from '@/constants/colors';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 import { useDriverStore } from '@/hooks/useDriverStore';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { MessagingService } from '@/lib/messaging-service';
@@ -222,7 +223,47 @@ export default function DriverActiveTrip() {
   }, [currentRide, driverLocation, tripStatus]);
 
   if (!currentRide || !mapRegion || !mapDestination) {
-    return null;
+    return (
+      <View style={styles.container}>
+        <View style={[styles.mapContainer, styles.mapSkeleton]}>
+          <ShimmerGroup>
+            <Skeleton width="100%" height="100%" borderRadius={0} style={styles.skeletonTone} />
+          </ShimmerGroup>
+        </View>
+        <View style={styles.infoCard}>
+          <ShimmerGroup>
+            <View style={styles.passengerSection}>
+              <Skeleton width={50} height={50} borderRadius={25} style={styles.skeletonTone} />
+              <View style={styles.passengerInfo}>
+                <SkeletonLine width="55%" height={16} style={styles.skeletonTone} />
+                <SkeletonLine width={70} height={13} style={[styles.skeletonSpacing, styles.skeletonTone]} />
+              </View>
+            </View>
+
+            <View style={styles.routeSection}>
+              <View style={styles.locationRow}>
+                <Skeleton width={10} height={10} borderRadius={5} style={styles.skeletonTone} />
+                <SkeletonLine width="70%" height={14} style={styles.skeletonTone} />
+              </View>
+              <View style={styles.routeLine} />
+              <View style={styles.locationRow}>
+                <Skeleton width={10} height={10} borderRadius={5} style={styles.skeletonTone} />
+                <SkeletonLine width="60%" height={14} style={styles.skeletonTone} />
+              </View>
+            </View>
+
+            <View style={styles.statsRow}>
+              {[0, 1, 2].map((i) => (
+                <View key={i} style={styles.statItem}>
+                  <SkeletonLine width={60} height={11} style={styles.skeletonTone} />
+                  <SkeletonLine width={40} height={15} style={[styles.skeletonSpacing, styles.skeletonTone]} />
+                </View>
+              ))}
+            </View>
+          </ShimmerGroup>
+        </View>
+      </View>
+    );
   }
 
   const handleCall = async () => {
@@ -714,5 +755,14 @@ const styles = StyleSheet.create({
     color: Colors.light.danger,
     fontSize: 14,
     fontWeight: '600',
+  },
+  mapSkeleton: {
+    backgroundColor: Colors.light.lightGray,
+  },
+  skeletonTone: {
+    backgroundColor: Colors.light.lightGray,
+  },
+  skeletonSpacing: {
+    marginTop: 6,
   },
 });

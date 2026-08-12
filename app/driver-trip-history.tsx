@@ -6,12 +6,11 @@ import {
   ScrollView,
   SafeAreaView,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 import {
   MapPin,
   Clock,
-  DollarSign,
+  Wallet,
   Star,
   Calendar,
   ArrowLeft,
@@ -21,6 +20,7 @@ import { router } from 'expo-router';
 import Colors from '@/constants/colors';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { FirebaseDriverService, DriverTripRecord } from '@/lib/firebase-driver-service';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function TripHistory() {
   const { driver } = useDriverAuth();
@@ -152,6 +152,44 @@ export default function TripHistory() {
     </View>
   );
 
+  const TripCardSkeleton = () => (
+    <View style={styles.tripCard}>
+      <View style={styles.tripHeader}>
+        <View style={styles.passengerInfo}>
+          <SkeletonLine width={100} height={16} style={{ marginBottom: 6 }} />
+          <SkeletonLine width={130} height={12} />
+        </View>
+        <View style={styles.tripStatus}>
+          <SkeletonLine width={36} height={14} />
+        </View>
+      </View>
+
+      <View style={styles.routeInfo}>
+        <View style={styles.locationRow}>
+          <Skeleton style={styles.locationDot} />
+          <SkeletonLine width="75%" height={14} />
+        </View>
+        <View style={styles.routeLine} />
+        <View style={styles.locationRow}>
+          <Skeleton style={styles.locationDot} />
+          <SkeletonLine width="60%" height={14} />
+        </View>
+      </View>
+
+      <View style={styles.tripDetails}>
+        <View style={styles.detailItem}>
+          <SkeletonLine width={50} height={12} />
+        </View>
+        <View style={styles.detailItem}>
+          <SkeletonLine width={50} height={12} />
+        </View>
+        <View style={styles.earningsContainer}>
+          <SkeletonLine width={60} height={16} />
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -187,7 +225,7 @@ export default function TripHistory() {
         </View>
         <View style={styles.statItem}>
           <View style={styles.statIcon}>
-            <DollarSign size={20} color={Colors.light.success} />
+            <Wallet size={20} color={Colors.light.success} />
           </View>
           <Text style={styles.statValue}>₦{totalEarnings.toFixed(2)}</Text>
           <Text style={styles.statLabel}>Earned</Text>
@@ -208,9 +246,11 @@ export default function TripHistory() {
         contentContainerStyle={styles.scrollContent}
       >
         {isLoading ? (
-          <View style={styles.emptyState}>
-            <ActivityIndicator color={Colors.light.primary} />
-          </View>
+          <ShimmerGroup>
+            {[0, 1, 2, 3].map((i) => (
+              <TripCardSkeleton key={i} />
+            ))}
+          </ShimmerGroup>
         ) : filteredTrips.length > 0 ? (
           filteredTrips.map((trip) => (
             <TripCard key={trip.id} trip={trip} />

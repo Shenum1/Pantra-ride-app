@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import {
-  DollarSign,
+  Wallet,
   MapPin,
   Clock,
   TrendingUp,
@@ -36,7 +36,7 @@ interface GoalDefinition {
 }
 
 const GOAL_TYPE_CONFIG: Record<GoalType, { icon: (color: string) => React.ReactNode; color: string; unit: string }> = {
-  earnings: { icon: (color) => <DollarSign size={24} color={color} />, color: '#4CAF50', unit: '₦' },
+  earnings: { icon: (color) => <Wallet size={24} color={color} />, color: '#4CAF50', unit: '₦' },
   trips: { icon: (color) => <MapPin size={24} color={color} />, color: '#2196F3', unit: '' },
   hours: { icon: (color) => <Clock size={24} color={color} />, color: '#FF9800', unit: 'h' },
   rating: { icon: (color) => <TrendingUp size={24} color={color} />, color: '#9C27B0', unit: '' },

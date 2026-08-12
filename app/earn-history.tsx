@@ -21,6 +21,7 @@ import { useAuth } from '@/hooks/useAuthStore';
 import { usePoints } from '@/hooks/usePointsStore';
 import Colors from '@/constants/colors';
 import { RewardTask, PointsTransaction } from '@/lib/rewards-service';
+import { Skeleton, SkeletonLine, SkeletonTransactionRow, ShimmerGroup } from '@/components/skeletons';
 
 export default function EarnHistoryScreen() {
   const { user } = useAuth();
@@ -90,8 +91,31 @@ export default function EarnHistoryScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <Text>Loading your history...</Text>
+      <View style={styles.container}>
+        <Stack.Screen
+          options={{
+            title: 'Earning History',
+            headerStyle: { backgroundColor: Colors.light.background },
+            headerTintColor: Colors.light.text
+          }}
+        />
+        <ShimmerGroup>
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              {[0, 1, 2].map((i) => (
+                <View key={i} style={styles.summaryItem}>
+                  <Skeleton width={36} height={22} borderRadius={6} />
+                  <SkeletonLine width={64} height={10} style={styles.summarySkeletonLabel} />
+                </View>
+              ))}
+            </View>
+          </View>
+          <View style={styles.content}>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <SkeletonTransactionRow key={i} style={styles.historyItemSkeleton} />
+            ))}
+          </View>
+        </ShimmerGroup>
       </View>
     );
   }
@@ -210,6 +234,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  summarySkeletonLabel: {
+    marginTop: 6,
+  },
+  historyItemSkeleton: {
+    marginBottom: 8,
   },
   summaryCard: {
     backgroundColor: 'white',

@@ -8,7 +8,6 @@ import {
   Image,
   FlatList,
   Animated,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -26,6 +25,7 @@ import {
   Building,
   Camera,
 } from 'lucide-react-native';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 import { useTheme } from '@/hooks/useThemeStore';
 import { useWeather } from '@/hooks/useWeatherStore';
 import { useLocation } from '@/hooks/useLocationStore';
@@ -392,9 +392,27 @@ export default function DiscoverScreen() {
           </View>
           
           {isLoadingPlaces && places.length === 0 ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-            </View>
+            <ShimmerGroup>
+              <View>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={styles.placeItemContainer}>
+                    <View style={[styles.placeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Skeleton width="100%" height={160} borderRadius={0} />
+                      <View style={styles.placeContent}>
+                        <View style={styles.placeHeader}>
+                          <SkeletonLine width="60%" height={18} />
+                          <Skeleton width={36} height={14} />
+                        </View>
+                        <SkeletonLine width="70%" height={13} style={styles.skeletonLineSpacing} />
+                        <SkeletonLine width="45%" height={12} style={styles.skeletonLineSpacing} />
+                        <SkeletonLine width="90%" height={13} style={styles.skeletonLineSpacing} />
+                        <Skeleton width="100%" height={38} borderRadius={8} style={styles.skeletonLineSpacing} />
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ShimmerGroup>
           ) : filteredPlaces.length === 0 ? (
             <View style={styles.emptyState}>
               <MapPin size={48} color={colors.textSecondary} />
@@ -523,6 +541,9 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  skeletonLineSpacing: {
+    marginTop: 10,
   },
   emptyState: {
     alignItems: 'center',

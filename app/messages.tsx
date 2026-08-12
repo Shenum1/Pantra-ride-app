@@ -8,13 +8,13 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
 } from 'react-native';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { Send, ArrowLeft, Phone, AlertCircle } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { MessagingService, Message } from '@/lib/messaging-service';
 import { useAuth } from '@/hooks/useAuthStore';
+import { Skeleton, ShimmerGroup } from '@/components/skeletons';
 
 
 export default function MessagesScreen() {
@@ -138,9 +138,29 @@ export default function MessagesScreen() {
             ),
           }}
         />
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.light.primary} />
-          <Text style={styles.loadingText}>Loading messages...</Text>
+        <View style={styles.content}>
+          <View style={styles.messagesList}>
+            <ShimmerGroup>
+              <View style={[styles.messageContainer, styles.driverMessage]}>
+                <Skeleton width={190} height={46} borderRadius={16} />
+              </View>
+              <View style={[styles.messageContainer, styles.userMessage]}>
+                <Skeleton width={140} height={36} borderRadius={16} />
+              </View>
+              <View style={[styles.messageContainer, styles.driverMessage]}>
+                <Skeleton width={220} height={58} borderRadius={16} />
+              </View>
+              <View style={[styles.messageContainer, styles.userMessage]}>
+                <Skeleton width={110} height={36} borderRadius={16} />
+              </View>
+              <View style={[styles.messageContainer, styles.driverMessage]}>
+                <Skeleton width={160} height={36} borderRadius={16} />
+              </View>
+              <View style={[styles.messageContainer, styles.userMessage]}>
+                <Skeleton width={190} height={46} borderRadius={16} />
+              </View>
+            </ShimmerGroup>
+          </View>
         </View>
       </View>
     );

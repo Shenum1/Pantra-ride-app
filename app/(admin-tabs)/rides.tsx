@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Receipt } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 interface AdminRide {
   id: string;
@@ -20,7 +21,6 @@ interface AdminRide {
   bookingFee: number | null;
   serviceFee: number | null;
   zoneFee: number | null;
-  fareAdjustmentPercent: number | null;
   createdAt: string;
 }
 
@@ -40,7 +40,6 @@ const RideCard: React.FC<{ ride: AdminRide }> = ({ ride }) => {
   const serviceFee = ride.serviceFee ?? 0;
   const zoneFee = ride.zoneFee ?? 0;
   const meteredFare = fare - bookingFee - serviceFee - zoneFee;
-  const adjustmentPercent = ride.fareAdjustmentPercent ?? 0;
 
   return (
     <View style={styles.rideCard}>
@@ -62,12 +61,6 @@ const RideCard: React.FC<{ ride: AdminRide }> = ({ ride }) => {
           <Text style={styles.breakdownLabel}>Metered fare</Text>
           <Text style={styles.breakdownValue}>₦{meteredFare.toFixed(0)}</Text>
         </View>
-        {adjustmentPercent !== 0 && (
-          <View style={styles.breakdownRow}>
-            <Text style={styles.breakdownLabel}>Rider adjustment</Text>
-            <Text style={styles.breakdownValue}>{adjustmentPercent > 0 ? '+' : ''}{adjustmentPercent}%</Text>
-          </View>
-        )}
         {bookingFee > 0 && (
           <View style={styles.breakdownRow}>
             <Text style={styles.breakdownLabel}>Booking fee</Text>
@@ -94,6 +87,24 @@ const RideCard: React.FC<{ ride: AdminRide }> = ({ ride }) => {
     </View>
   );
 };
+
+const RideCardSkeleton: React.FC = () => (
+  <View style={styles.rideCard}>
+    <View style={styles.rideHeader}>
+      <SkeletonLine width="60%" height={14} style={styles.skeletonTone} />
+      <Skeleton width={64} height={18} borderRadius={12} style={styles.skeletonTone} />
+    </View>
+    <SkeletonLine width="45%" height={12} style={[styles.skeletonPeopleLine, styles.skeletonTone]} />
+    <View style={styles.breakdown}>
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={styles.breakdownRow}>
+          <SkeletonLine width={80} height={12} style={styles.skeletonTone} />
+          <SkeletonLine width={50} height={12} style={styles.skeletonTone} />
+        </View>
+      ))}
+    </View>
+  </View>
+);
 
 export default function AdminRidesScreen() {
   const insets = useSafeAreaInsets();
@@ -143,8 +154,12 @@ export default function AdminRidesScreen() {
         </View>
 
         {ridesQuery.isLoading ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator color="#667eea" />
+          <View style={styles.ridesList}>
+            <ShimmerGroup>
+              <RideCardSkeleton />
+              <RideCardSkeleton />
+              <RideCardSkeleton />
+            </ShimmerGroup>
           </View>
         ) : ridesQuery.error ? (
           <View style={styles.centerState}>
@@ -330,5 +345,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#1f2937',
+  },
+  skeletonTone: {
+    backgroundColor: '#e5e7eb',
+  },
+  skeletonPeopleLine: {
+    marginBottom: 12,
   },
 });

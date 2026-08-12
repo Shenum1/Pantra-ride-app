@@ -6,10 +6,11 @@ import { Home, Briefcase, MapPin, Plus, Trash2, Edit2 } from 'lucide-react-nativ
 import Colors from '@/constants/colors';
 import { useSavedLocations } from '@/hooks/useSavedLocationsStore';
 import { SavedLocation } from '@/types';
+import { SkeletonRow, ShimmerGroup } from '@/components/skeletons';
 
 export default function SavedLocationsScreen() {
   const router = useRouter();
-  const { savedLocations, removeSavedLocation } = useSavedLocations();
+  const { savedLocations, removeSavedLocation, isLoading } = useSavedLocations();
 
   const handleAddLocation = () => {
     router.push('/add-location');
@@ -72,7 +73,15 @@ export default function SavedLocationsScreen() {
       }} />
 
       <ScrollView style={styles.content}>
-        {savedLocations.length > 0 ? (
+        {isLoading ? (
+          <View style={styles.skeletonContainer}>
+            <ShimmerGroup>
+              <SkeletonRow leadingSize={40} />
+              <SkeletonRow leadingSize={40} />
+              <SkeletonRow leadingSize={40} />
+            </ShimmerGroup>
+          </View>
+        ) : savedLocations.length > 0 ? (
           <>
             <Text style={styles.sectionTitle}>Your saved locations</Text>
             
@@ -239,5 +248,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: Colors.light.primary,
     marginLeft: 8,
+  },
+  skeletonContainer: {
+    gap: 12,
+    marginBottom: 12,
   },
 });

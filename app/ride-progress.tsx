@@ -14,10 +14,13 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BellRing, Car, CircleDot, MapPin, MessageCircle, Navigation2, Phone, X } from 'lucide-react-native';
+import { BellRing, CircleDot, MapPin, MessageCircle, Navigation2, Phone, X } from 'lucide-react-native';
 
 import Map from '@/components/Map';
 import Colors from '@/constants/colors';
+import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
+import { getVehicleImageSource } from '@/assets/vehicles';
+import VehicleImage from '@/assets/vehicles/VehicleImage';
 import { useAuth } from '@/hooks/useAuthStore';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
@@ -62,6 +65,76 @@ function getStageTitle(stage: RiderStage): string {
     default:
       return 'Ride status';
   }
+}
+
+// Shared placeholder shown both while the persisted ride session is still
+// hydrating and momentarily after hydration when ride/map data isn't ready
+// yet — mirrors the real map + top status card + bottom trip-details sheet
+// so the screen never renders fully blank.
+function RideProgressSkeleton() {
+  return (
+    <View style={styles.container}>
+      <View style={StyleSheet.absoluteFillObject}>
+        <Skeleton width="100%" height="100%" borderRadius={0} />
+      </View>
+
+      <ShimmerGroup>
+        <SafeAreaView edges={['top']} style={styles.topContainer}>
+          <View style={styles.topCard}>
+            <View style={styles.topCardHeader}>
+              <SkeletonCircle size={36} />
+              <Skeleton width={116} height={30} borderRadius={999} />
+            </View>
+            <SkeletonLine width="55%" height={22} />
+            <SkeletonLine width="85%" height={14} style={styles.skeletonSubtitleSpacing} />
+          </View>
+        </SafeAreaView>
+
+        <SafeAreaView edges={['bottom']} style={styles.bottomOverlay} pointerEvents="none">
+          <View style={styles.sheet}>
+            <View style={styles.handleWrap}>
+              <View style={styles.handle} />
+              <Skeleton width={80} height={12} borderRadius={4} />
+            </View>
+
+            <View style={styles.sheetContent}>
+              <View style={styles.routeCard}>
+                <View style={styles.routeRow}>
+                  <SkeletonCircle size={16} />
+                  <SkeletonLine width="75%" height={14} />
+                </View>
+                <View style={styles.routeDivider} />
+                <View style={styles.routeRow}>
+                  <SkeletonCircle size={16} />
+                  <SkeletonLine width="65%" height={14} />
+                </View>
+              </View>
+
+              <View style={styles.statsRow}>
+                <View style={styles.statCard}>
+                  <SkeletonLine width="50%" height={11} />
+                  <Skeleton width="65%" height={20} style={styles.skeletonSubtitleSpacing} />
+                </View>
+                <View style={styles.statCard}>
+                  <SkeletonLine width="60%" height={11} />
+                  <Skeleton width="55%" height={20} style={styles.skeletonSubtitleSpacing} />
+                </View>
+              </View>
+
+              <View style={styles.driverCard}>
+                <SkeletonCircle size={42} />
+                <View style={styles.driverDetails}>
+                  <SkeletonLine width="55%" height={16} />
+                  <SkeletonLine width="40%" height={13} style={styles.skeletonSubtitleSpacing} />
+                </View>
+                <Skeleton width={56} height={30} borderRadius={999} />
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </ShimmerGroup>
+    </View>
+  );
 }
 
 export default function RideProgressScreen() {
@@ -114,43 +187,6 @@ export default function RideProgressScreen() {
     currentRideTrackingStageRef.current = currentRideTrackingStage;
     currentRideStatusRef.current = currentRideStatus;
   }, [currentRideDriver, currentRideDriverLocation, currentRideStatusText, currentRideStatus, currentRideTrackingStage]);
-
-  // Negotiated offers auto-expire client-side (no background job). Once the
-  // window passes with no driver having accepted, clear the offer so the ride
-  // becomes acceptable by any driver at the metered fare (already stored in
-  // `fare`) instead of staying gated behind an expired proposed price.
-  useEffect(() => {
-    if (
-      currentRide?.negotiationStatus !== 'pending' ||
-      !currentRide.offerExpiresAt ||
-      !currentRide.id ||
-      currentRide.id.startsWith('local-ride-')
-    ) {
-      return;
-    }
-
-    const rideId = currentRide.id;
-    const msUntilExpiry = currentRide.offerExpiresAt.getTime() - Date.now();
-
-    const timer = setTimeout(async () => {
-      try {
-        const row = await DatabaseService.get('rides', rideId) as
-          | { status?: string; negotiationStatus?: string }
-          | null;
-        if (row?.status === 'pending' && row.negotiationStatus === 'pending') {
-          await DatabaseService.update('rides', rideId, { negotiationStatus: 'expired' });
-          Alert.alert(
-            'No driver accepted your offer',
-            'Your ride is now open to any driver at the standard fare.'
-          );
-        }
-      } catch (error) {
-        console.error('Error expiring fare offer:', error);
-      }
-    }, Math.max(0, msUntilExpiry));
-
-    return () => clearTimeout(timer);
-  }, [currentRide?.id, currentRide?.negotiationStatus, currentRide?.offerExpiresAt]);
 
   useEffect(() => {
     cancelRideRef.current = cancelRide;
@@ -761,16 +797,11 @@ export default function RideProgressScreen() {
   };
 
   if (isHydratingRide) {
-    return (
-      <View style={styles.loadingContainerScreen}>
-        <ActivityIndicator size="large" color={Colors.light.primary} />
-        <Text style={styles.loadingText}>Restoring your ride...</Text>
-      </View>
-    );
+    return <RideProgressSkeleton />;
   }
 
   if (!currentRide || !resolvedPickupLocation || !resolvedDropoffLocation || !mapRegion) {
-    return null;
+    return <RideProgressSkeleton />;
   }
 
   const canCallDriver = stage !== 'searching' && !!assignedDriver?.phone;
@@ -851,13 +882,16 @@ export default function RideProgressScreen() {
 
             {stage === 'searching' ? (
               <View style={styles.noticeCard}>
-                <ActivityIndicator size="small" color={Colors.light.primary} />
-                <Text style={styles.noticeText}>Searching for a driver now...</Text>
+                <VehicleImage source={getVehicleImageSource(currentRide?.rideType)} width={82} height={50} />
+                <View style={styles.noticeCopy}>
+                  <Text style={styles.noticeText}>Searching for a driver now...</Text>
+                  <ActivityIndicator size="small" color={Colors.light.primary} />
+                </View>
               </View>
             ) : (
               <View style={styles.driverCard}>
                 <View style={styles.driverBadge}>
-                  <Car size={18} color="#FFFFFF" />
+                  <VehicleImage source={getVehicleImageSource(currentRide?.rideType)} width={54} height={34} />
                 </View>
                 <View style={styles.driverDetails}>
                   <Text style={styles.driverName}>{assignedDriver?.name ?? 'Driver assigned'}</Text>
@@ -928,6 +962,9 @@ const styles = StyleSheet.create({
     color: '#475569',
     fontSize: 15,
     fontWeight: '600',
+  },
+  skeletonSubtitleSpacing: {
+    marginTop: 8,
   },
   topContainer: {
     position: 'absolute',
@@ -1076,6 +1113,10 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 18,
     backgroundColor: '#ECFEFF',
+  },
+  noticeCopy: {
+    flex: 1,
+    gap: 8,
   },
   noticeText: {
     flex: 1,

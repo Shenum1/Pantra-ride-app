@@ -7,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
@@ -19,6 +18,7 @@ import { usePoints } from '@/hooks/usePointsStore';
 import { useAuth } from '@/hooks/useAuthStore';
 import { RewardTask } from '@/lib/rewards-service';
 import Button from '@/components/Button';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function PromotionsScreen() {
   const { user } = useAuth();
@@ -78,6 +78,33 @@ export default function PromotionsScreen() {
 
   const isTaskCompleted = (taskId: string) => completedTaskIds.includes(taskId);
 
+  const renderTaskSkeleton = (key: number) => (
+    <View key={key} style={styles.taskCard}>
+      <Skeleton width={40} height={40} borderRadius={12} />
+      <View style={styles.taskInfo}>
+        <SkeletonLine width="70%" height={15} />
+        <SkeletonLine width="45%" height={12} style={styles.taskRewardSkeletonSpacing} />
+      </View>
+      <Skeleton width={20} height={20} borderRadius={4} />
+    </View>
+  );
+
+  const renderPromoSkeleton = (key: number) => (
+    <View key={key} style={styles.promoCard}>
+      <View style={styles.promoHeader}>
+        <Skeleton width={36} height={36} borderRadius={10} style={styles.promoIconSkeleton} />
+        <View style={styles.promoInfo}>
+          <SkeletonLine width="50%" height={15} />
+          <SkeletonLine width="80%" height={12} style={styles.promoDescSkeletonSpacing} />
+        </View>
+      </View>
+      <View style={styles.promoMeta}>
+        <SkeletonLine width={80} height={13} />
+        <SkeletonLine width={90} height={13} />
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <Stack.Screen options={{
@@ -108,7 +135,9 @@ export default function PromotionsScreen() {
         {/* Earn points — tasks */}
         <Text style={styles.sectionTitle}>Earn points</Text>
         {pointsLoading ? (
-          <ActivityIndicator style={styles.loader} color={Colors.light.primary} />
+          <ShimmerGroup>
+            {[0, 1, 2].map(renderTaskSkeleton)}
+          </ShimmerGroup>
         ) : tasks.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No tasks available right now. Check back soon!</Text>
@@ -171,7 +200,9 @@ export default function PromotionsScreen() {
         {/* Available promo list */}
         <Text style={styles.sectionTitle}>Available codes</Text>
         {promosLoading ? (
-          <ActivityIndicator style={styles.loader} color={Colors.light.primary} />
+          <ShimmerGroup>
+            {[0, 1, 2].map(renderPromoSkeleton)}
+          </ShimmerGroup>
         ) : promotions.length > 0 ? (
           promotions.map(promo => (
             <View key={promo.id} style={styles.promoCard}>
@@ -271,6 +302,7 @@ const styles = StyleSheet.create({
   taskTitle: { fontSize: 15, fontWeight: '600', color: Colors.light.text },
   taskTitleDone: { textDecorationLine: 'line-through' },
   taskReward: { fontSize: 13, color: Colors.light.primary, fontWeight: '600', marginTop: 2 },
+  taskRewardSkeletonSpacing: { marginTop: 6 },
 
   inputRow: {
     flexDirection: 'row',
@@ -326,6 +358,8 @@ const styles = StyleSheet.create({
   promoInfo: { flex: 1 },
   promoCode: { fontSize: 15, fontWeight: '700', color: Colors.light.text },
   promoDescription: { fontSize: 13, color: Colors.light.gray, marginTop: 2 },
+  promoIconSkeleton: { marginRight: 10 },
+  promoDescSkeletonSpacing: { marginTop: 4 },
   promoMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',

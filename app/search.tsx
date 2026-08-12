@@ -1,7 +1,6 @@
 import { ArrowLeft, Clock, MapPin, Search, Sparkles, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -14,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
+import { SkeletonRow, ShimmerGroup } from "@/components/skeletons";
 import { useLocation } from "@/hooks/useLocationStore";
 import { Location as LocationType } from "@/types";
 import { AutocompleteResult, GoogleMapsService, PlaceResult } from "@/lib/google-maps-service";
@@ -377,10 +377,13 @@ export default function SearchScreen() {
       </Animated.View>
 
       {isSearching ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.light.primary} />
-          <Text style={styles.loadingText}>Searching for places...</Text>
-        </View>
+        <ShimmerGroup>
+          <View style={styles.skeletonRowsContainer}>
+            {[0, 1, 2, 3, 4].map((i) => (
+              <SkeletonRow key={i} leadingSize={44} />
+            ))}
+          </View>
+        </ShimmerGroup>
       ) : (
         <>
           {autocompleteSuggestions.length > 0 ? (
@@ -539,6 +542,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: Colors.light.gray,
+  },
+  skeletonRowsContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    gap: 12,
   },
   emptyContainer: {
     flex: 1,

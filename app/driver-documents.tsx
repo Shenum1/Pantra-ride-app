@@ -30,6 +30,7 @@ import {
   DriverDocument,
   DriverVerificationStatus,
 } from '@/lib/driver-verification-service';
+import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 const DOCUMENT_TYPES: { type: DriverDocument['type']; title: string; description: string; icon: React.ComponentType<{ size: number; color: string }> }[] = [
   { type: 'license', title: "Driver's License", description: 'A clear photo of your valid driving license', icon: FileText },
@@ -162,9 +163,33 @@ export default function DriverDocumentsScreen() {
       </View>
 
       {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.light.primary} />
-        </View>
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <ShimmerGroup>
+            <View style={styles.progressCard}>
+              <SkeletonLine width={180} height={16} style={{ marginBottom: 12 }} />
+              <Skeleton height={8} borderRadius={4} />
+              <SkeletonLine width={100} height={13} style={{ marginTop: 8 }} />
+            </View>
+
+            {[0, 1, 2, 3, 4].map((i) => (
+              <View key={i} style={styles.docCard}>
+                <View style={styles.docHeader}>
+                  <SkeletonCircle size={40} style={{ marginRight: 12 }} />
+                  <View style={styles.docInfo}>
+                    <SkeletonLine width={140} height={15} style={{ marginBottom: 6 }} />
+                    <SkeletonLine width={200} height={13} />
+                  </View>
+                </View>
+                <View style={styles.docFooter}>
+                  <Skeleton width={110} height={26} borderRadius={12} />
+                  <Skeleton width={90} height={34} borderRadius={12} />
+                </View>
+              </View>
+            ))}
+
+            <View style={{ height: 40 }} />
+          </ShimmerGroup>
+        </ScrollView>
       ) : (
         <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
           <View style={styles.progressCard}>

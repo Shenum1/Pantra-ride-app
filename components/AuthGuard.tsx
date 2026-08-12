@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuthStore';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useTheme } from '@/hooks/useThemeStore';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -32,7 +33,12 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children, requireDriver = 
   if (isLoading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ShimmerGroup>
+          <SkeletonLine width="50%" height={20} style={styles.shellHeader} />
+          <Skeleton width="100%" height={120} borderRadius={16} style={styles.shellBlock} />
+          <Skeleton width="100%" height={64} borderRadius={12} style={styles.shellBlock} />
+          <Skeleton width="100%" height={64} borderRadius={12} style={styles.shellBlock} />
+        </ShimmerGroup>
       </View>
     );
   }
@@ -48,6 +54,13 @@ const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  shellHeader: {
+    marginBottom: 20,
+    alignSelf: 'center',
+  },
+  shellBlock: {
+    marginBottom: 12,
   },
 });

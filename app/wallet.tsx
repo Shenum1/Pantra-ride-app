@@ -25,6 +25,7 @@ import { useTheme } from '@/hooks/useThemeStore';
 import { useWallet } from '@/hooks/useWalletStore';
 import { Stack, useRouter } from 'expo-router';
 import { format } from 'date-fns';
+import { Skeleton, SkeletonLine, SkeletonTransactionRow, ShimmerGroup } from '@/components/skeletons';
 
 interface TransactionItemProps {
   transaction: {
@@ -179,10 +180,21 @@ export default function WalletScreen() {
               </View>
 
               <Animated.View style={[styles.balanceAmountContainer, { transform: [{ scale: scaleAnim }] }]}>
-                <Text style={styles.currencySymbol}>₦</Text>
-                <Text style={styles.balanceAmount}>
-                  {balanceVisible ? balance.toFixed(0) : '••••••'}
-                </Text>
+                {isLoading ? (
+                  <Skeleton
+                    width={140}
+                    height={34}
+                    borderRadius={6}
+                    style={[styles.balanceSkeleton, { backgroundColor: 'rgba(255,255,255,0.3)' }]}
+                  />
+                ) : (
+                  <>
+                    <Text style={styles.currencySymbol}>₦</Text>
+                    <Text style={styles.balanceAmount}>
+                      {balanceVisible ? balance.toFixed(0) : '••••••'}
+                    </Text>
+                  </>
+                )}
               </Animated.View>
 
               <View style={styles.balanceActions}>
@@ -292,7 +304,13 @@ export default function WalletScreen() {
             </View>
 
             {isLoading ? (
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Loading transactions...</Text>
+              <ShimmerGroup>
+                <View style={styles.transactionSkeletonList}>
+                  <SkeletonTransactionRow />
+                  <SkeletonTransactionRow />
+                  <SkeletonTransactionRow />
+                </View>
+              </ShimmerGroup>
             ) : filteredTransactions.length === 0 ? (
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No transactions yet</Text>
             ) : (
@@ -519,5 +537,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 14,
     marginTop: 32,
+  },
+  balanceSkeleton: {
+    marginVertical: 4,
+  },
+  transactionSkeletonList: {
+    gap: 12,
   },
 });

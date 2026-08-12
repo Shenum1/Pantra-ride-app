@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, View, Text, Switch, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Share2, Users, Clock, DollarSign, Shield } from 'lucide-react-native';
+import { Share2, Users, Clock, Wallet, Shield } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useRide } from '@/hooks/useRideStore';
 import Button from '@/components/Button';
@@ -81,7 +81,7 @@ export default function ShareRideScreen() {
           </View>
 
           <View style={styles.infoItem}>
-            <DollarSign size={20} color={Colors.light.success} />
+            <Wallet size={20} color={Colors.light.success} />
             <View style={styles.infoContent}>
               <Text style={styles.infoTitle}>Save money</Text>
               <Text style={styles.infoText}>

@@ -161,21 +161,33 @@ export default function AddPaymentMethodScreen() {
               <CreditCard size={32} color={Colors.light.white} />
             </View>
             <View style={styles.cardPreviewContent}>
-              <Text style={styles.cardPreviewNumber}>
-                {cardNumber || '•••• •••• •••• ••••'}
-              </Text>
+              {cardNumber ? (
+                <Text style={styles.cardPreviewNumber}>{cardNumber}</Text>
+              ) : (
+                <View style={styles.cardPreviewNumberSlot}>
+                  <View style={styles.placeholderLineNumber} />
+                </View>
+              )}
               <View style={styles.cardPreviewFooter}>
                 <View>
                   <Text style={styles.cardPreviewLabel}>CARDHOLDER NAME</Text>
-                  <Text style={styles.cardPreviewText}>
-                    {cardholderName || 'NAME ON CARD'}
-                  </Text>
+                  {cardholderName ? (
+                    <Text style={styles.cardPreviewText}>{cardholderName}</Text>
+                  ) : (
+                    <View style={styles.cardPreviewTextSlot}>
+                      <View style={styles.placeholderLineName} />
+                    </View>
+                  )}
                 </View>
                 <View>
                   <Text style={styles.cardPreviewLabel}>EXPIRES</Text>
-                  <Text style={styles.cardPreviewText}>
-                    {expiryDate || 'MM/YY'}
-                  </Text>
+                  {expiryDate ? (
+                    <Text style={styles.cardPreviewText}>{expiryDate}</Text>
+                  ) : (
+                    <View style={styles.cardPreviewTextSlot}>
+                      <View style={styles.placeholderLineExpiry} />
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
@@ -188,8 +200,6 @@ export default function AddPaymentMethodScreen() {
                 style={styles.input}
                 value={cardNumber}
                 onChangeText={handleCardNumberChange}
-                placeholder="1234 5678 9012 3456"
-                placeholderTextColor={Colors.light.gray}
                 keyboardType="number-pad"
                 maxLength={19}
                 testID="card-number-input"
@@ -202,8 +212,6 @@ export default function AddPaymentMethodScreen() {
                 style={styles.input}
                 value={cardholderName}
                 onChangeText={setCardholderName}
-                placeholder="John Doe"
-                placeholderTextColor={Colors.light.gray}
                 autoCapitalize="words"
                 testID="cardholder-name-input"
               />
@@ -216,8 +224,6 @@ export default function AddPaymentMethodScreen() {
                   style={styles.input}
                   value={expiryDate}
                   onChangeText={handleExpiryChange}
-                  placeholder="MM/YY"
-                  placeholderTextColor={Colors.light.gray}
                   keyboardType="number-pad"
                   maxLength={5}
                   testID="expiry-date-input"
@@ -230,8 +236,6 @@ export default function AddPaymentMethodScreen() {
                   style={styles.input}
                   value={cvv}
                   onChangeText={handleCvvChange}
-                  placeholder="123"
-                  placeholderTextColor={Colors.light.gray}
                   keyboardType="number-pad"
                   maxLength={4}
                   secureTextEntry
@@ -319,6 +323,32 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.7)',
     marginBottom: 4,
+  },
+  cardPreviewNumberSlot: {
+    height: 27,
+    justifyContent: 'center',
+  },
+  cardPreviewTextSlot: {
+    height: 17,
+    justifyContent: 'center',
+  },
+  placeholderLineNumber: {
+    width: 160,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  placeholderLineName: {
+    width: 90,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  placeholderLineExpiry: {
+    width: 36,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
   },
   cardPreviewText: {
     fontSize: 14,

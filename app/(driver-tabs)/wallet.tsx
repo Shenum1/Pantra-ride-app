@@ -12,7 +12,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import {
-  DollarSign,
+  Wallet,
   TrendingUp,
   ArrowUpRight,
   ArrowDownLeft,
@@ -130,7 +130,7 @@ export default function DriverWallet() {
       case 'payout':
         return <ArrowDownLeft size={20} color="#2196F3" />;
       default:
-        return <DollarSign size={20} color={colors.textSecondary} />;
+        return <Wallet size={20} color={colors.textSecondary} />;
     }
   };
 
@@ -374,7 +374,7 @@ export default function DriverWallet() {
             <View style={styles.breakdownItem}>
               <View style={styles.breakdownLeft}>
                 <View style={[styles.breakdownIcon, { backgroundColor: '#4CAF50' + '20' }]}>
-                  <DollarSign size={18} color="#4CAF50" />
+                  <Wallet size={18} color="#4CAF50" />
                 </View>
                 <Text style={[styles.breakdownLabel, { color: colors.text }]}>Trip Earnings</Text>
               </View>

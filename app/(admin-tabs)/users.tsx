@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Users, Search, Filter, MoreVertical, Car } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 interface User {
   id: string;
@@ -51,6 +52,28 @@ const getStatusColor = (status: string) => {
     default: return '#6b7280';
   }
 };
+
+const UserCardSkeleton: React.FC = () => (
+  <View style={styles.userCard}>
+    <View style={styles.userInfo}>
+      <View style={styles.userHeader}>
+        <SkeletonLine width="45%" height={16} style={styles.skeletonBase} />
+        <Skeleton width={64} height={20} borderRadius={12} style={styles.skeletonBase} />
+      </View>
+      <SkeletonLine width="65%" height={14} style={[styles.skeletonBase, { marginBottom: 8 }]} />
+      <View style={styles.userMeta}>
+        <View style={styles.userType}>
+          <Skeleton width={16} height={16} borderRadius={8} style={styles.skeletonBase} />
+          <SkeletonLine width={44} height={12} style={[styles.skeletonBase, { marginLeft: 4 }]} />
+        </View>
+        <SkeletonLine width={54} height={12} style={styles.skeletonBase} />
+      </View>
+    </View>
+    <View style={styles.moreButton}>
+      <Skeleton width={20} height={20} borderRadius={4} style={styles.skeletonBase} />
+    </View>
+  </View>
+);
 
 export default function UsersScreen() {
   const insets = useSafeAreaInsets();
@@ -145,9 +168,13 @@ export default function UsersScreen() {
         </View>
 
         {usersQuery.isLoading ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator color="#667eea" />
-          </View>
+          <ShimmerGroup>
+            <View style={styles.usersList}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <UserCardSkeleton key={i} />
+              ))}
+            </View>
+          </ShimmerGroup>
         ) : usersQuery.error ? (
           <View style={styles.centerState}>
             <Text style={styles.errorText}>
@@ -365,5 +392,8 @@ const styles = StyleSheet.create({
   },
   moreButton: {
     padding: 8,
+  },
+  skeletonBase: {
+    backgroundColor: '#e5e7eb',
   },
 });

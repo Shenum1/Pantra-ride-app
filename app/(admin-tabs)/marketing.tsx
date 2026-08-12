@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, type DimensionValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { TrendingUp, Target, Users, DollarSign } from 'lucide-react-native';
+import { TrendingUp, Target, Users, Wallet } from 'lucide-react-native';
 
 interface Campaign {
   id: string;
@@ -125,7 +125,7 @@ export default function MarketingScreen() {
   ];
 
   const marketingStats = [
-    { label: 'Total Spend', value: '₦63.2K', icon: DollarSign, color: '#ef4444' },
+    { label: 'Total Spend', value: '₦63.2K', icon: Wallet, color: '#ef4444' },
     { label: 'Active Campaigns', value: '8', icon: Target, color: '#10b981' },
     { label: 'Total Reach', value: '2.1M', icon: Users, color: '#3b82f6' },
     { label: 'Avg CVR', value: '2.8%', icon: TrendingUp, color: '#f59e0b' },

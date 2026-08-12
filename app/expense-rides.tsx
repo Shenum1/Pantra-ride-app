@@ -1,5 +1,5 @@
-import { Receipt, Download, DollarSign, FileText, Filter } from "lucide-react-native";
-import React, { useState } from "react";
+import { Receipt, Download, Wallet, FileText, Filter } from "lucide-react-native";
+import React from "react";
 import {
   Pressable,
   ScrollView,
@@ -11,6 +11,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
 import { Stack } from "expo-router";
+import { useRide } from '@/hooks/useRideStore';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 interface ExpenseRideProps {
   date: string;
@@ -45,43 +47,35 @@ const ExpenseRide: React.FC<ExpenseRideProps> = ({ date, from, to, amount, categ
   );
 };
 
+const ExpenseRideSkeleton: React.FC = () => {
+  const { colors } = useTheme();
+
+  return (
+    <View style={[styles.rideCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={styles.rideHeader}>
+        <View style={styles.rideInfo}>
+          <SkeletonLine width={70} height={12} />
+          <SkeletonLine width={160} height={16} style={styles.skeletonSpacing} />
+          <SkeletonLine width={50} height={14} style={styles.skeletonSpacing} />
+        </View>
+        <View style={styles.rideAmount}>
+          <Skeleton width={64} height={18} borderRadius={4} />
+        </View>
+      </View>
+    </View>
+  );
+};
+
 export default function ExpenseRidesScreen() {
   const { colors } = useTheme();
-  
-  const [expenseRides] = useState<ExpenseRideProps[]>([
-    {
-      date: 'Dec 15, 2024',
-      from: 'Home',
-      to: 'Office',
-      amount: 25.50,
-      category: 'Business',
-      receipt: true,
-    },
-    {
-      date: 'Dec 14, 2024',
-      from: 'Airport',
-      to: 'Hotel',
-      amount: 45.00,
-      category: 'Travel',
-      receipt: true,
-    },
-    {
-      date: 'Dec 13, 2024',
-      from: 'Office',
-      to: 'Client Meeting',
-      amount: 18.75,
-      category: 'Business',
-      receipt: false,
-    },
-    {
-      date: 'Dec 12, 2024',
-      from: 'Home',
-      to: 'Doctor',
-      amount: 22.00,
-      category: 'Medical',
-      receipt: true,
-    },
-  ]);
+  const { pastRides, isLoadingPastRides } = useRide();
+  const expenseRides: ExpenseRideProps[] = pastRides
+    .filter((ride) => ride.status === 'completed')
+    .map((ride) => ({
+      date: ride.createdAt ? ride.createdAt.toLocaleDateString() : '',
+      from: ride.pickupAddress || 'Pickup', to: ride.dropoffAddress || 'Destination',
+      amount: ride.price ?? 0, category: 'Ride', receipt: false,
+    }));
   
   const totalExpenses = expenseRides.reduce((sum, ride) => sum + ride.amount, 0);
   
@@ -126,11 +120,20 @@ export default function ExpenseRidesScreen() {
           
           <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.summaryHeader}>
-              <DollarSign size={24} color={colors.primary} />
+              <Wallet size={24} color={colors.primary} />
               <Text style={[styles.summaryTitle, { color: colors.text }]}>This Month</Text>
             </View>
-            <Text style={[styles.summaryAmount, { color: colors.primary }]}>₦{totalExpenses.toFixed(2)}</Text>
-            <Text style={[styles.summarySubtext, { color: colors.gray }]}>{expenseRides.length} business rides</Text>
+            {isLoadingPastRides ? (
+              <ShimmerGroup>
+                <SkeletonLine width={140} height={28} style={styles.summarySkeletonAmount} />
+                <SkeletonLine width={110} height={13} style={styles.summarySkeletonSubtext} />
+              </ShimmerGroup>
+            ) : (
+              <>
+                <Text style={[styles.summaryAmount, { color: colors.primary }]}>₦{totalExpenses.toFixed(2)}</Text>
+                <Text style={[styles.summarySubtext, { color: colors.gray }]}>{expenseRides.length} business rides</Text>
+              </>
+            )}
           </View>
           
           <View style={styles.actionsContainer}>
@@ -159,17 +162,27 @@ export default function ExpenseRidesScreen() {
               </Pressable>
             </View>
             
-            {expenseRides.map((ride, index) => (
-              <ExpenseRide
-                key={index}
-                date={ride.date}
-                from={ride.from}
-                to={ride.to}
-                amount={ride.amount}
-                category={ride.category}
-                receipt={ride.receipt}
-              />
-            ))}
+            {isLoadingPastRides ? (
+              <ShimmerGroup>
+                {[0, 1, 2, 3].map((i) => (
+                  <ExpenseRideSkeleton key={i} />
+                ))}
+              </ShimmerGroup>
+            ) : expenseRides.length === 0 ? (
+              <Text style={[styles.subtitle, { color: colors.gray }]}>No completed rides to expense yet.</Text>
+            ) : (
+              expenseRides.map((ride, index) => (
+                <ExpenseRide
+                  key={index}
+                  date={ride.date}
+                  from={ride.from}
+                  to={ride.to}
+                  amount={ride.amount}
+                  category={ride.category}
+                  receipt={ride.receipt}
+                />
+              ))
+            )}
           </View>
           
           <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -341,5 +354,13 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  summarySkeletonAmount: {
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  summarySkeletonSubtext: {},
+  skeletonSpacing: {
+    marginTop: 6,
   },
 });

@@ -1,12 +1,13 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Users,
   Car,
-  DollarSign,
+  Wallet,
   AlertCircle,
   CheckCircle,
   MapPin,
@@ -20,14 +21,19 @@ interface StatCardProps {
   value: string;
   icon: React.ComponentType<{ size: number; color: string }>;
   color: string;
+  isLoading?: boolean;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, color }) => (
+const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, color, isLoading = false }) => (
   <View style={styles.statCard}>
     <LinearGradient colors={[color, `${color}80`]} style={styles.statGradient}>
       <View style={styles.statHeader}>
         <Icon size={24} color="white" />
-        <Text style={styles.statValue}>{value}</Text>
+        {isLoading ? (
+          <Skeleton width={54} height={22} borderRadius={4} style={styles.statSkeleton} />
+        ) : (
+          <Text style={styles.statValue}>{value}</Text>
+        )}
       </View>
       <Text style={styles.statTitle}>{title}</Text>
     </LinearGradient>
@@ -80,6 +86,7 @@ export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const overviewQuery = trpc.admin.overview.useQuery();
   const overview = overviewQuery.data;
+  const isLoadingStats = overviewQuery.isLoading;
 
   const stats = [
     {
@@ -97,7 +104,7 @@ export default function AdminDashboard() {
     {
       title: 'Revenue',
       value: overview ? `₦${overview.totalRevenue.toLocaleString()}` : '—',
-      icon: DollarSign,
+      icon: Wallet,
       color: '#4facfe',
     },
     {
@@ -147,7 +154,7 @@ export default function AdminDashboard() {
           <Text style={styles.sectionTitle}>Key Metrics</Text>
           <View style={styles.statsGrid}>
             {stats.map((stat) => (
-              <StatCard key={stat.title} {...stat} />
+              <StatCard key={stat.title} {...stat} isLoading={isLoadingStats} />
             ))}
           </View>
         </View>
@@ -165,7 +172,24 @@ export default function AdminDashboard() {
           <Text style={styles.sectionTitle}>Recent Activity</Text>
           {overviewQuery.isLoading ? (
             <View style={styles.activityCard}>
-              <ActivityIndicator color="#667eea" />
+              <ShimmerGroup>
+                {[0, 1, 2].map((i) => (
+                  <View
+                    key={i}
+                    style={[styles.activityItem, i === 2 && { borderBottomWidth: 0 }]}
+                  >
+                    <Skeleton width={32} height={32} borderRadius={16} style={styles.activitySkeletonIcon} />
+                    <View style={styles.activityContent}>
+                      <SkeletonLine width="55%" height={14} style={styles.adminSkeletonTone} />
+                      <SkeletonLine
+                        width="35%"
+                        height={11}
+                        style={[styles.activitySkeletonSubline, styles.adminSkeletonTone]}
+                      />
+                    </View>
+                  </View>
+                ))}
+              </ShimmerGroup>
             </View>
           ) : overviewQuery.error ? (
             <View style={styles.activityCard}>
@@ -365,5 +389,18 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     textAlign: 'center',
     paddingVertical: 8,
+  },
+  statSkeleton: {
+    backgroundColor: 'rgba(255,255,255,0.35)',
+  },
+  activitySkeletonIcon: {
+    marginRight: 12,
+    backgroundColor: '#e5e7eb',
+  },
+  activitySkeletonSubline: {
+    marginTop: 6,
+  },
+  adminSkeletonTone: {
+    backgroundColor: '#e5e7eb',
   },
 });

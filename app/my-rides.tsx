@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -13,6 +12,7 @@ import { Calendar, Star, ChevronRight } from 'lucide-react-native';
 import { useRide } from '@/hooks/useRideStore';
 import { useTheme } from '@/hooks/useThemeStore';
 import { RideRequest } from '@/types';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function MyRidesScreen() {
 
@@ -67,6 +67,38 @@ export default function MyRidesScreen() {
         return 'Pending';
     }
   };
+
+  const RideCardSkeleton = () => (
+    <View style={[styles.rideCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={styles.rideHeader}>
+        <View style={styles.rideInfo}>
+          <SkeletonLine width={100} height={16} />
+          <SkeletonLine width={70} height={13} style={styles.skeletonSpacing} />
+        </View>
+        <View style={styles.rideStatus}>
+          <Skeleton width={8} height={8} borderRadius={4} style={{ marginRight: 6 }} />
+          <SkeletonLine width={60} height={13} />
+        </View>
+      </View>
+
+      <View style={styles.rideRoute}>
+        <View style={styles.routePoint}>
+          <Skeleton width={8} height={8} borderRadius={4} style={{ marginRight: 12 }} />
+          <SkeletonLine width="70%" height={13} />
+        </View>
+        <View style={styles.routeLine} />
+        <View style={styles.routePoint}>
+          <Skeleton width={8} height={8} borderRadius={4} style={{ marginRight: 12 }} />
+          <SkeletonLine width="55%" height={13} />
+        </View>
+      </View>
+
+      <View style={styles.rideFooter}>
+        <SkeletonLine width={120} height={12} />
+        <SkeletonLine width={64} height={15} />
+      </View>
+    </View>
+  );
 
   const RideCard = ({ ride }: { ride: RideRequest }) => (
     <Pressable
@@ -192,8 +224,12 @@ export default function MyRidesScreen() {
 
       <ScrollView style={styles.content}>
         {isLoadingPastRides ? (
-          <View style={styles.emptyState}>
-            <ActivityIndicator size="large" color={colors.primary} />
+          <View style={styles.ridesContainer}>
+            <ShimmerGroup>
+              {[0, 1, 2, 3].map((i) => (
+                <RideCardSkeleton key={i} />
+              ))}
+            </ShimmerGroup>
           </View>
         ) : filteredRides.length === 0 ? (
           <View style={styles.emptyState}>
@@ -361,5 +397,8 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  skeletonSpacing: {
+    marginTop: 4,
   },
 });

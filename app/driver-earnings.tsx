@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import {
   ArrowLeft,
-  DollarSign,
+  Wallet,
   TrendingUp,
   Calendar,
   Clock,
@@ -19,6 +19,7 @@ import {
 import { useDriverStore } from '@/hooks/useDriverStore';
 import Colors from '@/constants/colors';
 import { router } from 'expo-router';
+import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function DriverEarnings() {
   const { driverProfile, earnings, stats, isLoading } = useDriverStore();
@@ -48,9 +49,72 @@ export default function DriverEarnings() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Loading earnings...</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <ArrowLeft size={24} color={Colors.light.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Earnings</Text>
+          <TouchableOpacity style={styles.downloadButton}>
+            <Download size={20} color={Colors.light.primary} />
+          </TouchableOpacity>
         </View>
+
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          <ShimmerGroup>
+            {/* Earnings Summary skeleton */}
+            <View style={styles.summaryCard}>
+              <View style={styles.totalEarnings}>
+                <SkeletonLine width={140} height={16} />
+                <Skeleton width={180} height={36} style={{ marginTop: 8 }} />
+              </View>
+
+              <View style={styles.earningsGrid}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={styles.earningsItem}>
+                    <SkeletonCircle size={40} style={{ marginBottom: 8 }} />
+                    <SkeletonLine width={60} height={18} style={{ marginBottom: 4 }} />
+                    <SkeletonLine width={50} height={12} />
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Performance Stats skeleton */}
+            <View style={styles.statsCard}>
+              <SkeletonLine width={140} height={16} style={{ marginBottom: 16 }} />
+              <View style={styles.statsGrid}>
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={styles.statItem}>
+                    <SkeletonLine width={40} height={20} style={{ marginBottom: 4 }} />
+                    <SkeletonLine width={60} height={12} />
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Recent Earnings skeleton */}
+            <View style={styles.recentCard}>
+              <SkeletonLine width={140} height={16} style={{ marginBottom: 12 }} />
+              {[0, 1, 2].map((i) => (
+                <View key={i} style={styles.earningItem}>
+                  <View style={styles.earningInfo}>
+                    <View style={styles.earningHeader}>
+                      <SkeletonLine width={90} height={16} />
+                      <Skeleton width={60} height={18} borderRadius={10} />
+                    </View>
+                    <SkeletonLine width={100} height={12} style={{ marginTop: 8, marginBottom: 8 }} />
+                    <SkeletonLine width={140} height={12} style={{ marginBottom: 4 }} />
+                    <SkeletonLine width={120} height={12} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          </ShimmerGroup>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -92,7 +156,7 @@ export default function DriverEarnings() {
           <View style={styles.earningsGrid}>
             <View style={styles.earningsItem}>
               <View style={styles.earningsIcon}>
-                <DollarSign size={20} color={Colors.light.success} />
+                <Wallet size={20} color={Colors.light.success} />
               </View>
               <Text style={styles.earningsValue}>₦{driverProfile.earnings.today.toFixed(2)}</Text>
               <Text style={styles.earningsLabel}>Today</Text>

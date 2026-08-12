@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Image, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldCheck, FileText, Car, ClipboardCheck, UserCheck, Check, X } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
+import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
 
@@ -30,6 +31,25 @@ const getStatusColor = (status: string) => {
     default: return '#f59e0b';
   }
 };
+
+const DocCardSkeleton: React.FC = () => (
+  <View style={styles.docCard}>
+    <View style={styles.docHeader}>
+      <Skeleton width={40} height={40} borderRadius={20} style={[styles.docIcon, styles.skeletonBase]} />
+      <View style={styles.docInfo}>
+        <SkeletonLine width="55%" height={15} style={styles.skeletonBase} />
+        <SkeletonLine width="40%" height={13} style={[styles.skeletonBase, { marginTop: 4 }]} />
+        <SkeletonLine width="35%" height={12} style={[styles.skeletonBase, { marginTop: 4 }]} />
+      </View>
+      <Skeleton width={64} height={20} borderRadius={12} style={styles.skeletonBase} />
+    </View>
+    <Skeleton style={[styles.preview, styles.skeletonBase]} />
+    <View style={styles.actions}>
+      <Skeleton height={38} borderRadius={10} style={[{ flex: 1 }, styles.skeletonBase]} />
+      <Skeleton height={38} borderRadius={10} style={[{ flex: 1 }, styles.skeletonBase]} />
+    </View>
+  </View>
+);
 
 export default function VerificationScreen() {
   const insets = useSafeAreaInsets();
@@ -93,9 +113,13 @@ export default function VerificationScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {documentsQuery.isLoading ? (
-          <View style={styles.centerState}>
-            <ActivityIndicator color="#667eea" />
-          </View>
+          <ShimmerGroup>
+            <View style={styles.list}>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <DocCardSkeleton key={i} />
+              ))}
+            </View>
+          </ShimmerGroup>
         ) : documentsQuery.error ? (
           <View style={styles.centerState}>
             <Text style={styles.errorText}>
@@ -409,5 +433,8 @@ const styles = StyleSheet.create({
   modalConfirmText: {
     color: 'white',
     fontWeight: '600',
+  },
+  skeletonBase: {
+    backgroundColor: '#e5e7eb',
   },
 });
