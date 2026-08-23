@@ -350,7 +350,7 @@ export default async function DashboardPage() {
   const activeDrivers = driversResult.count ?? 0;
   const ridesToday = ridesResult.count ?? 0;
   const grossFares = revenueResult.data?.reduce((sum, r) => sum + (r.fare ?? 0), 0) ?? 0;
-  const companyEarnings = Math.round(grossFares * 0.2); // 20% platform commission
+  const companyEarnings = Math.round(grossFares * 0.1); // 10% platform commission
 
   return (
     <div>
@@ -360,7 +360,7 @@ export default async function DashboardPage() {
         <StatCard label="Online Drivers" value={activeDrivers.toLocaleString()} />
         <StatCard label="Rides Today" value={ridesToday.toLocaleString()} />
         <StatCard label="Gross Fares" value={`₦${grossFares.toLocaleString()}`} />
-        <StatCard label="Company Earnings (20%)" value={`₦${companyEarnings.toLocaleString()}`} />
+        <StatCard label="Company Earnings (10%)" value={`₦${companyEarnings.toLocaleString()}`} />
       </div>
     </div>
   );
@@ -437,7 +437,7 @@ Every other write operation follows this same pattern:
 
 ## 10. Screen-by-Screen Data Specifications
 
-> **Revenue model:** Pantra charges riders the full fare. Drivers keep 80% (paid out via `driver_payouts`). Pantra keeps 20% as platform commission. Always display **Company Earnings = SUM(fare) × 0.2** as the business revenue figure — not the gross fare total.
+> **Revenue model:** Pantra charges riders the full fare. Drivers keep 90% (paid out via `driver_payouts`). Pantra keeps 10% as platform commission — see `PLATFORM_COMMISSION_RATE` in `lib/pricing-config.ts`, the single source of truth. Always display **Company Earnings = SUM(fare) × 0.1** as the business revenue figure — not the gross fare total. Prefer the per-ride `platformCommissionAmount`/`driverEarningsAmount` columns (snapshotted at settlement) over recomputing with the current rate, so historical rides aren't retroactively rewritten if the rate changes later.
 
 ### Dashboard
 **Stats row (7 cards):**
@@ -446,7 +446,7 @@ const { count: totalUsers } = await supabaseAdmin.from('users').select('*', { co
 const { count: activeDrivers } = await supabaseAdmin.from('drivers').select('*', { count: 'exact', head: true }).eq('isOnline', true);
 const { data: revenueData } = await supabaseAdmin.from('rides').select('fare').eq('status', 'completed');
 const grossFares = revenueData?.reduce((s, r) => s + (r.fare ?? 0), 0) ?? 0;
-const companyEarnings = Math.round(grossFares * 0.2); // 20% platform commission — what Pantra actually keeps
+const companyEarnings = Math.round(grossFares * 0.1); // 10% platform commission — what Pantra actually keeps
 const today = new Date().toISOString().split('T')[0];
 const { count: ridesToday } = await supabaseAdmin.from('rides').select('*', { count: 'exact', head: true }).gte('createdAt', today);
 const { count: pendingVerifications } = await supabaseAdmin.from('driver_documents').select('*', { count: 'exact', head: true }).eq('status', 'pending');
@@ -459,7 +459,7 @@ SELECT
   DATE("completedAt") as date,
   COUNT(*)::int as ride_count,
   COALESCE(SUM(fare), 0) as gross_fare,
-  COALESCE(SUM(fare * 0.2), 0) as company_commission
+  COALESCE(SUM(fare * 0.1), 0) as company_commission
 FROM public.rides
 WHERE status = 'completed' AND "completedAt" >= NOW() - INTERVAL '30 days'
 GROUP BY DATE("completedAt") ORDER BY date ASC
@@ -609,9 +609,9 @@ const { count: total } = await supabaseAdmin.from('rides').select('*',{count:'ex
 const { count: cancelled } = await supabaseAdmin.from('rides').select('*',{count:'exact',head:true}).eq('status','cancelled');
 const cancelRate = total ? ((cancelled ?? 0) / total * 100).toFixed(1) : '0';
 
-// Revenue by ride type — company earns 20% of each fare
+// Revenue by ride type — company earns 10% of each fare
 const { data: byType } = await supabaseAdmin.from('rides').select('rideType, fare').eq('status', 'completed');
-// Group in JS: { rideType → { grossFare: sum(fare), commission: sum(fare * 0.2) } }
+// Group in JS: { rideType → { grossFare: sum(fare), commission: sum(fare * 0.1) } }
 // Display the commission column in the chart — not the gross fare.
 
 // Payment methods breakdown — group in JavaScript
@@ -628,7 +628,7 @@ const totalValueNGN = totalPoints * 16;
 ```
 
 **Charts (use recharts):**
-- `<LineChart>` — daily company earnings (20% commission) over 30 days, with gross fares as a secondary reference line
+- `<LineChart>` — daily company earnings (10% commission) over 30 days, with gross fares as a secondary reference line
 - `<BarChart>` — commission by ride type (Standard / Comfort / XL)
 - `<PieChart>` — payment methods (card / cash / wallet)
 - `<BarChart>` — new users per day

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { adminProcedure } from "../../../create-context";
-
-const REQUIRED_DOCUMENT_TYPES = ["license", "insurance", "registration", "background_check", "vehicle_inspection"];
+import { recomputeDriverVerificationStatus } from "@/backend/services/verification/engine";
 
 export default adminProcedure
   .input(
@@ -36,17 +35,23 @@ export default adminProcedure
     const { error: updateError } = await db.from("driver_documents").update(updates).eq("id", input.documentId);
     if (updateError) throw new Error(updateError.message);
 
-    const { data: allDocs } = await db
-      .from("driver_documents")
-      .select("type, status")
-      .eq("driverId", doc.driverId);
+    // Driver-level status is entirely owned by the verification engine — this route
+    // only ever mutates the single driver_documents row above, then delegates the
+    // recompute (including whatever effect an admin rejection should have on the
+    // driver's overall verificationStatus) to the same single source of truth used
+    // by every other event in the pipeline (see engine.ts).
+    await recomputeDriverVerificationStatus(db, doc.driverId);
 
-    const approvedTypes = new Set((allDocs ?? []).filter((d) => d.status === "approved").map((d) => d.type));
-    const completed = REQUIRED_DOCUMENT_TYPES.filter((t) => approvedTypes.has(t)).length;
-    const verificationProgress = (completed / REQUIRED_DOCUMENT_TYPES.length) * 100;
-    const isVerified = completed === REQUIRED_DOCUMENT_TYPES.length;
+    const { data: driver } = await db
+      .from("drivers")
+      .select("isVerified, verificationProgress, verificationStatus")
+      .eq("id", doc.driverId)
+      .single();
 
-    await db.from("drivers").update({ isVerified, verificationProgress }).eq("id", doc.driverId);
-
-    return { success: true, isVerified, verificationProgress };
+    return {
+      success: true,
+      isVerified: driver?.isVerified ?? false,
+      verificationProgress: driver?.verificationProgress ?? 0,
+      verificationStatus: driver?.verificationStatus ?? "PENDING",
+    };
   });

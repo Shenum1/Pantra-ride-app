@@ -47,7 +47,9 @@ export interface Driver {
   id: string;
   name: string;
   rating: number | null;
-  location: Location;
+  // Optional: absent until the driver's device has sent a real GPS ping — never
+  // filled with a fabricated coordinate as a placeholder.
+  location?: Location;
   carType: string;
   carModel: string;
   licensePlate: string;
@@ -95,16 +97,14 @@ export interface RideRequest {
   basePrice?: number;
   minPrice?: number;
   maxPrice?: number;
-  fareAdjustmentPercent?: number;
   bookingFee?: number;
   serviceFee?: number;
   zoneFee?: number;
   waitingCharge?: number;
+  isPriority?: boolean;
+  priorityFee?: number;
   arrivedAt?: Date;
   cancellationFee?: number;
-  offeredFare?: number;
-  negotiationStatus?: 'pending' | 'accepted' | 'rejected' | 'expired';
-  offerExpiresAt?: Date;
   passengerName?: string;
   passengerPhone?: string;
   distance?: number;
@@ -124,6 +124,14 @@ export interface RideRequest {
   cancelReasonDetails?: string;
 }
 
+export type DriverVerificationStatus =
+  | 'PENDING'
+  | 'DOCUMENTS_SUBMITTED'
+  | 'VERIFYING'
+  | 'VERIFIED'
+  | 'REJECTED'
+  | 'MANUAL_REVIEW';
+
 export interface DriverProfile {
   id: string;
   name: string;
@@ -134,6 +142,12 @@ export interface DriverProfile {
   totalRides: number;
   isOnline: boolean;
   isVerified: boolean;
+  // Server-decided verification state (see backend/services/verification/engine.ts —
+  // the only code path allowed to write these). Never set client-side.
+  verificationStatus?: DriverVerificationStatus;
+  fullLegalName?: string;
+  operatingState?: string;
+  vehicleCategory?: string;
   vehicle: {
     make: string;
     model: string;
@@ -141,24 +155,6 @@ export interface DriverProfile {
     color: string;
     licensePlate: string;
     type: 'sedan' | 'suv' | 'hatchback' | 'luxury';
-  };
-  documents: {
-    driverLicense: {
-      number: string;
-      expiryDate: Date;
-      isVerified: boolean;
-    };
-    vehicleRegistration: {
-      number: string;
-      expiryDate: Date;
-      isVerified: boolean;
-    };
-    insurance: {
-      provider: string;
-      policyNumber: string;
-      expiryDate: Date;
-      isVerified: boolean;
-    };
   };
   earnings: {
     today: number;

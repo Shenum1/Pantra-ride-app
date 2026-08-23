@@ -8,7 +8,8 @@ import Button from '@/components/Button';
 import { PaystackService } from '@/lib/paystack-service';
 import { FlutterwaveService } from '@/lib/flutterwave-service';
 import { useAuth } from '@/hooks/useAuthStore';
-import { useWallet } from '@/hooks/useWalletStore';
+import { trpcClient } from '@/lib/trpc';
+import { useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 
 type PaymentStatus = 'initializing' | 'ready' | 'processing' | 'success' | 'failed';
@@ -17,8 +18,8 @@ export default function PaymentInitializeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
-  const { addMoneyAsync } = useWallet();
-  
+  const queryClient = useQueryClient();
+
   const gateway = params.gateway as string;
   const amount = parseFloat(params.amount as string);
   const purpose = params.purpose as string;
@@ -122,6 +123,22 @@ export default function PaymentInitializeScreen() {
     }
   };
 
+  const creditWalletFromVerifiedPayment = async (gatewayName: 'paystack' | 'flutterwave') => {
+    // Crediting happens server-side: the backend re-verifies this exact
+    // reference with the provider itself and uses the provider's confirmed
+    // amount, never `amount` from this screen's params — see
+    // backend/trpc/routes/payments/wallet/credit/route.ts.
+    const credit = await trpcClient.payments.wallet.credit.mutate({
+      gateway: gatewayName,
+      reference,
+      paymentMethodId,
+    });
+    if (!credit.status) {
+      throw new Error(credit.message || 'Payment verified but wallet credit failed. Please contact support.');
+    }
+    await queryClient.invalidateQueries({ queryKey: ['walletData'] });
+  };
+
   const handleVerifyPayment = async () => {
     try {
       setStatus('processing');
@@ -130,10 +147,13 @@ export default function PaymentInitializeScreen() {
       if (gateway === 'paystack') {
         const result = await PaystackService.verifyTransaction(reference);
         if (result.status) {
+          if (purpose === 'wallet_funding') {
+            await creditWalletFromVerifiedPayment('paystack');
+          }
           setStatus('success');
-          setMessage('Payment successful!');
+          setMessage(purpose === 'wallet_funding' ? 'Wallet funded successfully!' : 'Payment successful!');
           setTimeout(() => {
-            router.replace('/(tabs)/home' as any);
+            router.replace(purpose === 'wallet_funding' ? ('/wallet' as any) : ('/(tabs)/home' as any));
           }, 2000);
         } else {
           setStatus('failed');
@@ -143,7 +163,7 @@ export default function PaymentInitializeScreen() {
         const result = await FlutterwaveService.verifyTransaction(reference);
         if (result.status === 'success') {
           if (purpose === 'wallet_funding') {
-            await addMoneyAsync({ amount, paymentMethodId });
+            await creditWalletFromVerifiedPayment('flutterwave');
           }
           setStatus('success');
           setMessage(purpose === 'wallet_funding' ? 'Wallet funded successfully!' : 'Payment successful!');
@@ -158,7 +178,7 @@ export default function PaymentInitializeScreen() {
     } catch (error) {
       console.error('Payment verification error:', error);
       setStatus('failed');
-      setMessage('Failed to verify payment');
+      setMessage(error instanceof Error ? error.message : 'Failed to verify payment');
     }
   };
 

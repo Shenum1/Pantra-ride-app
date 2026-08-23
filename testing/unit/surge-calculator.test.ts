@@ -46,3 +46,40 @@ describe('calculateSurgeMultiplier', () => {
     }
   });
 });
+
+describe('calculateSurgeMultiplier — low-acceptance-rate bonus', () => {
+  const configWithAcceptance: SurgeConfig = {
+    ...config,
+    lowAcceptanceThreshold: 0.5,
+    lowAcceptanceBonus: 0.3,
+  };
+
+  it('is unaffected when recentAcceptanceRate is omitted (backward compatible)', () => {
+    expect(calculateSurgeMultiplier(10, 3, configWithAcceptance)).toBe(1.0);
+  });
+
+  it('is unaffected when the config has no acceptance fields, even if a rate is passed', () => {
+    expect(calculateSurgeMultiplier(10, 3, config, 0.1)).toBe(1.0);
+  });
+
+  it('adds the bonus on top of the ratio-based multiplier when acceptance is below threshold', () => {
+    // ratio 0.3 -> base multiplier 1.0 (low demand), acceptance 0.2 < 0.5 threshold
+    const result = calculateSurgeMultiplier(10, 3, configWithAcceptance, 0.2);
+    expect(result).toBeCloseTo(1.3, 2);
+  });
+
+  it('does not add the bonus when acceptance meets or exceeds the threshold', () => {
+    const result = calculateSurgeMultiplier(10, 3, configWithAcceptance, 0.5);
+    expect(result).toBe(1.0);
+  });
+
+  it('does not add the bonus when there is no reliable acceptance data (null)', () => {
+    const result = calculateSurgeMultiplier(10, 3, configWithAcceptance, null);
+    expect(result).toBe(1.0);
+  });
+
+  it('caps the bonus at maxMultiplier even when demand is already at the high end', () => {
+    const result = calculateSurgeMultiplier(10, 30, configWithAcceptance, 0.1); // ratio 3.0 -> already maxMultiplier
+    expect(result).toBe(configWithAcceptance.maxMultiplier);
+  });
+});

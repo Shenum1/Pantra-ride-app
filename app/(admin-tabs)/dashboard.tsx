@@ -113,6 +113,18 @@ export default function AdminDashboard() {
       icon: MapPin,
       color: '#43e97b',
     },
+    {
+      title: 'Platform Commission',
+      value: overview ? `₦${overview.totalPlatformCommission.toLocaleString()}` : '—',
+      icon: Wallet,
+      color: '#fa709a',
+    },
+    {
+      title: 'Driver Earnings',
+      value: overview ? `₦${overview.totalDriverEarnings.toLocaleString()}` : '—',
+      icon: Wallet,
+      color: '#764ba2',
+    },
   ];
 
   const quickActions = [

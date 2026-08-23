@@ -94,7 +94,7 @@ export default function DriverLoginScreen() {
                 />
               </View>
 
-              <View style={styles.inputContainer}>
+              <View style={[styles.inputContainer, styles.passwordFieldSpacing]}>
                 <Text style={styles.label}>Password</Text>
                 <View style={styles.passwordContainer}>
                   <TextInput
@@ -118,6 +118,14 @@ export default function DriverLoginScreen() {
                   </Pressable>
                 </View>
               </View>
+
+              <Pressable
+                onPress={() => router.push({ pathname: '/forgot-password', params: { from: 'driver' } })}
+                style={styles.forgotPasswordContainer}
+                testID="driver-forgot-password-link"
+              >
+                <Text style={styles.link}>Forgot Password?</Text>
+              </Pressable>
 
               <Button
                 title={isLoading ? '' : 'Sign In'}
@@ -272,5 +280,12 @@ const styles = StyleSheet.create({
   link: {
     color: Colors.light.primary,
     fontWeight: '600',
+  },
+  passwordFieldSpacing: {
+    marginBottom: 8,
+  },
+  forgotPasswordContainer: {
+    alignSelf: 'flex-end',
+    marginBottom: 16,
   },
 });

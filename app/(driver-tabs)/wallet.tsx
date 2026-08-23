@@ -100,10 +100,16 @@ export default function DriverWallet() {
 
   const currentEarnings = earnings[selectedPeriod];
 
-  const completedPayoutsTotal = payouts
-    .filter(p => p.status === 'completed')
+  // Pending/processing payouts already claim part of the driver's earnings —
+  // not just completed ones — otherwise this would show a balance a driver
+  // could file a second withdrawal request against before the first is even
+  // reviewed. The backend enforces this for real (get_driver_available_balance
+  // in database/schemas/supabase-schema-driver-payouts.sql); this mirrors the
+  // same math purely for display.
+  const claimedPayoutsTotal = payouts
+    .filter(p => p.status === 'completed' || p.status === 'pending' || p.status === 'processing')
     .reduce((sum, p) => sum + p.amount, 0);
-  const availableBalance = Math.max(0, stats.totalEarnings - completedPayoutsTotal);
+  const availableBalance = Math.max(0, stats.totalEarnings - claimedPayoutsTotal);
 
   const transactions: Transaction[] = earningsHistory.map((e: any) => {
     const dt = e.payoutDate ?? e.createdAt;

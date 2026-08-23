@@ -1,10 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  Platform,
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,26 +18,62 @@ import {
   ExternalLink,
   Youtube,
   Share2,
+  Coins,
 } from 'lucide-react-native';
 import { useAuth } from '@/hooks/useAuthStore';
 import { usePoints } from '@/hooks/usePointsStore';
 import { useTheme } from '@/hooks/useThemeStore';
+import { useRewardedAd } from '@/hooks/useRewardedAd';
 import { RewardTask, RewardsService } from '@/lib/rewards-service';
+import { AD_REWARD_POINTS } from '@/lib/ad-rewards-config';
 import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function EarnScreen() {
   const { user } = useAuth();
-  const { balance, balanceNGN, tasks, completedTaskIds, loadPoints, isLoading } = usePoints();
+  const {
+    balance,
+    balanceNGN,
+    tasks,
+    completedTaskIds,
+    loadPoints,
+    isLoading,
+    adRewardsRemainingToday,
+    loadAdRewardStatus,
+    claimAdReward,
+  } = usePoints();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { status: adStatus, watchAd } = useRewardedAd();
+  const [isClaimingAdReward, setIsClaimingAdReward] = useState(false);
 
   const styles = getStyles(colors);
 
   useEffect(() => {
     if (user?.id && user.id !== 'test-rider') {
       loadPoints(user.id);
+      loadAdRewardStatus();
     }
   }, [user?.id]);
+
+  const handleWatchAd = useCallback(async () => {
+    if (!user?.id) return;
+    const outcome = await watchAd();
+    if (outcome !== 'earned') {
+      if (outcome === 'error') {
+        Alert.alert('Ad unavailable', 'No ad is available right now. Please try again shortly.');
+      }
+      return;
+    }
+    setIsClaimingAdReward(true);
+    try {
+      await claimAdReward(user.id);
+    } catch (error) {
+      console.error('Error claiming ad reward:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to credit your points. Please try again.');
+    } finally {
+      setIsClaimingAdReward(false);
+    }
+  }, [user?.id, watchAd, claimAdReward]);
 
   const availableTasks = tasks.filter(t => !completedTaskIds.includes(t.id));
   const completedTasks = tasks.filter(t => completedTaskIds.includes(t.id));
@@ -176,6 +214,33 @@ export default function EarnScreen() {
           )}
         </View>
 
+        {/* Watch an ad, earn points */}
+        {Platform.OS !== 'web' && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={[styles.adRewardCard, { backgroundColor: colors.card }]}
+              onPress={handleWatchAd}
+              disabled={adStatus === 'loading' || adStatus === 'showing' || isClaimingAdReward || adRewardsRemainingToday <= 0}
+              activeOpacity={0.8}
+            >
+              <View style={styles.adRewardIconContainer}>
+                <Coins size={22} color={colors.primary} />
+              </View>
+              <View style={styles.taskInfo}>
+                <Text style={styles.taskTitle}>Watch an ad, earn {AD_REWARD_POINTS} pts</Text>
+                <Text style={styles.taskDescription}>
+                  {adRewardsRemainingToday > 0
+                    ? `${adRewardsRemainingToday} watch${adRewardsRemainingToday === 1 ? '' : 'es'} left today`
+                    : 'Come back tomorrow'}
+                </Text>
+              </View>
+              <View style={styles.taskAction}>
+                <ExternalLink size={20} color={colors.primary} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Completed Tasks */}
         {completedTasks.length > 0 && (
           <View style={styles.section}>
@@ -303,6 +368,26 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   completedTaskCard: {
     opacity: 0.7,
+  },
+  adRewardCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  adRewardIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   taskHeader: {
     flexDirection: 'row',

@@ -9,6 +9,8 @@ interface OverviewData {
   activeDrivers: number;
   ridesToday: number;
   totalRevenue: number;
+  totalPlatformCommission: number;
+  totalDriverEarnings: number;
   recentActivity: { id: string; type: string; title: string; subtitle: string; createdAt: string }[];
 }
 
@@ -57,6 +59,8 @@ export default function Dashboard() {
     { label: 'Online Drivers', value: data?.activeDrivers ?? 0, icon: Activity, color: 'text-orange-500' },
     { label: 'Rides Today', value: data?.ridesToday ?? 0, icon: Car, color: 'text-primary' },
     { label: 'Total Revenue', value: `₦${(data?.totalRevenue ?? 0).toLocaleString()}`, icon: Wallet, color: 'text-emerald-500' },
+    { label: 'Platform Commission', value: `₦${(data?.totalPlatformCommission ?? 0).toLocaleString()}`, icon: Wallet, color: 'text-pink-500' },
+    { label: 'Driver Earnings', value: `₦${(data?.totalDriverEarnings ?? 0).toLocaleString()}`, icon: Wallet, color: 'text-indigo-500' },
   ];
 
   return (

@@ -398,7 +398,7 @@ export default function DriverActiveTrip() {
             }
           } catch (error) {
             console.error('Error completing trip:', error);
-            Alert.alert('Error', 'Failed to complete trip');
+            Alert.alert('Error', error instanceof Error ? error.message : 'Failed to complete trip');
           }
         },
       },

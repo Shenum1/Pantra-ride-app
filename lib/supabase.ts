@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClientOptions } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -15,12 +15,23 @@ class NoopSocketTransport {
 }
 const isServer = typeof window === 'undefined';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: Platform.OS !== 'web' ? AsyncStorage : undefined,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-  ...(isServer ? { realtime: { transport: NoopSocketTransport as any } } : {}),
+type SupabaseAuthOptions = NonNullable<SupabaseClientOptions<'public'>['auth']>;
+
+/**
+ * Every Supabase client in this app must be built through this factory so the
+ * SSR/realtime guard above is applied consistently — a bare `createClient()`
+ * call anywhere else will crash the `web.output: "server"` route-graph build.
+ */
+export function createSupabaseAuthClient(authOverrides: SupabaseAuthOptions) {
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: authOverrides,
+    ...(isServer ? { realtime: { transport: NoopSocketTransport as any } } : {}),
+  });
+}
+
+export const supabase = createSupabaseAuthClient({
+  storage: Platform.OS !== 'web' ? AsyncStorage : undefined,
+  autoRefreshToken: true,
+  persistSession: true,
+  detectSessionInUrl: false,
 });

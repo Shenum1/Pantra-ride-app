@@ -8,6 +8,7 @@ import {
   Image,
   FlatList,
   Animated,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -27,9 +28,8 @@ import {
 } from 'lucide-react-native';
 import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 import { useTheme } from '@/hooks/useThemeStore';
-import { useWeather } from '@/hooks/useWeatherStore';
 import { useLocation } from '@/hooks/useLocationStore';
-import WeatherCard from '@/components/WeatherCard';
+import AdBanner from '@/components/AdBanner';
 import { router } from 'expo-router';
 import { Location } from '@/types';
 import { GoogleMapsService, NearbyPlaceResult } from '@/lib/google-maps-service';
@@ -123,8 +123,7 @@ function mapToPlace(result: NearbyPlaceResult, categoryId: string, userLocation:
 
 export default function DiscoverScreen() {
   const { colors } = useTheme();
-  const { userLocation, setDropoffLocation, setDropoffAddress, clearRoute } = useLocation();
-  const { fetchWeather } = useWeather();
+  const { userLocation, locationError, retryLocation, setDropoffLocation, setDropoffAddress, clearRoute } = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('restaurants');
   const [bookingPlace, setBookingPlace] = useState<string | null>(null);
@@ -132,12 +131,6 @@ export default function DiscoverScreen() {
   const [isLoadingPlaces, setIsLoadingPlaces] = useState<boolean>(false);
   const scrollY = useRef(new Animated.Value(0)).current;
   const [isSearchFocused, setIsSearchFocused] = useState(false);
-
-  React.useEffect(() => {
-    if (userLocation) {
-      void fetchWeather(userLocation);
-    }
-  }, [userLocation, fetchWeather]);
 
   React.useEffect(() => {
     if (!userLocation) return;
@@ -178,28 +171,14 @@ export default function DiscoverScreen() {
   };
 
   const handlePlacePress = (place: Place) => {
-    setBookingPlace(place.id);
-
-    let destinationCoords: Location;
-    if (place.location) {
-      destinationCoords = place.location;
-    } else {
-      const baseLatitude = userLocation?.latitude ?? 9.0765;
-      const baseLongitude = userLocation?.longitude ?? 7.3986;
-      const numericId = parseInt(place.id, 10) || 1;
-      const latitudeOffset = ((numericId % 5) - 2) * 0.012;
-      const longitudeOffset = ((numericId % 7) - 3) * 0.01;
-
-      destinationCoords = {
-        latitude: baseLatitude + latitudeOffset,
-        longitude: baseLongitude + longitudeOffset,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      };
+    if (!place.location) {
+      Alert.alert('Location unavailable', "We couldn't find coordinates for this place. Try selecting it from search instead.");
+      return;
     }
 
+    setBookingPlace(place.id);
     clearRoute();
-    setDropoffLocation(destinationCoords);
+    setDropoffLocation(place.location);
     setDropoffAddress(place.name);
 
     setTimeout(() => {
@@ -360,12 +339,9 @@ export default function DiscoverScreen() {
           </View>
         </View>
 
-        {/* Weather Section */}
-        <View style={styles.weatherWrapper}>
-          <WeatherCard 
-            title="Weather" 
-            compact={true}
-          />
+        {/* Ad Banner */}
+        <View style={styles.adBannerWrapper}>
+          <AdBanner />
         </View>
 
         {/* Categories Section */}
@@ -413,6 +389,19 @@ export default function DiscoverScreen() {
                 ))}
               </View>
             </ShimmerGroup>
+          ) : !userLocation ? (
+            <View style={styles.emptyState}>
+              <MapPin size={48} color={colors.textSecondary} />
+              <Text style={[styles.emptyTitle, { color: colors.text }]}>
+                {locationError ?? 'Unable to determine your location'}
+              </Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                Nearby places need your location to load.
+              </Text>
+              <Pressable onPress={() => void retryLocation()}>
+                <Text style={[styles.emptySubtitle, { color: colors.primary, fontWeight: '700', marginTop: 8 }]}>Retry</Text>
+              </Pressable>
+            </View>
           ) : filteredPlaces.length === 0 ? (
             <View style={styles.emptyState}>
               <MapPin size={48} color={colors.textSecondary} />
@@ -460,9 +449,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
-  weatherWrapper: {
+  adBannerWrapper: {
     paddingHorizontal: 20,
     paddingBottom: 12,
+    alignItems: 'center',
   },
   categoriesWrapper: {
     paddingBottom: 16,

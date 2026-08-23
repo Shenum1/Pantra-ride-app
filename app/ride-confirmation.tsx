@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { ChevronDown, ChevronUp, Route, X, Zap } from 'lucide-react-native';
+import { ChevronDown, ChevronRight, ChevronUp, Route, X, Zap } from 'lucide-react-native';
 
 import Map from '@/components/Map';
 import Button from '@/components/Button';
@@ -138,7 +138,7 @@ export default function RideConfirmationScreen() {
       return 'Preparing direction';
     }
 
-    return routeInfo.polyline ? 'Live direction' : 'Estimated direction';
+    return routeInfo.isEstimate ? 'Estimated direction' : 'Live direction';
   }, [routeInfo]);
 
   const toggleSheet = () => {
@@ -234,7 +234,7 @@ export default function RideConfirmationScreen() {
                   </View>
                 </View>
 
-                <View style={styles.destinationCard}>
+                <View style={styles.routeCard}>
                   <SkeletonLine width="40%" height={11} />
                   <SkeletonLine width="85%" height={16} style={styles.skeletonValueSpacing} />
                 </View>
@@ -330,12 +330,34 @@ export default function RideConfirmationScreen() {
               </View>
             )}
 
-            <View style={styles.destinationCard} testID="ride-destination-card">
-              <Text style={styles.destinationLabel}>Destination</Text>
-              <Text style={styles.destinationValue} numberOfLines={isExpanded ? 2 : 1}>{dropoffAddress || 'Destination'}</Text>
-              {isExpanded ? (
-                <Text style={styles.pickupValue} numberOfLines={1}>From {pickupAddress || 'Current location'}</Text>
-              ) : null}
+            <View style={styles.routeCard} testID="ride-destination-card">
+              <Pressable
+                style={styles.routeRow}
+                onPress={() => router.push({ pathname: '/search', params: { target: 'pickup' } })}
+                testID="ride-pickup-row"
+              >
+                <View style={[styles.routeDot, styles.routeDotPickup]} />
+                <View style={styles.routeRowText}>
+                  <Text style={styles.destinationLabel}>Pickup</Text>
+                  <Text style={styles.destinationValue} numberOfLines={1}>{pickupAddress || 'Current location'}</Text>
+                </View>
+                <ChevronRight size={18} color="#64748B" />
+              </Pressable>
+
+              <View style={styles.routeDivider} />
+
+              <Pressable
+                style={styles.routeRow}
+                onPress={() => router.push({ pathname: '/search', params: { target: 'dropoff' } })}
+                testID="ride-destination-row"
+              >
+                <View style={[styles.routeDot, styles.routeDotDropoff]} />
+                <View style={styles.routeRowText}>
+                  <Text style={styles.destinationLabel}>Destination</Text>
+                  <Text style={styles.destinationValue} numberOfLines={isExpanded ? 2 : 1}>{dropoffAddress || 'Destination'}</Text>
+                </View>
+                <ChevronRight size={18} color="#64748B" />
+              </Pressable>
             </View>
 
             <View style={styles.bookingForCard} testID="booking-for-card">
@@ -357,25 +379,28 @@ export default function RideConfirmationScreen() {
                 </Pressable>
               </View>
               {bookingFor === 'other' ? (
-                <View style={styles.passengerInputs}>
-                  <TextInput
-                    style={styles.passengerInput}
-                    placeholder="Passenger's name"
-                    placeholderTextColor="#64748B"
-                    value={passengerName}
-                    onChangeText={setPassengerName}
-                    testID="booking-for-passenger-name"
-                  />
-                  <TextInput
-                    style={styles.passengerInput}
-                    placeholder="Passenger's phone number"
-                    placeholderTextColor="#64748B"
-                    value={passengerPhone}
-                    onChangeText={setPassengerPhone}
-                    keyboardType="phone-pad"
-                    testID="booking-for-passenger-phone"
-                  />
-                </View>
+                <>
+                  <Text style={styles.bookingForHint}>Set the pickup and destination above for this passenger.</Text>
+                  <View style={styles.passengerInputs}>
+                    <TextInput
+                      style={styles.passengerInput}
+                      placeholder="Passenger's name"
+                      placeholderTextColor="#64748B"
+                      value={passengerName}
+                      onChangeText={setPassengerName}
+                      testID="booking-for-passenger-name"
+                    />
+                    <TextInput
+                      style={styles.passengerInput}
+                      placeholder="Passenger's phone number"
+                      placeholderTextColor="#64748B"
+                      value={passengerPhone}
+                      onChangeText={setPassengerPhone}
+                      keyboardType="phone-pad"
+                      testID="booking-for-passenger-phone"
+                    />
+                  </View>
+                </>
               ) : null}
             </View>
 
@@ -575,11 +600,36 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
   },
-  destinationCard: {
+  routeCard: {
     backgroundColor: 'rgba(15,23,42,0.78)',
     borderRadius: 18,
     paddingHorizontal: 16,
-    paddingVertical: 15,
+    paddingVertical: 6,
+  },
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  routeRowText: {
+    flex: 1,
+  },
+  routeDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  routeDotPickup: {
+    backgroundColor: '#14B8A6',
+  },
+  routeDotDropoff: {
+    backgroundColor: '#7DD3FC',
+  },
+  routeDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(148,163,184,0.14)',
+    marginLeft: 19,
   },
   destinationLabel: {
     color: '#7DD3FC',
@@ -587,7 +637,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   destinationValue: {
     color: '#F8FAFC',
@@ -595,10 +645,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 22,
   },
-  pickupValue: {
+  bookingForHint: {
     color: '#94A3B8',
-    fontSize: 13,
-    marginTop: 8,
+    fontSize: 12,
     fontWeight: '500',
   },
   bookingForCard: {

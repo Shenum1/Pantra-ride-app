@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { ArrowRight, Minus, Plus, Wallet, Clock3, CreditCard, MapPin, Star, Zap } from 'lucide-react-native';
+import { ArrowRight, Wallet, Clock3, CreditCard, MapPin, Star, Zap } from 'lucide-react-native';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import { useRide } from '@/hooks/useRideStore';
@@ -11,24 +11,21 @@ import { usePoints } from '@/hooks/usePointsStore';
 import { useAuth } from '@/hooks/useAuthStore';
 import { RewardsService } from '@/lib/rewards-service';
 
-const FARE_OPTIONS: number[] = [-10, 0, 10];
-
 export default function RideCheckoutScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const {
     requestRide,
     estimatedPrice,
-    baseEstimatedPrice,
-    minEstimatedPrice,
-    maxEstimatedPrice,
-    fareAdjustmentPercent,
     estimatedDistance,
     estimatedDuration,
+    isFareEstimate,
     scheduledDate,
     selectedPaymentMethod,
-    setFareAdjustment,
     surgeMultiplier,
+    isPriority,
+    togglePriority,
+    priorityFeeAmount,
   } = useRide();
   const { pickupAddress, dropoffAddress, pickupLocation, dropoffLocation } = useLocation();
   const { balance, balanceNGN, redeemForRide } = usePoints();
@@ -43,18 +40,6 @@ export default function RideCheckoutScreen() {
 
   const pointsCoverageNGN = pointsToSpend * RewardsService.POINTS_TO_NGN;
   const amountToPay = Math.max(0, estimatedPrice - pointsCoverageNGN);
-
-  const priceNote = useMemo(() => {
-    if (fareAdjustmentPercent > 0) {
-      return `Fare increased by ${fareAdjustmentPercent}%`;
-    }
-
-    if (fareAdjustmentPercent < 0) {
-      return `Fare reduced by ${Math.abs(fareAdjustmentPercent)}%`;
-    }
-
-    return 'Base fare selected';
-  }, [fareAdjustmentPercent]);
 
   const handleBookRide = async () => {
     if (!pickupLocation || !dropoffLocation) {
@@ -93,7 +78,7 @@ export default function RideCheckoutScreen() {
         <SafeAreaView edges={['top']}>
           <View style={styles.heroContent}>
             <Text style={styles.eyebrow}>Ride checkout</Text>
-            <Text style={styles.heroTitle}>Review the route, tune the fare, then book.</Text>
+            <Text style={styles.heroTitle}>Review the route, then book.</Text>
             <Text style={styles.heroSubtitle}>Drivers will receive the live trip request with route distance, fare, and pickup details.</Text>
           </View>
         </SafeAreaView>
@@ -133,14 +118,14 @@ export default function RideCheckoutScreen() {
             </View>
           </View>
 
-          <View style={styles.card} testID="fare-adjustment-card">
-            <Text style={styles.cardTitle}>Adjust fare</Text>
-            <Text style={styles.cardSubtitle}>You can reduce the quote by 10% or increase it by 10%.</Text>
+          <View style={styles.card} testID="fare-summary-card">
+            <Text style={styles.cardTitle}>Fare</Text>
             <View style={styles.priceShell}>
               <Text style={styles.priceCaption}>Current fare</Text>
               <Text style={styles.priceValue}>₦{estimatedPrice.toFixed(0)}</Text>
-              <Text style={styles.priceMeta}>{priceNote}</Text>
-              <Text style={styles.priceBounds}>Allowed range ₦{minEstimatedPrice.toFixed(0)} - ₦{maxEstimatedPrice.toFixed(0)}</Text>
+              <Text style={styles.priceMeta}>
+                {isFareEstimate ? 'Estimated fare — live route unavailable.' : 'Fare based on live route distance.'}
+              </Text>
               {surgeMultiplier > 1 && (
                 <View style={styles.surgeBadge} testID="surge-badge">
                   <Zap size={14} color={Colors.light.warning} fill={Colors.light.warning} />
@@ -151,52 +136,30 @@ export default function RideCheckoutScreen() {
               )}
             </View>
 
-            <View style={styles.adjustmentGrid}>
-              {FARE_OPTIONS.map((option) => {
-                const isSelected = fareAdjustmentPercent === option;
-                const prefix = option > 0 ? '+' : '';
-
-                return (
-                  <Pressable
-                    key={option}
-                    style={[styles.adjustmentChip, isSelected && styles.adjustmentChipActive]}
-                    onPress={() => setFareAdjustment(option)}
-                    testID={`fare-option-${option}`}
-                  >
-                    <Text style={[styles.adjustmentChipText, isSelected && styles.adjustmentChipTextActive]}>
-                      {prefix}{option}%
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={styles.inlineStepper}>
-              <Pressable
-                style={styles.stepperButton}
-                onPress={() => setFareAdjustment(fareAdjustmentPercent - 10)}
-                testID="fare-step-down"
-              >
-                <Minus size={18} color={Colors.light.text} />
-              </Pressable>
-              <View style={styles.stepperValueWrap}>
-                <Text style={styles.stepperLabel}>Adjustment</Text>
-                <Text style={styles.stepperValue}>{fareAdjustmentPercent > 0 ? '+' : ''}{fareAdjustmentPercent}%</Text>
-              </View>
-              <Pressable
-                style={styles.stepperButton}
-                onPress={() => setFareAdjustment(fareAdjustmentPercent + 10)}
-                testID="fare-step-up"
-              >
-                <Plus size={18} color={Colors.light.text} />
-              </Pressable>
-            </View>
-
-            <View style={styles.baseFareRow}>
-              <Text style={styles.baseFareLabel}>Base fare</Text>
-              <Text style={styles.baseFareValue}>₦{baseEstimatedPrice.toFixed(0)}</Text>
-            </View>
           </View>
+
+          {priorityFeeAmount > 0 && (
+            <View style={styles.card} testID="priority-card">
+              <View style={styles.pointsHeader}>
+                <Zap size={18} color={Colors.light.warning} fill={Colors.light.warning} />
+                <Text style={styles.cardTitle}>Priority pickup</Text>
+              </View>
+              <Text style={styles.cardSubtitle}>
+                Your request is sorted to the top of every nearby driver&apos;s list, so it gets picked up sooner.
+              </Text>
+              <View style={styles.pointsToggleRow}>
+                <Text style={styles.pointsToggleLabel}>
+                  {isPriority ? `+₦${priorityFeeAmount.toLocaleString()} added to your fare` : `Add priority for +₦${priorityFeeAmount.toLocaleString()}`}
+                </Text>
+                <Switch
+                  value={isPriority}
+                  onValueChange={togglePriority}
+                  trackColor={{ true: Colors.light.primary }}
+                  testID="priority-toggle"
+                />
+              </View>
+            </View>
+          )}
 
           <View style={styles.card} testID="payment-summary-card">
             <Text style={styles.cardTitle}>Payment</Text>

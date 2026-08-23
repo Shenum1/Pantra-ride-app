@@ -39,7 +39,7 @@
       }
     },
     "android": {
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -100,7 +100,14 @@
       ],
       "expo-video",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "${EXPO_PUBLIC_ADMOB_ANDROID_APP_ID}",
+          "iosAppId": "${EXPO_PUBLIC_ADMOB_IOS_APP_ID}"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

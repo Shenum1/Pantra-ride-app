@@ -15,6 +15,8 @@ export interface User {
   rating: number | null;
   totalRatings?: number;
   profileImage?: string;
+  dateOfBirth?: string;
+  address?: string;
   authProvider?: 'email' | 'google' | 'phone';
 }
 
@@ -78,6 +80,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             rating: profile?.rating ?? null,
             totalRatings: profile?.totalRatings ?? 0,
             profileImage: profile?.photoURL,
+            dateOfBirth: profile?.dateOfBirth,
+            address: profile?.address,
             authProvider: 'email',
           };
           await saveUser(userData);
@@ -146,6 +150,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         rating: profile?.rating ?? null,
         totalRatings: profile?.totalRatings ?? 0,
         profileImage: profile?.photoURL,
+        dateOfBirth: profile?.dateOfBirth,
+        address: profile?.address,
         authProvider: 'email',
       };
       await saveUser(userData);
@@ -226,6 +232,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       displayName: updatedUser.name,
       phoneNumber: updatedUser.phone,
       photoURL: updatedUser.profileImage,
+      dateOfBirth: updatedUser.dateOfBirth,
+      address: updatedUser.address,
     } as any);
     await saveUser(updatedUser);
   };

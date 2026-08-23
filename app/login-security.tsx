@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
 import { Stack } from "expo-router";
+import { useRiderPreferences } from '@/hooks/useRiderPreferences';
 
 interface SecurityOptionProps {
   icon: React.ReactElement;
@@ -60,9 +61,7 @@ const SecurityOption: React.FC<SecurityOptionProps> = ({
 export default function LoginSecurityScreen() {
   const { colors } = useTheme();
   
-  const [twoFactorAuth, setTwoFactorAuth] = useState(false);
-  const [biometricLogin, setBiometricLogin] = useState(true);
-  const [loginAlerts, setLoginAlerts] = useState(true);
+  const { preferences, updatePreference } = useRiderPreferences();
   const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -175,24 +174,24 @@ export default function LoginSecurityScreen() {
               icon={<Smartphone size={24} color={colors.primary} />}
               title="Two-Factor Authentication"
               description="Add an extra layer of security to your account"
-              isEnabled={twoFactorAuth}
-              onToggle={setTwoFactorAuth}
+              isEnabled={preferences.twoFactorRequested}
+              onToggle={(value) => void updatePreference('twoFactorRequested', value)}
             />
             
             <SecurityOption
               icon={<Shield size={24} color={colors.primary} />}
               title="Biometric Login"
               description="Use fingerprint or face recognition to sign in"
-              isEnabled={biometricLogin}
-              onToggle={setBiometricLogin}
+              isEnabled={preferences.biometricLogin}
+              onToggle={(value) => void updatePreference('biometricLogin', value)}
             />
             
             <SecurityOption
               icon={<Lock size={24} color={colors.primary} />}
               title="Login Alerts"
               description="Get notified of new sign-ins to your account"
-              isEnabled={loginAlerts}
-              onToggle={setLoginAlerts}
+              isEnabled={preferences.loginAlerts}
+              onToggle={(value) => void updatePreference('loginAlerts', value)}
             />
             
             <SecurityOption

@@ -63,11 +63,11 @@ export default function PersonalInfoScreen() {
   const { user, updateProfile } = useAuth();
   const { colors } = useTheme();
   
-  const [name, setName] = useState(user?.name || 'Kelvin Johnson');
-  const [email, setEmail] = useState(user?.email || 'kelvin.johnson@email.com');
-  const [phone, setPhone] = useState(user?.phone || '+1 (555) 123-4567');
-  const [dateOfBirth, setDateOfBirth] = useState('January 15, 1990');
-  const [address, setAddress] = useState('123 Main Street, New York, NY 10001');
+  const [name, setName] = useState(user?.name ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState(user?.dateOfBirth ?? '');
+  const [address, setAddress] = useState(user?.address ?? '');
   const [profileImage, setProfileImage] = useState(user?.profileImage || '');
   
   const handlePickImage = async () => {
@@ -148,6 +148,8 @@ export default function PersonalInfoScreen() {
         email,
         phone,
         profileImage,
+        dateOfBirth,
+        address,
       });
       
       Alert.alert(

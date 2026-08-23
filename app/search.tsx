@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, MapPin, Search, Sparkles, X } from "lucide-react-native";
+import { ArrowLeft, Clock, LocateFixed, MapPin, Search, Sparkles, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
@@ -11,7 +11,7 @@ import {
   Keyboard,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
 import { SkeletonRow, ShimmerGroup } from "@/components/skeletons";
 import { useLocation } from "@/hooks/useLocationStore";
@@ -23,6 +23,7 @@ interface PlaceWithPrice extends PlaceResult {
   estimatedPrice?: number;
   distance?: number;
   duration?: number;
+  isEstimate?: boolean;
   ridePrices?: {
     rideType: string;
     price: number;
@@ -33,7 +34,36 @@ interface PlaceWithPrice extends PlaceResult {
 export default function SearchScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { userLocation, pickupLocation, setDropoffLocation, setDropoffAddress, saveRecentLocation, getRecentLocations, clearRoute } = useLocation();
+  const {
+    userLocation,
+    pickupLocation,
+    pickupAddress,
+    dropoffAddress,
+    locationError,
+    retryLocation,
+    setPickupLocation,
+    setPickupAddress,
+    setDropoffLocation,
+    setDropoffAddress,
+    saveRecentLocation,
+    getRecentLocations,
+    clearRoute,
+  } = useLocation();
+
+  // `isEditMode` is only true when this screen was reached from an already-open
+  // ride-confirmation screen (its Pickup/Destination rows always pass `target`
+  // explicitly) — as opposed to the original "Where to?" entry point on the home
+  // screen, which never sets it. This changes what happens after a selection: in
+  // edit mode, any selection just updates that one field and returns to
+  // ride-confirmation; on fresh entry, picking a destination is what completes the
+  // flow and moves forward (picking a pickup instead just hands off to the
+  // destination field, since a pickup alone isn't enough to start a trip).
+  const rawTarget = params.target as string | undefined;
+  const isEditMode = rawTarget !== undefined;
+  const [activeField, setActiveField] = useState<'pickup' | 'dropoff'>(
+    rawTarget === 'pickup' ? 'pickup' : 'dropoff'
+  );
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<PlaceWithPrice[]>([]);
@@ -62,17 +92,63 @@ export default function SearchScreen() {
     }));
   }, []);
 
+  // Clears the query/results and hands the active TextInput off to the other row —
+  // used after setting a pickup on fresh entry, since a pickup alone isn't enough
+  // to proceed and the natural next step is typing the destination.
+  const switchActiveField = useCallback((field: 'pickup' | 'dropoff') => {
+    setActiveField(field);
+    setSearchQuery("");
+    setSearchResults([]);
+    setAutocompleteSuggestions([]);
+    setUseAutocomplete(true);
+  }, []);
+
   const handleLocationSelect = useCallback(async (item: PlaceWithPrice) => {
     console.log('Selected location:', item);
     Keyboard.dismiss();
+    // Clearing the cached route here is load-bearing: it's what makes
+    // ride-confirmation.tsx recompute price/route after either a pickup or a
+    // destination edit, not just on the very first navigation into it.
     clearRoute();
-    setDropoffLocation(item.location);
-    setDropoffAddress(item.address || item.name);
+
+    if (activeField === 'pickup') {
+      setPickupLocation(item.location);
+      setPickupAddress(item.address || item.name);
+    } else {
+      setDropoffLocation(item.location);
+      setDropoffAddress(item.address || item.name);
+    }
 
     await saveRecentLocation(item.location, item.address || item.name);
 
-    router.push("/ride-confirmation");
-  }, [clearRoute, setDropoffLocation, setDropoffAddress, saveRecentLocation, router]);
+    if (isEditMode) {
+      // Reached from an already-mounted ride-confirmation screen to edit a field —
+      // go back to it (preserving its bookingFor/passenger state) instead of
+      // pushing a second, freshly-mounted instance on top.
+      router.back();
+    } else if (activeField === 'dropoff') {
+      // Destination is the signal that the trip is ready to preview.
+      router.push("/ride-confirmation");
+    } else {
+      // Just set pickup on a fresh "Where to?" entry — hand off to destination
+      // instead of navigating away, since pickup alone doesn't start a trip.
+      switchActiveField('dropoff');
+    }
+  }, [clearRoute, activeField, isEditMode, setPickupLocation, setPickupAddress, setDropoffLocation, setDropoffAddress, saveRecentLocation, router, switchActiveField]);
+
+  const handleUseCurrentLocation = useCallback(async () => {
+    if (!userLocation) return;
+    Keyboard.dismiss();
+    clearRoute();
+    setPickupLocation(userLocation);
+    setPickupAddress('Current Location');
+
+    if (isEditMode) {
+      router.back();
+    } else {
+      switchActiveField('dropoff');
+    }
+  }, [userLocation, clearRoute, setPickupLocation, setPickupAddress, isEditMode, router, switchActiveField]);
 
   const handleAutocompleteSelect = useCallback(async (item: AutocompleteResult) => {
     console.log('Selected autocomplete:', item);
@@ -97,6 +173,7 @@ export default function SearchScreen() {
     void loadRecentLocations();
 
     if (
+      rawTarget === 'pickup' ||
       hasHandledPrefilledDestination.current ||
       !params.destination ||
       !params.destinationAddress ||
@@ -122,7 +199,7 @@ export default function SearchScreen() {
 
     hasHandledPrefilledDestination.current = true;
     void handleLocationSelect(destinationItem);
-  }, [handleLocationSelect, loadRecentLocations, params.destination, params.destinationAddress, params.destinationLat, params.destinationLng]);
+  }, [rawTarget, handleLocationSelect, loadRecentLocations, params.destination, params.destinationAddress, params.destinationLat, params.destinationLng]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -185,6 +262,7 @@ export default function SearchScreen() {
                           ...place,
                           distance: directions.distance,
                           duration: directions.duration,
+                          isEstimate: directions.isEstimate,
                           estimatedPrice: calculatePrice(directions.distance, directions.duration),
                           ridePrices: calculateAllRidePrices(directions.distance, directions.duration),
                         };
@@ -298,7 +376,7 @@ export default function SearchScreen() {
       </View>
       {item.estimatedPrice && (
         <View style={styles.priceContainer}>
-          <Text style={styles.priceLabel}>From</Text>
+          <Text style={styles.priceLabel}>{item.isEstimate ? "Est. from" : "From"}</Text>
           <Text style={styles.priceText}>₦{item.estimatedPrice.toFixed(0)}</Text>
         </View>
       )}
@@ -331,6 +409,7 @@ export default function SearchScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["bottom"]}>
+      <Stack.Screen options={{ title: activeField === 'pickup' ? 'Set pickup' : 'Set destination' }} />
       <Animated.View style={[styles.searchContainer, { opacity: fadeAnim }] }>
         <Pressable
           style={styles.backButton}
@@ -341,24 +420,76 @@ export default function SearchScreen() {
         </Pressable>
 
         <View style={styles.searchColumn}>
-          <View style={styles.inputContainer}>
-            <MapPin size={18} color={Colors.light.gray} style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Search shops, hotels, restaurants..."
-              placeholderTextColor={Colors.light.gray}
-              value={searchQuery}
-              onChangeText={(text) => {
-                setUseAutocomplete(true);
-                setSearchQuery(text);
-              }}
-              autoFocus
-              returnKeyType="search"
-              testID="search-input"
-            />
-            {searchQuery.length > 0 && (
-              <Pressable style={styles.clearButton} onPress={clearSearch} testID="search-clear-button">
-                <X size={20} color={Colors.light.gray} />
+          <View style={styles.routeFieldGroup}>
+            {activeField === 'pickup' ? (
+              <View style={styles.inputContainer}>
+                <View style={[styles.routeDot, styles.routeDotPickup]} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Where should we pick up from?"
+                  placeholderTextColor={Colors.light.gray}
+                  value={searchQuery}
+                  onChangeText={(text) => {
+                    setUseAutocomplete(true);
+                    setSearchQuery(text);
+                  }}
+                  autoFocus
+                  returnKeyType="search"
+                  testID="search-input"
+                />
+                {searchQuery.length > 0 && (
+                  <Pressable style={styles.clearButton} onPress={clearSearch} testID="search-clear-button">
+                    <X size={20} color={Colors.light.gray} />
+                  </Pressable>
+                )}
+              </View>
+            ) : (
+              <Pressable
+                style={styles.routeSummaryRow}
+                onPress={() => switchActiveField('pickup')}
+                testID="search-from-row"
+              >
+                <View style={[styles.routeDot, styles.routeDotPickup]} />
+                <Text style={styles.routeSummaryText} numberOfLines={1}>
+                  {pickupAddress || 'Current location'}
+                </Text>
+              </Pressable>
+            )}
+
+            <View style={styles.routeFieldDivider} />
+
+            {activeField === 'dropoff' ? (
+              <View style={styles.inputContainer}>
+                <View style={[styles.routeDot, styles.routeDotDropoff]} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Where to?"
+                  placeholderTextColor={Colors.light.gray}
+                  value={searchQuery}
+                  onChangeText={(text) => {
+                    setUseAutocomplete(true);
+                    setSearchQuery(text);
+                  }}
+                  autoFocus
+                  returnKeyType="search"
+                  testID="search-input"
+                />
+                {searchQuery.length > 0 && (
+                  <Pressable style={styles.clearButton} onPress={clearSearch} testID="search-clear-button">
+                    <X size={20} color={Colors.light.gray} />
+                  </Pressable>
+                )}
+              </View>
+            ) : (
+              <Pressable
+                style={styles.routeSummaryRow}
+                onPress={() => switchActiveField('dropoff')}
+                testID="search-to-row"
+              >
+                <View style={[styles.routeDot, styles.routeDotDropoff]} />
+                <Text style={styles.routeSummaryText} numberOfLines={1}>
+                  {dropoffAddress || 'Where to?'}
+                </Text>
               </Pressable>
             )}
           </View>
@@ -418,6 +549,37 @@ export default function SearchScreen() {
                 </View>
               ) : (
                 <>
+                  {activeField === 'pickup' && userLocation && (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.locationItem,
+                        pressed && styles.locationItemPressed,
+                      ]}
+                      onPress={handleUseCurrentLocation}
+                      testID="search-use-current-location"
+                    >
+                      <View style={[styles.locationIconContainer, styles.currentLocationIconContainer]}>
+                        <LocateFixed size={20} color={Colors.light.primary} />
+                      </View>
+                      <View style={styles.locationInfo}>
+                        <Text style={styles.locationName} numberOfLines={1}>Use current location</Text>
+                        <Text style={styles.locationAddress} numberOfLines={1}>{pickupAddress || 'Current Location'}</Text>
+                      </View>
+                    </Pressable>
+                  )}
+
+                  {activeField === 'pickup' && !userLocation && locationError && (
+                    <View style={styles.locationErrorRow} testID="search-location-error">
+                      <LocateFixed size={20} color={Colors.light.gray} />
+                      <View style={styles.locationInfo}>
+                        <Text style={styles.locationName} numberOfLines={1}>{locationError}</Text>
+                        <Pressable onPress={() => void retryLocation()}>
+                          <Text style={styles.locationErrorRetryText}>Retry</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
+
                   <Text style={styles.sectionTitle}>Near Me</Text>
                   <View style={styles.categoryGrid}>
                     {nearbyCategories.map((category) => (
@@ -475,13 +637,44 @@ const styles = StyleSheet.create({
     marginRight: 12,
     padding: 4,
   },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
+  routeFieldGroup: {
     backgroundColor: Colors.light.lightGray,
     borderRadius: 16,
     paddingHorizontal: 12,
-    paddingVertical: 4,
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  routeSummaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  routeSummaryText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: Colors.light.gray,
+  },
+  routeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  routeDotPickup: {
+    backgroundColor: '#14B8A6',
+    marginRight: 8,
+  },
+  routeDotDropoff: {
+    backgroundColor: Colors.light.secondary,
+    marginRight: 8,
+  },
+  routeFieldDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: Colors.light.border,
+    marginLeft: 16,
   },
   helperRow: {
     flexDirection: "row",
@@ -605,6 +798,18 @@ const styles = StyleSheet.create({
   locationItemPressed: {
     backgroundColor: Colors.light.lightGray,
   },
+  locationErrorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  locationErrorRetryText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: Colors.light.primary,
+    marginTop: 2,
+  },
   locationIconContainer: {
     width: 44,
     height: 44,
@@ -616,6 +821,9 @@ const styles = StyleSheet.create({
   },
   recentIconContainer: {
     backgroundColor: Colors.light.lightGray,
+  },
+  currentLocationIconContainer: {
+    backgroundColor: Colors.light.primaryLight,
   },
   locationInfo: {
     flex: 1,

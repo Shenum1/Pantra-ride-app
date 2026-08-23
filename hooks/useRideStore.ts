@@ -4,10 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { mockRideTypes } from '@/mocks/rideTypes';
 import { Location, PaymentMethod, RideCancellationReason, RideRequest, RideTrackingStage, RideType } from '@/types';
-import { calculateFareBreakdown, calculateAllTierFares, applyRideDiscounts } from '@/lib/fare-calculator';
+import { calculateFareBreakdown, calculateAllTierFares, applyRideDiscounts, calculateDriverPayout } from '@/lib/fare-calculator';
 import { calculateCancellationFee } from '@/lib/cancellation-calculator';
 import { calculateSurgeMultiplier } from '@/lib/surge-calculator';
-import { SHARED_RIDE_DISCOUNT_MULTIPLIER } from '@/lib/pricing-config';
+import { calculateTrafficMultiplier, TrafficRule } from '@/lib/traffic-multiplier';
+import { SHARED_RIDE_DISCOUNT_MULTIPLIER, TIER_RATES, TierId, TierRatesTable, PRIORITY_FEE_CONFIG } from '@/lib/pricing-config';
 import { useLocation } from './useLocationStore';
 import { usePayment } from './usePaymentStore';
 import { usePromotions } from './usePromotionsStore';
@@ -21,21 +22,13 @@ import { trpcClient } from '@/lib/trpc';
 const isValidUuid = (id: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-interface FareBounds {
-  basePrice: number;
-  minPrice: number;
-  maxPrice: number;
-  adjustedPrice: number;
-}
-
 const ACTIVE_RIDE_STORAGE_PREFIX = 'active_ride_session_v2';
 const getActiveRideStorageKey = (userId: string) => `${ACTIVE_RIDE_STORAGE_PREFIX}:${userId}`;
 
-interface SerializedRideRequest extends Omit<RideRequest, 'createdAt' | 'scheduledFor' | 'arrivedAt' | 'offerExpiresAt'> {
+interface SerializedRideRequest extends Omit<RideRequest, 'createdAt' | 'scheduledFor' | 'arrivedAt'> {
   createdAt?: string;
   scheduledFor?: string;
   arrivedAt?: string;
-  offerExpiresAt?: string;
 }
 
 function serializeRide(ride: RideRequest): SerializedRideRequest {
@@ -44,7 +37,6 @@ function serializeRide(ride: RideRequest): SerializedRideRequest {
     createdAt: ride.createdAt?.toISOString(),
     scheduledFor: ride.scheduledFor?.toISOString(),
     arrivedAt: ride.arrivedAt?.toISOString(),
-    offerExpiresAt: ride.offerExpiresAt?.toISOString(),
   };
 }
 
@@ -70,13 +62,12 @@ function deserializeRide(ride: SerializedRideRequest): RideRequest {
     driver: ride.driver
       ? {
           ...ride.driver,
-          location: deserializeLocation(ride.driver.location) as Location,
+          location: deserializeLocation(ride.driver.location),
         }
       : undefined,
     createdAt: ride.createdAt ? new Date(ride.createdAt) : undefined,
     scheduledFor: ride.scheduledFor ? new Date(ride.scheduledFor) : undefined,
     arrivedAt: ride.arrivedAt ? new Date(ride.arrivedAt) : undefined,
-    offerExpiresAt: ride.offerExpiresAt ? new Date(ride.offerExpiresAt) : undefined,
   };
 }
 
@@ -98,9 +89,11 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const [estimatedServiceFee, setEstimatedServiceFee] = useState<number>(0);
   const [estimatedZoneFee, setEstimatedZoneFee] = useState<number>(0);
   const [zoneFee, setZoneFee] = useState<number>(0);
-  const [fareAdjustmentPercent, setFareAdjustmentPercent] = useState<number>(0);
+  const [estimatedPriorityFee, setEstimatedPriorityFee] = useState<number>(0);
+  const [isPriority, setIsPriority] = useState<boolean>(false);
   const [estimatedDistance, setEstimatedDistance] = useState<number>(0);
   const [estimatedDuration, setEstimatedDuration] = useState<number>(0);
+  const [isFareEstimate, setIsFareEstimate] = useState<boolean>(true);
   const [scheduledDate, setScheduledDate] = useState<Date | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethodState] = useState<PaymentMethod | null>(null);
   const [isSharedRide, setIsSharedRide] = useState<boolean>(false);
@@ -134,6 +127,11 @@ export const [RideProvider, useRide] = createContextHook(() => {
   // Computed on demand from two plain counts, no background job or geospatial
   // indexing — only runs while the rider actually has a pickup location set
   // (i.e. actively looking at a fare estimate), refreshed periodically.
+  // Also folds in a recent platform-wide accept/decline rate (see
+  // surge_config.lowAcceptanceThreshold/lowAcceptanceBonus) — a low
+  // online-driver/pending-ride ratio can look calm even while drivers are
+  // actively rejecting requests because the price is too low; the ratio
+  // alone can't see that, so this is a second, independent demand signal.
   const { data: liveSurgeMultiplier } = useQuery({
     queryKey: ['surgeMultiplier'],
     queryFn: async () => {
@@ -148,13 +146,30 @@ export const [RideProvider, useRide] = createContextHook(() => {
         return 1;
       }
 
+      const lookbackMinutes = Number(config.acceptanceLookbackMinutes ?? 60);
+      const cutoff = new Date(Date.now() - lookbackMinutes * 60_000).toISOString();
+      const [acceptedResult, declinedResult] = await Promise.all([
+        supabase.from('rides').select('id', { count: 'exact', head: true }).gte('acceptedAt', cutoff),
+        supabase.from('ride_declines').select('rideId', { count: 'exact', head: true }).gte('declinedAt', cutoff),
+      ]);
+
+      const acceptedCount = acceptedResult.count ?? 0;
+      const declinedCount = declinedResult.count ?? 0;
+      const totalResponses = acceptedCount + declinedCount;
+      // Ignore the signal until there's enough recent activity to trust it —
+      // a couple of declines in a quiet period shouldn't swing the price.
+      const MIN_RESPONSES_TO_TRUST = 5;
+      const recentAcceptanceRate = totalResponses >= MIN_RESPONSES_TO_TRUST ? acceptedCount / totalResponses : null;
+
       return calculateSurgeMultiplier(onlineDriversResult.count ?? 0, pendingRidesResult.count ?? 0, {
         minMultiplier: Number(config.minMultiplier),
         maxMultiplier: Number(config.maxMultiplier),
         highDemandRatio: Number(config.highDemandRatio),
         lowDemandRatio: Number(config.lowDemandRatio),
         isEnabled: !!config.isEnabled,
-      });
+        lowAcceptanceThreshold: config.lowAcceptanceThreshold != null ? Number(config.lowAcceptanceThreshold) : undefined,
+        lowAcceptanceBonus: config.lowAcceptanceBonus != null ? Number(config.lowAcceptanceBonus) : undefined,
+      }, recentAcceptanceRate);
     },
     enabled: !!pickupLocation,
     staleTime: 30_000,
@@ -166,6 +181,68 @@ export const [RideProvider, useRide] = createContextHook(() => {
       setSurgeMultiplier(liveSurgeMultiplier);
     }
   }, [liveSurgeMultiplier]);
+
+  // Tunable pricing config — tier rates, traffic/event multiplier rules, and
+  // the priority-fee amount all live in Supabase (pricing_tier_config,
+  // traffic_multiplier_rules, pricing_priority_config) rather than being
+  // hardcoded, so they can be retuned from the dashboard without an app
+  // release. Falls back to the TIER_RATES/PRIORITY_FEE_CONFIG constants in
+  // lib/pricing-config.ts if a row is missing or the fetch fails.
+  const { data: pricingConfigData } = useQuery({
+    queryKey: ['pricingConfig'],
+    queryFn: async () => {
+      const [tierRatesResult, trafficRulesResult, priorityConfigResult] = await Promise.all([
+        supabase.from('pricing_tier_config').select('*'),
+        supabase.from('traffic_multiplier_rules').select('*').eq('isEnabled', true),
+        supabase.from('pricing_priority_config').select('*').limit(1).maybeSingle(),
+      ]);
+
+      const tierRates: TierRatesTable = { ...TIER_RATES };
+      for (const row of (tierRatesResult.data ?? []) as any[]) {
+        if (row.id in tierRates) {
+          const tierId = row.id as TierId;
+          tierRates[tierId] = {
+            id: row.id,
+            name: row.name ?? tierRates[tierId].name,
+            base: Number(row.base),
+            perKm: Number(row.perKm),
+            perMin: Number(row.perMin),
+            minFare: Number(row.minFare),
+            bookingFee: Number(row.bookingFee),
+            serviceFee: Number(row.serviceFee),
+          };
+        }
+      }
+
+      const trafficRules: TrafficRule[] = ((trafficRulesResult.data ?? []) as any[]).map((row) => ({
+        id: row.id,
+        label: row.label,
+        daysOfWeek: row.daysOfWeek ?? null,
+        startMinute: row.startMinute ?? null,
+        endMinute: row.endMinute ?? null,
+        startDate: row.startDate ?? null,
+        endDate: row.endDate ?? null,
+        multiplier: Number(row.multiplier),
+        isEnabled: !!row.isEnabled,
+      }));
+
+      const priorityConfigRow = priorityConfigResult.data as { fee: number; isEnabled: boolean } | null;
+      const priorityFeeAmount = priorityConfigRow && priorityConfigRow.isEnabled
+        ? Number(priorityConfigRow.fee)
+        : (PRIORITY_FEE_CONFIG.isEnabled ? PRIORITY_FEE_CONFIG.fee : 0);
+
+      return { tierRates, trafficRules, priorityFeeAmount };
+    },
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+
+  const tierRatesTable = pricingConfigData?.tierRates ?? TIER_RATES;
+  const trafficRules = pricingConfigData?.trafficRules ?? [];
+  const priorityFeeAmount = pricingConfigData?.priorityFeeAmount ?? (PRIORITY_FEE_CONFIG.isEnabled ? PRIORITY_FEE_CONFIG.fee : 0);
+  // Re-evaluated whenever the rules refetch (every 5 min), which is a close
+  // enough approximation for entering/exiting a scheduled window like rush hour.
+  const trafficMultiplier = useMemo(() => calculateTrafficMultiplier(new Date(), trafficRules), [trafficRules]);
 
   useEffect(() => {
     if (isAuthLoading) {
@@ -271,7 +348,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
       basePrice: ride.baseFare,
       minPrice: ride.minFare,
       maxPrice: ride.maxFare,
-      fareAdjustmentPercent: ride.fareAdjustmentPercent,
       distance: ride.distance,
       duration: ride.duration,
       status: ride.status as RideRequest['status'],
@@ -313,54 +389,40 @@ export const [RideProvider, useRide] = createContextHook(() => {
     }
   }, [loadPastRides, user]);
 
-  const applyFareAdjustment = useCallback((price: number, adjustmentPercent: number): FareBounds => {
-    const roundedBase = Math.round(price);
-    const minPrice = Math.round(roundedBase * 0.9);
-    const maxPrice = Math.round(roundedBase * 1.1);
-    const adjustedPrice = Math.round(roundedBase * (1 + adjustmentPercent / 100));
-
-    return {
-      basePrice: roundedBase,
-      minPrice,
-      maxPrice,
-      adjustedPrice: Math.min(maxPrice, Math.max(minPrice, adjustedPrice)),
-    };
-  }, []);
-
-  // Rider fare adjustment (the ±10% slider) is, like promo/shared-ride, a
-  // discount applied to the metered fare only — never to flat platform fees.
   const updateEstimatedFare = useCallback((
     discountedMeteredFare: number,
     distanceKm: number,
     durationMinutes: number,
     bookingFee: number,
     serviceFee: number,
-    zoneFeeAmount: number
+    zoneFeeAmount: number,
+    priorityFeeAmount: number
   ) => {
-    const adjustedFare = applyFareAdjustment(discountedMeteredFare, fareAdjustmentPercent);
+    const meteredFare = Math.round(discountedMeteredFare);
 
     console.log('Updating fare estimate:', {
       discountedMeteredFare,
-      adjustedFare,
+      meteredFare,
       distanceKm,
       durationMinutes,
-      fareAdjustmentPercent,
       bookingFee,
       serviceFee,
       zoneFeeAmount,
+      priorityFeeAmount,
     });
 
     setEstimatedDistance(parseFloat(distanceKm.toFixed(1)));
     setEstimatedDuration(Math.round(durationMinutes));
-    setBaseEstimatedPrice(adjustedFare.basePrice);
-    setMinEstimatedPrice(adjustedFare.minPrice);
-    setMaxEstimatedPrice(adjustedFare.maxPrice);
+    setBaseEstimatedPrice(meteredFare);
+    setMinEstimatedPrice(meteredFare);
+    setMaxEstimatedPrice(meteredFare);
     setEstimatedBookingFee(bookingFee);
     setEstimatedServiceFee(serviceFee);
     setEstimatedZoneFee(zoneFeeAmount);
-    // Final amount payable = discounted/negotiated metered fare + undiscounted flat fees.
-    setEstimatedPrice(adjustedFare.adjustedPrice + bookingFee + serviceFee + zoneFeeAmount);
-  }, [applyFareAdjustment, fareAdjustmentPercent]);
+    setEstimatedPriorityFee(priorityFeeAmount);
+    // Final amount payable = discounted metered fare + undiscounted flat fees.
+    setEstimatedPrice(meteredFare + bookingFee + serviceFee + zoneFeeAmount + priorityFeeAmount);
+  }, []);
 
   const calculatePriceFromRoute = useCallback((
     distanceMeters: number,
@@ -369,9 +431,10 @@ export const [RideProvider, useRide] = createContextHook(() => {
   ) => {
     const distanceKm = distanceMeters / 1000;
     const durationMinutes = durationSeconds / 60;
+    const priorityFeeToApply = isPriority ? priorityFeeAmount : 0;
 
-    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier, zoneFee);
-    setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
+    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier, zoneFee, trafficMultiplier, priorityFeeToApply, tierRatesTable);
+    setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier, trafficMultiplier, tierRatesTable));
 
     const activePromo = getActivePromotion();
     const discountedMetered = applyRideDiscounts(breakdown.meteredSubtotal, rideTypeId, {
@@ -379,10 +442,10 @@ export const [RideProvider, useRide] = createContextHook(() => {
       promo: activePromo
         ? { discountPercentage: activePromo.discountPercentage, maxDiscountNGN: activePromo.maxDiscountNGN }
         : null,
-    });
+    }, tierRatesTable);
 
-    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee, breakdown.zoneFee);
-  }, [fareAdjustmentPercent, getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare, zoneFee]);
+    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee, breakdown.zoneFee, breakdown.priorityFee);
+  }, [getActivePromotion, isSharedRide, surgeMultiplier, trafficMultiplier, tierRatesTable, isPriority, priorityFeeAmount, updateEstimatedFare, zoneFee]);
 
   const calculateRideEstimates = useCallback((pickup: typeof pickupLocation, dropoff: typeof dropoffLocation, rideTypeId: string) => {
     if (!pickup || !dropoff) {
@@ -401,9 +464,10 @@ export const [RideProvider, useRide] = createContextHook(() => {
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distanceKm = earthRadiusKm * c;
     const durationMinutes = (distanceKm / 30) * 60;
+    const priorityFeeToApply = isPriority ? priorityFeeAmount : 0;
 
-    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier, zoneFee);
-    setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier));
+    const breakdown = calculateFareBreakdown(distanceKm, durationMinutes, rideTypeId, surgeMultiplier, zoneFee, trafficMultiplier, priorityFeeToApply, tierRatesTable);
+    setTierPrices(calculateAllTierFares(distanceKm, durationMinutes, surgeMultiplier, trafficMultiplier, tierRatesTable));
 
     const activePromo = getActivePromotion();
     const discountedMetered = applyRideDiscounts(breakdown.meteredSubtotal, rideTypeId, {
@@ -411,18 +475,20 @@ export const [RideProvider, useRide] = createContextHook(() => {
       promo: activePromo
         ? { discountPercentage: activePromo.discountPercentage, maxDiscountNGN: activePromo.maxDiscountNGN }
         : null,
-    });
+    }, tierRatesTable);
 
-    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee, breakdown.zoneFee);
-  }, [getActivePromotion, isSharedRide, surgeMultiplier, updateEstimatedFare, zoneFee]);
+    updateEstimatedFare(discountedMetered, distanceKm, durationMinutes, breakdown.bookingFee, breakdown.serviceFee, breakdown.zoneFee, breakdown.priorityFee);
+  }, [getActivePromotion, isSharedRide, surgeMultiplier, trafficMultiplier, tierRatesTable, isPriority, priorityFeeAmount, updateEstimatedFare, zoneFee]);
 
   useEffect(() => {
     if (routeInfo) {
+      setIsFareEstimate(routeInfo.isEstimate);
       calculatePriceFromRoute(routeInfo.distance, routeInfo.duration, selectedRideType);
       return;
     }
 
     if (pickupLocation && dropoffLocation) {
+      setIsFareEstimate(true);
       calculateRideEstimates(pickupLocation, dropoffLocation, selectedRideType);
     }
   }, [calculatePriceFromRoute, calculateRideEstimates, dropoffLocation, pickupLocation, routeInfo, selectedRideType]);
@@ -430,6 +496,41 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const savePastRide = useCallback(async (ride: RideRequest) => {
     try {
       if (ride.id && ride.status) {
+        // Snapshot the commission split at the same moment the final fare is
+        // written, so the rate in effect right now is what's recorded — see
+        // PLATFORM_COMMISSION_RATE's doc comment. Mirrors the snapshot
+        // FirebaseDriverService.updateRideStatus takes on the driver-side
+        // completion path; both call the same authoritative
+        // calculateDriverPayout, so a near-simultaneous write from either
+        // side lands on the same numbers.
+        let commissionFields: {
+          platformCommissionRate?: number;
+          platformCommissionAmount?: number;
+          driverEarningsAmount?: number;
+        } = {};
+        if (ride.status === 'completed') {
+          const payout = calculateDriverPayout(
+            ride.price ?? 0,
+            ride.bookingFee ?? 0,
+            ride.serviceFee ?? 0,
+            ride.zoneFee ?? 0,
+            ride.waitingCharge ?? 0,
+            ride.priorityFee ?? 0
+          );
+          commissionFields = {
+            platformCommissionRate: payout.commissionRate,
+            platformCommissionAmount: payout.commission,
+            driverEarningsAmount: payout.netAmount,
+          };
+        } else if (ride.status === 'cancelled' && (ride.cancellationFee ?? 0) > 0) {
+          const payout = calculateDriverPayout(ride.cancellationFee ?? 0);
+          commissionFields = {
+            platformCommissionRate: payout.commissionRate,
+            platformCommissionAmount: payout.commission,
+            driverEarningsAmount: payout.netAmount,
+          };
+        }
+
         await DatabaseService.update('rides', ride.id, {
           status: ride.status === 'cancelled'
             ? 'cancelled'
@@ -452,6 +553,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
           // (including any waiting charge) before calling completeRide().
           fare: ride.price ?? 0,
           cancellationFee: ride.cancellationFee ?? 0,
+          ...commissionFields,
         });
       }
 
@@ -506,7 +608,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
         // and driver/admin-authoritative server updates from then on.
         await DatabaseService.update('rides', mergedRide.id, {
           status: mergedRide.status ?? 'pending',
-          fareAdjustmentPercent: mergedRide.fareAdjustmentPercent ?? 0,
           trackingStage: mergedRide.trackingStage ?? null,
           statusText: mergedRide.statusText ?? null,
           driverId: mergedRide.driver?.id && isValidUuid(mergedRide.driver.id) ? mergedRide.driver.id : null,
@@ -528,13 +629,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     return mergedRide;
   }, []);
 
-  // offeredFare (optional): a rider-proposed price from the negotiation preset
-  // picker. Reuses the exact same pull-model broadcast as a normal ride — the
-  // ride is still visible to any online driver, just carrying an extra
-  // proposed amount alongside the metered reference fare. `fare` stays the
-  // metered reference until a driver accepts (see FirebaseDriverService.acceptRide,
-  // which overwrites it to offeredFare at that point).
-  const requestRide = useCallback(async (offeredFare?: number, passengerName?: string, passengerPhone?: string) => {
+  const requestRide = useCallback(async (passengerName?: string, passengerPhone?: string) => {
     if (!pickupLocation || !dropoffLocation || !user) {
       return null;
     }
@@ -542,13 +637,9 @@ export const [RideProvider, useRide] = createContextHook(() => {
     const paymentMethod = selectedPaymentMethod ?? getDefaultPaymentMethod();
     const activePromo = getActivePromotion();
     const fallbackDriver = nearbyDrivers[0];
-    const driverLocation = fallbackDriver?.location ?? {
-      latitude: pickupLocation.latitude - 0.028,
-      longitude: pickupLocation.longitude - 0.02,
-    };
-
-    const hasOffer = offeredFare !== undefined && offeredFare !== estimatedPrice;
-    const offerExpiresAt = hasOffer ? new Date(Date.now() + 60_000) : undefined;
+    // undefined (never a fabricated offset) when there's no real nearby driver yet —
+    // the rider's map must not show a driver marker until a real one exists.
+    const driverLocation = fallbackDriver?.location;
 
     const rideData = {
       userId: user.id,
@@ -576,13 +667,14 @@ export const [RideProvider, useRide] = createContextHook(() => {
       bookingFee: estimatedBookingFee,
       serviceFee: estimatedServiceFee,
       zoneFee: estimatedZoneFee,
-      fareAdjustmentPercent,
+      isPriority,
+      priorityFee: estimatedPriorityFee,
       distance: estimatedDistance,
       duration: estimatedDuration,
       status: 'pending',
       trackingStage: 'searching',
       statusText: 'Looking for a nearby driver',
-      driverLocation,
+      driverLocation: driverLocation ?? null,
       paymentMethod: paymentMethod?.id ?? 'cash',
       promoCode: activePromo?.code ?? null,
       isShared: isSharedRide,
@@ -590,34 +682,21 @@ export const [RideProvider, useRide] = createContextHook(() => {
       sharedWith: isSharedRide && sharedWith.length > 0 ? sharedWith : undefined,
       scheduledTime: scheduledDate && scheduledDate > new Date() ? scheduledDate : undefined,
       driverId: fallbackDriver?.id && isValidUuid(fallbackDriver.id) ? fallbackDriver.id : null,
-      offeredFare: hasOffer ? offeredFare : null,
-      negotiationStatus: hasOffer ? 'pending' : null,
-      offerExpiresAt: hasOffer ? offerExpiresAt!.toISOString() : null,
       passengerName: passengerName || null,
       passengerPhone: passengerPhone || null,
     };
 
-    let rideId: string;
-    try {
-      rideId = await DatabaseService.create('rides', rideData);
+    const rideId: string = await DatabaseService.create('rides', rideData);
 
-      // Notify all online drivers via remote push so they receive the request
-      // even if their app is backgrounded or the screen is locked.
-      void trpcClient.notifications.notifyDrivers.mutate({
-        pickupAddress: rideData.pickupAddress,
-        fare: rideData.fare,
-        rideId,
-      }).catch((error) => {
-        console.error('Failed to notify drivers of new ride:', error);
-      });
-    } catch (error) {
-      const isSupabaseUser = isValidUuid(user.id);
-      if (isSupabaseUser) {
-        throw error;
-      }
-      console.warn('Using local ride fallback for non-Supabase user:', error);
-      rideId = `local-ride-${Date.now()}`;
-    }
+    // Notify all online drivers via remote push so they receive the request
+    // even if their app is backgrounded or the screen is locked.
+    void trpcClient.notifications.notifyDrivers.mutate({
+      pickupAddress: rideData.pickupAddress,
+      fare: rideData.fare,
+      rideId,
+    }).catch((error) => {
+      console.error('Failed to notify drivers of new ride:', error);
+    });
 
     const newRide: RideRequest = {
       id: rideId,
@@ -633,7 +712,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
       bookingFee: estimatedBookingFee,
       serviceFee: estimatedServiceFee,
       zoneFee: estimatedZoneFee,
-      fareAdjustmentPercent,
+      isPriority,
+      priorityFee: estimatedPriorityFee,
       distance: estimatedDistance,
       duration: estimatedDuration,
       status: 'pending',
@@ -647,9 +727,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
       promoCode: activePromo?.code,
       isShared: isSharedRide,
       sharedWith: isSharedRide ? sharedWith : undefined,
-      offeredFare: hasOffer ? offeredFare : undefined,
-      negotiationStatus: hasOffer ? 'pending' : undefined,
-      offerExpiresAt: hasOffer ? offerExpiresAt : undefined,
       passengerName: passengerName || undefined,
       passengerPhone: passengerPhone || undefined,
     };
@@ -681,10 +758,11 @@ export const [RideProvider, useRide] = createContextHook(() => {
     estimatedBookingFee,
     estimatedServiceFee,
     estimatedZoneFee,
+    estimatedPriorityFee,
+    isPriority,
     estimatedDistance,
     estimatedDuration,
     estimatedPrice,
-    fareAdjustmentPercent,
     getActivePromotion,
     getDefaultPaymentMethod,
     isSharedRide,
@@ -701,12 +779,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
     sharedWith,
     user,
   ]);
-
-  const setFareAdjustment = useCallback((adjustmentPercent: number) => {
-    const clampedAdjustment = Math.min(10, Math.max(-10, adjustmentPercent));
-    console.log('Updating fare adjustment:', { adjustmentPercent: clampedAdjustment });
-    setFareAdjustmentPercent(clampedAdjustment);
-  }, []);
 
   const cancelRide = useCallback(async (reason?: RideCancellationReason, details?: string) => {
     if (!currentRide) {
@@ -787,6 +859,10 @@ export const [RideProvider, useRide] = createContextHook(() => {
     setIsSharedRide(shared);
   }, []);
 
+  const togglePriority = useCallback((priority: boolean) => {
+    setIsPriority(priority);
+  }, []);
+
   const addSharedRidePassenger = useCallback((phoneNumber: string) => {
     setSharedWith((prev) => {
       if (prev.includes(phoneNumber)) {
@@ -816,9 +892,14 @@ export const [RideProvider, useRide] = createContextHook(() => {
     estimatedBookingFee,
     estimatedServiceFee,
     estimatedZoneFee,
-    fareAdjustmentPercent,
+    estimatedPriorityFee,
+    isPriority,
+    togglePriority,
+    priorityFeeAmount,
+    trafficMultiplier,
     estimatedDistance,
     estimatedDuration,
+    isFareEstimate,
     scheduledDate,
     isSharedRide,
     sharedWith,
@@ -838,7 +919,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
     removeSharedRidePassenger,
     surgeMultiplier,
     setSurgeMultiplier,
-    setFareAdjustment,
     zoneFee,
     setZoneFee,
   }), [
@@ -855,9 +935,14 @@ export const [RideProvider, useRide] = createContextHook(() => {
     estimatedBookingFee,
     estimatedServiceFee,
     estimatedZoneFee,
-    fareAdjustmentPercent,
+    estimatedPriorityFee,
+    isPriority,
+    togglePriority,
+    priorityFeeAmount,
+    trafficMultiplier,
     estimatedDistance,
     estimatedDuration,
+    isFareEstimate,
     scheduledDate,
     isSharedRide,
     sharedWith,
@@ -876,7 +961,6 @@ export const [RideProvider, useRide] = createContextHook(() => {
     addSharedRidePassenger,
     removeSharedRidePassenger,
     surgeMultiplier,
-    setFareAdjustment,
     zoneFee,
   ]);
 });

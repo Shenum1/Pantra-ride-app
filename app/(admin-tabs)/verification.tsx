@@ -2,11 +2,23 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Modal, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ShieldCheck, FileText, Car, ClipboardCheck, UserCheck, Check, X } from 'lucide-react-native';
+import { ShieldCheck, FileText, Car, ClipboardCheck, UserCheck, Check, X, ShieldAlert } from 'lucide-react-native';
 import { trpc } from '@/lib/trpc';
 import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 type StatusFilter = 'pending' | 'approved' | 'rejected' | 'all';
+type ViewMode = 'documents' | 'drivers';
+type DriverStatusFilter = 'DOCUMENTS_SUBMITTED' | 'VERIFYING' | 'MANUAL_REVIEW' | 'all';
+type DriverDecision = 'VERIFIED' | 'REJECTED' | 'MANUAL_REVIEW';
+
+const DRIVER_STATUS_COLOR: Record<string, string> = {
+  PENDING: '#9ca3af',
+  DOCUMENTS_SUBMITTED: '#f59e0b',
+  VERIFYING: '#f59e0b',
+  MANUAL_REVIEW: '#f59e0b',
+  VERIFIED: '#10b981',
+  REJECTED: '#ef4444',
+};
 
 const TYPE_LABELS: Record<string, string> = {
   license: "Driver's License",
@@ -53,9 +65,14 @@ const DocCardSkeleton: React.FC = () => (
 
 export default function VerificationScreen() {
   const insets = useSafeAreaInsets();
+  const [viewMode, setViewMode] = useState<ViewMode>('drivers');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('pending');
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+
+  const [driverStatusFilter, setDriverStatusFilter] = useState<DriverStatusFilter>('MANUAL_REVIEW');
+  const [decidingDriver, setDecidingDriver] = useState<{ id: string; decision: DriverDecision } | null>(null);
+  const [decisionReason, setDecisionReason] = useState('');
 
   const utils = trpc.useUtils();
   const documentsQuery = trpc.admin.driverDocuments.useQuery({ status: statusFilter });
@@ -65,12 +82,27 @@ export default function VerificationScreen() {
     },
   });
 
+  const driversQuery = trpc.admin.driverVerification.list.useQuery({ status: driverStatusFilter });
+  const decideMutation = trpc.admin.driverVerification.decide.useMutation({
+    onSuccess: () => {
+      utils.admin.driverVerification.list.invalidate();
+    },
+  });
+
   const documents = documentsQuery.data?.documents ?? [];
+  const drivers = driversQuery.data?.drivers ?? [];
 
   const filters: { key: StatusFilter; label: string }[] = [
     { key: 'pending', label: 'Pending' },
     { key: 'approved', label: 'Approved' },
     { key: 'rejected', label: 'Rejected' },
+    { key: 'all', label: 'All' },
+  ];
+
+  const driverFilters: { key: DriverStatusFilter; label: string }[] = [
+    { key: 'MANUAL_REVIEW', label: 'Manual Review' },
+    { key: 'DOCUMENTS_SUBMITTED', label: 'Submitted' },
+    { key: 'VERIFYING', label: 'Verifying' },
     { key: 'all', label: 'All' },
   ];
 
@@ -90,13 +122,167 @@ export default function VerificationScreen() {
     setRejectionReason('');
   };
 
+  const handleVerifyDriver = (driverId: string) => {
+    decideMutation.mutate({ driverId, decision: 'VERIFIED' });
+  };
+
+  const openDriverDecision = (driverId: string, decision: 'REJECTED' | 'MANUAL_REVIEW') => {
+    setDecidingDriver({ id: driverId, decision });
+    setDecisionReason('');
+  };
+
+  const submitDriverDecision = () => {
+    if (!decidingDriver) return;
+    decideMutation.mutate({
+      driverId: decidingDriver.id,
+      decision: decidingDriver.decision,
+      reason: decisionReason.trim() || undefined,
+    });
+    setDecidingDriver(null);
+    setDecisionReason('');
+  };
+
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#667eea', '#764ba2']} style={[styles.header, { paddingTop: insets.top + 32 }]}>
         <Text style={styles.headerTitle}>Driver Verification</Text>
-        <Text style={styles.headerSubtitle}>Review and approve driver documents</Text>
+        <Text style={styles.headerSubtitle}>
+          {viewMode === 'drivers' ? 'Review driver submissions and decide verification status' : 'Review individual documents'}
+        </Text>
       </LinearGradient>
 
+      <View style={styles.viewModeRow}>
+        <TouchableOpacity
+          style={[styles.viewModeButton, viewMode === 'drivers' && styles.viewModeButtonActive]}
+          onPress={() => setViewMode('drivers')}
+        >
+          <Text style={[styles.viewModeText, viewMode === 'drivers' && styles.viewModeTextActive]}>Drivers</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.viewModeButton, viewMode === 'documents' && styles.viewModeButtonActive]}
+          onPress={() => setViewMode('documents')}
+        >
+          <Text style={[styles.viewModeText, viewMode === 'documents' && styles.viewModeTextActive]}>Documents</Text>
+        </TouchableOpacity>
+      </View>
+
+      {viewMode === 'drivers' ? (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
+            {driverFilters.map((filter) => (
+              <TouchableOpacity
+                key={filter.key}
+                style={[styles.filterChip, driverStatusFilter === filter.key && styles.filterChipActive]}
+                onPress={() => setDriverStatusFilter(filter.key)}
+              >
+                <Text style={[styles.filterChipText, driverStatusFilter === filter.key && styles.filterChipTextActive]}>
+                  {filter.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {driversQuery.isLoading ? (
+              <ShimmerGroup>
+                <View style={styles.list}>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <View key={i} style={styles.docCard}>
+                      <SkeletonLine width="60%" height={16} style={styles.skeletonBase} />
+                      <SkeletonLine width="40%" height={13} style={[styles.skeletonBase, { marginTop: 6 }]} />
+                    </View>
+                  ))}
+                </View>
+              </ShimmerGroup>
+            ) : drivers.length === 0 ? (
+              <View style={styles.centerState}>
+                <Text style={styles.emptyText}>No drivers found</Text>
+              </View>
+            ) : (
+              <View style={styles.list}>
+                {drivers.map((driver: any) => (
+                  <View key={driver.id} style={styles.docCard}>
+                    <View style={styles.docHeader}>
+                      <View style={styles.docIcon}>
+                        <ShieldAlert size={20} color="#667eea" />
+                      </View>
+                      <View style={styles.docInfo}>
+                        <Text style={styles.docType}>{driver.fullLegalName || driver.name || 'Unnamed Driver'}</Text>
+                        <Text style={styles.driverName}>{driver.email}</Text>
+                        <Text style={styles.driverEmail}>
+                          {driver.operatingState || '—'} · {driver.vehicleCategory || '—'} · {Math.round(driver.verificationProgress ?? 0)}% docs submitted
+                        </Text>
+                      </View>
+                      <View style={[styles.statusBadge, { backgroundColor: DRIVER_STATUS_COLOR[driver.verificationStatus] ?? '#9ca3af' }]}>
+                        <Text style={styles.statusText}>{driver.verificationStatus}</Text>
+                      </View>
+                    </View>
+
+                    {driver.rejectionReason && (
+                      <Text style={styles.rejectionReason}>Reason: {driver.rejectionReason}</Text>
+                    )}
+
+                    <View style={styles.actions}>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.rejectButton]}
+                        onPress={() => openDriverDecision(driver.id, 'REJECTED')}
+                        disabled={decideMutation.isPending}
+                      >
+                        <X size={16} color="#ef4444" />
+                        <Text style={styles.rejectButtonText}>Reject</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.manualReviewButton]}
+                        onPress={() => openDriverDecision(driver.id, 'MANUAL_REVIEW')}
+                        disabled={decideMutation.isPending}
+                      >
+                        <ShieldAlert size={16} color="#f59e0b" />
+                        <Text style={styles.manualReviewButtonText}>Flag</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.approveButton]}
+                        onPress={() => handleVerifyDriver(driver.id)}
+                        disabled={decideMutation.isPending}
+                      >
+                        <Check size={16} color="white" />
+                        <Text style={styles.approveButtonText}>Verify</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </ScrollView>
+
+          <Modal visible={!!decidingDriver} transparent animationType="fade" onRequestClose={() => setDecidingDriver(null)}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>
+                  {decidingDriver?.decision === 'REJECTED' ? 'Reject Driver' : 'Flag for Manual Review'}
+                </Text>
+                <Text style={styles.modalSubtitle}>Explain the reason — the driver will see this.</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Reason (optional)"
+                  placeholderTextColor="#9ca3af"
+                  value={decisionReason}
+                  onChangeText={setDecisionReason}
+                  multiline
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={[styles.modalButton, styles.modalCancelButton]} onPress={() => setDecidingDriver(null)}>
+                    <Text style={styles.modalCancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalButton, styles.modalConfirmButton]} onPress={submitDriverDecision}>
+                    <Text style={styles.modalConfirmText}>Confirm</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </>
+      ) : (
+      <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtersContainer}>
         {filters.map((filter) => (
           <TouchableOpacity
@@ -211,6 +397,8 @@ export default function VerificationScreen() {
           </View>
         </View>
       </Modal>
+      </>
+      )}
     </View>
   );
 }
@@ -233,6 +421,29 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.8)',
+  },
+  viewModeRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    gap: 8,
+  },
+  viewModeButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+  },
+  viewModeButtonActive: {
+    backgroundColor: '#1f2937',
+  },
+  viewModeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  viewModeTextActive: {
+    color: 'white',
   },
   filtersContainer: {
     paddingHorizontal: 24,
@@ -372,6 +583,14 @@ const styles = StyleSheet.create({
   },
   rejectButtonText: {
     color: '#ef4444',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  manualReviewButton: {
+    backgroundColor: '#fef3c7',
+  },
+  manualReviewButtonText: {
+    color: '#b45309',
     fontWeight: '600',
     fontSize: 14,
   },

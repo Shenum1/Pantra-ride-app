@@ -19,9 +19,15 @@ import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useTermsStore } from '@/hooks/useTermsStore';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
+import { validatePassword, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
 
 const { width, height } = Dimensions.get('window');
 
+// Registration only creates the account — full legal name, license, vehicle, and
+// document details are collected next in the app/driver-verification/* wizard, the
+// only path that can move a driver toward VERIFIED (always decided server-side, see
+// backend/services/verification/engine.ts — never set directly by this screen or any
+// other client code).
 export default function DriverSignupScreen() {
   const [formData, setFormData] = useState({
     name: '',
@@ -29,12 +35,6 @@ export default function DriverSignupScreen() {
     phone: '',
     password: '',
     confirmPassword: '',
-    driverLicense: '',
-    vehicleMake: '',
-    vehicleModel: '',
-    vehicleYear: '',
-    licensePlate: '',
-    vehicleColor: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -47,23 +47,9 @@ export default function DriverSignupScreen() {
   };
 
   const handleSignup = async () => {
-    const {
-      name,
-      email,
-      phone,
-      password,
-      confirmPassword,
-      driverLicense,
-      vehicleMake,
-      vehicleModel,
-      vehicleYear,
-      licensePlate,
-      vehicleColor,
-    } = formData;
+    const { name, email, phone, password, confirmPassword } = formData;
 
-    if (!name || !email || !phone || !password || !confirmPassword || 
-        !driverLicense || !vehicleMake || !vehicleModel || !vehicleYear || 
-        !licensePlate || !vehicleColor) {
+    if (!name || !email || !phone || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
@@ -78,34 +64,16 @@ export default function DriverSignupScreen() {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
-    }
-
-    const year = parseInt(vehicleYear);
-    if (isNaN(year) || year < 1990 || year > new Date().getFullYear()) {
-      Alert.alert('Error', 'Please enter a valid vehicle year');
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.valid) {
+      Alert.alert('Error', passwordCheck.message ?? 'Password does not meet the requirements');
       return;
     }
 
     try {
       await acceptTerms();
-      await signup(
-        name,
-        email,
-        phone,
-        password,
-        driverLicense,
-        {
-          make: vehicleMake,
-          model: vehicleModel,
-          year,
-          licensePlate,
-          color: vehicleColor,
-        }
-      );
-      router.replace('/(driver-tabs)/dashboard');
+      await signup(name, email, phone, password);
+      router.replace('/driver-verification/personal-info' as any);
     } catch (error: any) {
       Alert.alert('Registration Failed', error?.message ?? 'Please try again');
     }
@@ -187,81 +155,6 @@ export default function DriverSignupScreen() {
                 />
               </View>
 
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Driver License Number</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.driverLicense}
-                  onChangeText={(value) => handleInputChange('driverLicense', value)}
-                  placeholder="Enter your driver license number"
-                  autoCapitalize="characters"
-                  testID="driver-license-input"
-                />
-              </View>
-
-              <Text style={styles.sectionTitle}>Vehicle Information</Text>
-
-              <View style={styles.row}>
-                <View style={[styles.inputContainer, styles.halfWidth]}>
-                  <Text style={styles.label}>Make</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={formData.vehicleMake}
-                    onChangeText={(value) => handleInputChange('vehicleMake', value)}
-                    placeholder="Toyota"
-                    testID="vehicle-make-input"
-                  />
-                </View>
-
-                <View style={[styles.inputContainer, styles.halfWidth]}>
-                  <Text style={styles.label}>Model</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={formData.vehicleModel}
-                    onChangeText={(value) => handleInputChange('vehicleModel', value)}
-                    placeholder="Camry"
-                    testID="vehicle-model-input"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.row}>
-                <View style={[styles.inputContainer, styles.halfWidth]}>
-                  <Text style={styles.label}>Year</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={formData.vehicleYear}
-                    onChangeText={(value) => handleInputChange('vehicleYear', value)}
-                    placeholder="2020"
-                    keyboardType="numeric"
-                    testID="vehicle-year-input"
-                  />
-                </View>
-
-                <View style={[styles.inputContainer, styles.halfWidth]}>
-                  <Text style={styles.label}>Color</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={formData.vehicleColor}
-                    onChangeText={(value) => handleInputChange('vehicleColor', value)}
-                    placeholder="Silver"
-                    testID="vehicle-color-input"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>License Plate</Text>
-                <TextInput
-                  style={styles.input}
-                  value={formData.licensePlate}
-                  onChangeText={(value) => handleInputChange('licensePlate', value)}
-                  placeholder="ABC-123"
-                  autoCapitalize="characters"
-                  testID="license-plate-input"
-                />
-              </View>
-
               <Text style={styles.sectionTitle}>Security</Text>
 
               <View style={styles.inputContainer}>
@@ -287,6 +180,7 @@ export default function DriverSignupScreen() {
                     )}
                   </Pressable>
                 </View>
+                <Text style={styles.hintText}>{PASSWORD_POLICY_HINT}</Text>
               </View>
 
               <View style={styles.inputContainer}>
@@ -499,6 +393,11 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     paddingHorizontal: 16,
+  },
+  hintText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 8,
   },
   signupButton: {
     marginTop: 24,

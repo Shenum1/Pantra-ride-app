@@ -1,4 +1,4 @@
-import { TIER_RATES, TierId, PLATFORM_COMMISSION_RATE, WAITING_CHARGE_CONFIG } from './pricing-config';
+import { TIER_RATES, TierId, TierRatesTable, PLATFORM_COMMISSION_RATE, WAITING_CHARGE_CONFIG } from './pricing-config';
 
 export interface FareBreakdown {
   tierId: TierId;
@@ -6,41 +6,52 @@ export interface FareBreakdown {
   distanceCost: number;
   timeCost: number;
   surgeMultiplier: number;
+  trafficMultiplier: number;
   // (base + distance + time), clamped to the tier's minimum fare, then
-  // surged — everything before flat fees or rider discounts are applied.
+  // surged and traffic-multiplied — everything before flat fees or rider
+  // discounts are applied.
   meteredSubtotal: number;
   minFareApplied: boolean;
   bookingFee: number;
   serviceFee: number;
   zoneFee: number;
+  priorityFee: number;
   total: number;
 }
 
 // Pricing pipeline, in order:
 //   1. Metered fare (base + distance + time)
 //   2. Minimum fare clamp
-//   3. Surge multiplier (applied AFTER the minimum-fare clamp, so a
-//      surged short trip is minFare * surge, not just minFare)
+//   3. Surge multiplier * traffic multiplier (applied AFTER the minimum-fare
+//      clamp, so a surged short trip is minFare * multiplier, not just minFare)
 //   4. (caller's responsibility — see applyRideDiscounts) rider discounts
 //      applied to the metered fare only
-//   5. Flat platform fees (bookingFee/serviceFee/zoneFee) added on top —
-//      never surged, never discounted, never negotiated.
+//   5. Flat platform fees (bookingFee/serviceFee/zoneFee/priorityFee) added
+//      on top — never surged, never discounted, never negotiated.
+//
+// `tierRates` defaults to the hardcoded TIER_RATES fallback but is normally
+// the live, admin-tunable table useRideStore fetches from `pricing_tier_config`
+// (merged over TIER_RATES) — see supabase-schema-pricing-config.sql.
 export function calculateFareBreakdown(
   distanceKm: number,
   durationMin: number,
   tierId: string,
   surgeMultiplier = 1,
-  zoneFee = 0
+  zoneFee = 0,
+  trafficMultiplier = 1,
+  priorityFee = 0,
+  tierRates: TierRatesTable = TIER_RATES
 ): FareBreakdown {
-  const resolvedTierId = (tierId in TIER_RATES ? tierId : 'standard') as TierId;
-  const t = TIER_RATES[resolvedTierId];
+  const resolvedTierId = (tierId in tierRates ? tierId : 'standard') as TierId;
+  const t = tierRates[resolvedTierId];
 
   const distanceCost = distanceKm * t.perKm;
   const timeCost = durationMin * t.perMin;
   const meteredRaw = t.base + distanceCost + timeCost;              // Step 1
   const roundedMetered = Math.round(meteredRaw);
   const meteredFloored = Math.max(roundedMetered, t.minFare);        // Step 2
-  const meteredSubtotal = Math.round(meteredFloored * surgeMultiplier); // Step 3
+  const combinedMultiplier = surgeMultiplier * trafficMultiplier;
+  const meteredSubtotal = Math.round(meteredFloored * combinedMultiplier); // Step 3
 
   return {
     tierId: resolvedTierId,
@@ -48,12 +59,14 @@ export function calculateFareBreakdown(
     distanceCost: Math.round(distanceCost),
     timeCost: Math.round(timeCost),
     surgeMultiplier,
+    trafficMultiplier,
     meteredSubtotal,
     minFareApplied: roundedMetered < t.minFare,
     bookingFee: t.bookingFee,
     serviceFee: t.serviceFee,
     zoneFee,
-    total: meteredSubtotal + t.bookingFee + t.serviceFee + zoneFee,
+    priorityFee,
+    total: meteredSubtotal + t.bookingFee + t.serviceFee + zoneFee + priorityFee,
   };
 }
 
@@ -62,16 +75,19 @@ export function calculateFare(
   durationMin: number,
   tierId: string,
   surgeMultiplier = 1,
-  zoneFee = 0
+  zoneFee = 0,
+  trafficMultiplier = 1,
+  priorityFee = 0,
+  tierRates: TierRatesTable = TIER_RATES
 ): number {
-  return calculateFareBreakdown(distanceKm, durationMin, tierId, surgeMultiplier, zoneFee).total;
+  return calculateFareBreakdown(distanceKm, durationMin, tierId, surgeMultiplier, zoneFee, trafficMultiplier, priorityFee, tierRates).total;
 }
 
 // Guarantees a price (after shared-ride/promo discounts, etc.) never drops
 // below the tier's configured minimum fare.
-export function clampToMinFare(price: number, tierId: string): number {
-  const resolvedTierId = (tierId in TIER_RATES ? tierId : 'standard') as TierId;
-  return Math.max(price, TIER_RATES[resolvedTierId].minFare);
+export function clampToMinFare(price: number, tierId: string, tierRates: TierRatesTable = TIER_RATES): number {
+  const resolvedTierId = (tierId in tierRates ? tierId : 'standard') as TierId;
+  return Math.max(price, tierRates[resolvedTierId].minFare);
 }
 
 export interface RideDiscountInput {
@@ -88,7 +104,8 @@ export interface RideDiscountInput {
 export function applyRideDiscounts(
   meteredFare: number,
   tierId: string,
-  discounts: RideDiscountInput
+  discounts: RideDiscountInput,
+  tierRates: TierRatesTable = TIER_RATES
 ): number {
   let price = meteredFare;
 
@@ -103,35 +120,46 @@ export function applyRideDiscounts(
     price = Math.round(price - Math.min(rawDiscount, maxCap));
   }
 
-  return clampToMinFare(price, tierId);
+  return clampToMinFare(price, tierId, tierRates);
 }
 
 export interface DriverPayout {
   meteredFare: number;
   commission: number;
   netAmount: number;
+  // The rate actually applied, captured alongside the amounts so callers can
+  // persist it on the ride row — see PLATFORM_COMMISSION_RATE's doc comment.
+  commissionRate: number;
 }
 
 // Platform commission applies only to the metered portion of the fare
-// (base + distance + time + surge). bookingFee/serviceFee/zoneFee are
-// platform revenue excluded from commission because the driver never earns
+// (base + distance + time + surge). bookingFee/serviceFee/zoneFee/priorityFee
+// are platform revenue excluded from commission because the driver never earns
 // them; waitingCharge is excluded for the opposite reason — it's 100% driver
-// compensation for lost time, not platform revenue. Either way, none of the
-// four are ever multiplied by the commission rate.
+// compensation for lost time, not platform revenue. Either way, none of these
+// are ever multiplied by the commission rate. Commission mechanism itself
+// (flat PLATFORM_COMMISSION_RATE, no phased ramp-up) is deliberately
+// unchanged here.
+//
+// This is the single authoritative commission calculation — every caller
+// (driver earnings list/stats, ride-completion snapshot, admin revenue
+// totals) must go through this function rather than re-deriving the split.
 export function calculateDriverPayout(
   fare: number,
   bookingFee = 0,
   serviceFee = 0,
   zoneFee = 0,
-  waitingCharge = 0
+  waitingCharge = 0,
+  priorityFee = 0
 ): DriverPayout {
-  const meteredFare = Math.max(fare - bookingFee - serviceFee - zoneFee - waitingCharge, 0);
+  const meteredFare = Math.max(fare - bookingFee - serviceFee - zoneFee - waitingCharge - priorityFee, 0);
   const commission = meteredFare * PLATFORM_COMMISSION_RATE;
 
   return {
     meteredFare,
     commission,
     netAmount: fare - commission,
+    commissionRate: PLATFORM_COMMISSION_RATE,
   };
 }
 
@@ -153,58 +181,16 @@ export function calculateWaitingCharge(
   return Math.round(chargeableMinutes * config.perMinuteRate);
 }
 
-export interface FareOfferPreset {
-  label: string;
-  percent: number;
-  amount: number;
-}
-
-const OFFER_PRESET_PERCENTS = [-20, -10, 0, 10, 20];
-
-// Preset rider-facing negotiation options (replaces the old ±10% self-adjust
-// slider). Each amount is floor-guarded to the tier's minimum fare — a rider
-// can propose less, but the platform will never accept below minFare.
-export function getOfferPresets(meteredFare: number, tierId: string): FareOfferPreset[] {
-  return OFFER_PRESET_PERCENTS.map((percent) => ({
-    label: percent === 0 ? 'Metered fare' : `${percent > 0 ? '+' : ''}${percent}%`,
-    percent,
-    amount: clampToMinFare(Math.round(meteredFare * (1 + percent / 100)), tierId),
-  }));
-}
-
-export interface OfferValidationResult {
-  valid: boolean;
-  reason?: string;
-}
-
-// Guards against an offer below the tier's minimum fare or an absurd,
-// likely-mistyped overpay. The driver still has final say — this only
-// prevents obviously invalid offers from ever reaching the marketplace.
-export function validateOfferedFare(meteredFare: number, offeredFare: number, tierId: string): OfferValidationResult {
-  const resolvedTierId = (tierId in TIER_RATES ? tierId : 'standard') as TierId;
-  const minFare = TIER_RATES[resolvedTierId].minFare;
-
-  if (!Number.isFinite(offeredFare) || offeredFare <= 0) {
-    return { valid: false, reason: 'Enter a valid offer amount' };
-  }
-  if (offeredFare < minFare) {
-    return { valid: false, reason: `Offer must be at least ₦${minFare}` };
-  }
-  if (offeredFare > meteredFare * 2) {
-    return { valid: false, reason: 'Offer is unreasonably high' };
-  }
-
-  return { valid: true };
-}
-
 export function calculateAllTierFares(
   distanceKm: number,
   durationMin: number,
-  surgeMultiplier = 1
+  surgeMultiplier = 1,
+  trafficMultiplier = 1,
+  tierRates: TierRatesTable = TIER_RATES
 ): Record<string, number> {
   return {
-    standard: calculateFare(distanceKm, durationMin, 'standard', surgeMultiplier),
-    comfort:  calculateFare(distanceKm, durationMin, 'comfort',  surgeMultiplier),
-    xl:       calculateFare(distanceKm, durationMin, 'xl',       surgeMultiplier),
+    standard: calculateFare(distanceKm, durationMin, 'standard', surgeMultiplier, 0, trafficMultiplier, 0, tierRates),
+    comfort:  calculateFare(distanceKm, durationMin, 'comfort',  surgeMultiplier, 0, trafficMultiplier, 0, tierRates),
+    xl:       calculateFare(distanceKm, durationMin, 'xl',       surgeMultiplier, 0, trafficMultiplier, 0, tierRates),
   };
 }

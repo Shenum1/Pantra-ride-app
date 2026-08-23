@@ -23,12 +23,28 @@ import {
 } from 'lucide-react-native';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
+import { useDriverVerification } from '@/hooks/useDriverVerification';
 import Colors from '@/constants/colors';
 import { router } from 'expo-router';
 import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 export default function DriverDashboard() {
   const { driver, isLoading: authLoading, toggleOnlineStatus } = useDriverAuth();
+  const { isVerified } = useDriverVerification();
+  const handleToggleOnline = () => {
+    if (!isVerified) {
+      Alert.alert(
+        'Verification Required',
+        'Complete driver verification before going online.',
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'View Status', onPress: () => router.push('/driver-verification/personal-info' as any) },
+        ]
+      );
+      return;
+    }
+    void toggleOnlineStatus();
+  };
   const {
     rideRequests,
     currentRide,
@@ -83,7 +99,11 @@ export default function DriverDashboard() {
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Complete',
-              onPress: () => updateRideStatus('completed'),
+              onPress: () => {
+                updateRideStatus('completed').catch((error: unknown) => {
+                  Alert.alert('Error', error instanceof Error ? error.message : 'Failed to complete trip');
+                });
+              },
             },
           ]
         );
@@ -211,11 +231,11 @@ export default function DriverDashboard() {
           {/* Online Status Toggle */}
           <TouchableOpacity
             style={[styles.onlineToggle, driver.isOnline ? styles.onlineActive : styles.onlineInactive]}
-            onPress={toggleOnlineStatus}
+            onPress={handleToggleOnline}
           >
             <Power size={20} color={driver.isOnline ? Colors.light.white : Colors.light.gray} />
             <Text style={[styles.onlineText, driver.isOnline ? styles.onlineTextActive : styles.onlineTextInactive]}>
-              {driver.isOnline ? 'Online' : 'Offline'}
+              {!isVerified ? 'Unverified' : driver.isOnline ? 'Online' : 'Offline'}
             </Text>
           </TouchableOpacity>
         </View>

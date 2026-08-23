@@ -151,6 +151,7 @@ const Map: React.FC<MapProps> = ({
 
     if (showDrivers) {
       nearbyDrivers.forEach((driver) => {
+        if (!driver.location) return;
         markers.push({
           id: `static-driver-${driver.id}`,
           location: driver.location,

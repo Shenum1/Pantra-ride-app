@@ -3,13 +3,13 @@ import { Search } from 'lucide-react';
 import { trpcQuery } from '../lib/api';
 
 interface UserRow {
-  uid: string;
-  displayName: string | null;
+  id: string;
+  name: string | null;
   email: string | null;
-  role: string;
+  type: 'rider' | 'driver';
+  status: 'active' | 'inactive';
+  joinDate: string;
   totalRides: number;
-  isActive: boolean;
-  createdAt: string;
 }
 
 interface UsersResponse {
@@ -34,9 +34,9 @@ export default function Users() {
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
-      (u.displayName ?? '').toLowerCase().includes(q) ||
+      (u.name ?? '').toLowerCase().includes(q) ||
       (u.email ?? '').toLowerCase().includes(q);
-    const matchRole = !roleFilter || u.role === roleFilter;
+    const matchRole = !roleFilter || u.type === roleFilter;
     return matchSearch && matchRole;
   });
 
@@ -100,26 +100,26 @@ export default function Users() {
                   </tr>
                 ) : (
                   filtered.map((u) => (
-                    <tr key={u.uid} className="hover:bg-gray-50 transition-colors">
+                    <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3 font-medium text-gray-900">
-                        {u.displayName || '—'}
+                        {u.name || '—'}
                       </td>
                       <td className="px-4 py-3 text-gray-500">{u.email || '—'}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold capitalize
-                          ${u.role === 'driver' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {u.role}
+                          ${u.type === 'driver' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {u.type}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right text-gray-700">{u.totalRides}</td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold
-                          ${u.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {u.isActive ? 'Active' : 'Inactive'}
+                          ${u.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {u.status === 'active' ? 'Active' : 'Inactive'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-500">
-                        {new Date(u.createdAt).toLocaleDateString()}
+                        {new Date(u.joinDate).toLocaleDateString()}
                       </td>
                     </tr>
                   ))

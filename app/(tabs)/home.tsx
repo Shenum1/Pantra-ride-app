@@ -18,7 +18,7 @@ import WeatherCard from "@/components/WeatherCard";
 export default function HomeScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
-  const { isLoading, userLocation } = useLocation();
+  const { isLoading, userLocation, locationError, retryLocation } = useLocation();
   const { currentRide, isHydratingRide } = useRide();
   const { fetchWeather } = useWeather();
   const [initialMapRegion, setInitialMapRegion] = useState<Location | undefined>(undefined);
@@ -138,7 +138,16 @@ export default function HomeScreen() {
           <CloudSun size={18} color={colors.primary} />
         </Pressable>
       </View>
-      
+
+      {!isLoading && !userLocation && locationError && (
+        <View style={[styles.locationErrorBanner, { top: insets.top + 84, backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.locationErrorText, { color: colors.textSecondary }]}>{locationError}</Text>
+          <Pressable onPress={() => void retryLocation()} testID="retry-location-button">
+            <Text style={[styles.locationErrorRetry, { color: colors.primary }]}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
+
       {/* Animated Weather Card */}
       <Animated.View 
         style={[
@@ -200,6 +209,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     zIndex: 1000,
+  },
+  locationErrorBanner: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    zIndex: 999,
+  },
+  locationErrorText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  locationErrorRetry: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 12,
   },
   searchButton: {
     flex: 1,

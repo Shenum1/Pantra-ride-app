@@ -24,7 +24,7 @@ import {
   Camera,
   Wallet,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React from "react";
 import {
   Pressable,
   ScrollView,
@@ -82,7 +82,6 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, title, subtitle, onPress, tit
 export default function AccountScreen() {
   const { user, logout } = useAuth();
   const { colors, themeMode, changeTheme } = useTheme();
-  const [showDriverPromo, setShowDriverPromo] = useState(true);
   const insets = useSafeAreaInsets();
   
   const getThemeIcon = () => {
@@ -222,21 +221,6 @@ export default function AccountScreen() {
             onPress={() => router.push('/about')}
           />
         </View>
-
-        {showDriverPromo && (
-          <View style={[styles.driverPromo, { backgroundColor: colors.primaryLight }]}>
-            <View style={styles.driverPromoContent}>
-              <Text style={[styles.driverPromoTitle, { color: colors.text }]}>Become a driver</Text>
-              <Text style={[styles.driverPromoSubtitle, { color: colors.gray }]}>Earn money on your schedule</Text>
-            </View>
-            <Pressable
-              style={styles.driverPromoClose}
-              onPress={() => setShowDriverPromo(false)}
-            >
-              <Text style={[styles.driverPromoCloseText, { color: colors.gray }]}>×</Text>
-            </Pressable>
-          </View>
-        )}
 
         <Text style={[styles.sectionTitle, { color: colors.text, backgroundColor: colors.background }]}>Personal info</Text>
         <View style={styles.profileDetailsSection}>
@@ -412,34 +396,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     paddingHorizontal: 16,
     paddingVertical: 16,
-  },
-  driverPromo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginHorizontal: 16,
-    marginBottom: 20,
-    padding: 16,
-    borderRadius: 12,
-  },
-  driverPromoContent: {
-    flex: 1,
-  },
-  driverPromoTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  driverPromoSubtitle: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  driverPromoClose: {
-    width: 24,
-    height: 24,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  driverPromoCloseText: {
-    fontSize: 20,
   },
   legalSection: {
     marginBottom: 20,

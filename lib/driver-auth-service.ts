@@ -6,14 +6,6 @@ export interface DriverSignupData {
   email: string;
   phone: string;
   password: string;
-  driverLicense: string;
-  vehicle: {
-    make: string;
-    model: string;
-    year: number;
-    licensePlate: string;
-    color: string;
-  };
 }
 
 export interface DriverRow {
@@ -31,6 +23,7 @@ export interface DriverRow {
     color: string;
   };
   isVerified: boolean;
+  verificationStatus: string;
   isOnline: boolean;
   totalEarnings: number;
   totalRides: number;
@@ -45,7 +38,11 @@ function mapRowToDriver(row: any): DriverRow {
     email: row.email ?? '',
     phone: row.phone ?? '',
     rating: row.rating ?? null,
-    driverLicense: row.documents?.driverLicense ?? '',
+    // licenseNumber is the structured column written by the driver-verification
+    // wizard (backend/trpc/routes/driver-verification/submit-profile/route.ts) —
+    // documents.driverLicense was the old free-text field written at signup, kept
+    // only as a fallback for any pre-rebuild rows that never went through the wizard.
+    driverLicense: row.licenseNumber ?? row.documents?.driverLicense ?? '',
     vehicle: {
       make: row.vehicle?.make ?? '',
       model: row.vehicle?.model ?? '',
@@ -54,6 +51,7 @@ function mapRowToDriver(row: any): DriverRow {
       color: row.vehicle?.color ?? '',
     },
     isVerified: row.isVerified ?? false,
+    verificationStatus: row.verificationStatus ?? 'PENDING',
     isOnline: row.isOnline ?? false,
     totalEarnings: row.earnings?.total ?? 0,
     totalRides: row.totalRides ?? 0,
@@ -63,6 +61,13 @@ function mapRowToDriver(row: any): DriverRow {
 }
 
 export class DriverAuthService {
+  // Creates the account only — full legal name, license, vehicle, and document
+  // details are collected next in app/driver-verification/*, which submits them
+  // through the driverProcedure tRPC routes (server-validated, service-role-written).
+  // isVerified/verificationStatus are left at their DB defaults (false/'PENDING');
+  // the "Allow driver insert" RLS policy in
+  // database/schemas/supabase-schema-driver-verification-v2.sql rejects any insert
+  // that tries to set them otherwise.
   static async signUpWithEmail(data: DriverSignupData): Promise<DriverRow> {
     const user = await AuthService.signUpWithEmail(data.email, data.password, data.name, 'driver');
 
@@ -74,16 +79,6 @@ export class DriverAuthService {
         email: data.email,
         phone: data.phone,
         rating: null,
-        vehicle: {
-          make: data.vehicle.make,
-          model: data.vehicle.model,
-          year: data.vehicle.year,
-          licensePlate: data.vehicle.licensePlate,
-          color: data.vehicle.color,
-          type: 'Standard',
-        },
-        documents: { driverLicense: data.driverLicense },
-        isVerified: false,
         isOnline: false,
         earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
       })

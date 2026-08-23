@@ -53,24 +53,35 @@ alter table public.wallets             enable row level security;
 alter table public.wallet_transactions enable row level security;
 alter table public.wallet_bank_accounts enable row level security;
 
+-- drop-then-create so this file is safe to re-run against a database that
+-- already has these policies from a previous run.
+drop policy if exists "Users can read own wallet" on public.wallets;
 create policy "Users can read own wallet"
   on public.wallets for select using (auth.uid() = "userId");
+drop policy if exists "Users can create own wallet" on public.wallets;
 create policy "Users can create own wallet"
   on public.wallets for insert with check (auth.uid() = "userId");
+drop policy if exists "Users can update own wallet" on public.wallets;
 create policy "Users can update own wallet"
   on public.wallets for update using (auth.uid() = "userId");
 
+drop policy if exists "Users can read own wallet transactions" on public.wallet_transactions;
 create policy "Users can read own wallet transactions"
   on public.wallet_transactions for select using (auth.uid() = "userId");
+drop policy if exists "Users can create own wallet transactions" on public.wallet_transactions;
 create policy "Users can create own wallet transactions"
   on public.wallet_transactions for insert with check (auth.uid() = "userId");
 
+drop policy if exists "Users can read own bank accounts" on public.wallet_bank_accounts;
 create policy "Users can read own bank accounts"
   on public.wallet_bank_accounts for select using (auth.uid() = "userId");
+drop policy if exists "Users can insert own bank accounts" on public.wallet_bank_accounts;
 create policy "Users can insert own bank accounts"
   on public.wallet_bank_accounts for insert with check (auth.uid() = "userId");
+drop policy if exists "Users can update own bank accounts" on public.wallet_bank_accounts;
 create policy "Users can update own bank accounts"
   on public.wallet_bank_accounts for update using (auth.uid() = "userId");
+drop policy if exists "Users can delete own bank accounts" on public.wallet_bank_accounts;
 create policy "Users can delete own bank accounts"
   on public.wallet_bank_accounts for delete using (auth.uid() = "userId");
 
@@ -78,6 +89,18 @@ create policy "Users can delete own bank accounts"
 -- Creates the wallet row if missing, applies the balance change,
 -- inserts the ledger row, and rejects debits that would overdraw —
 -- all in one statement so concurrent requests can't race the balance.
+--
+-- Callers, and what each may do:
+--  - The service-role backend (payments.wallet.credit, after it has
+--    re-verified a real payment with Paystack/Flutterwave server-side, or an
+--    admin route) — may write any transaction type. This is the ONLY path
+--    that may create wallet-crediting entries.
+--  - The wallet owner's own authenticated session — may only write
+--    self-service debits/movements they're entitled to trigger directly
+--    (ride_payment, withdraw, debit). Credit types (add_money, refund,
+--    cashback, credit) are rejected here: letting a plain authenticated
+--    client call this RPC with an arbitrary add_money amount would mint
+--    wallet balance with no real payment behind it.
 create or replace function public.add_wallet_transaction(
   p_user_id uuid,
   p_type text,
@@ -94,7 +117,14 @@ declare
   v_balance numeric;
   v_txn public.wallet_transactions;
 begin
-  if auth.uid() is distinct from p_user_id then
+  if auth.role() = 'service_role' then
+    -- backend-authorized call (already re-verified the payment) — unrestricted
+    null;
+  elsif auth.uid() = p_user_id then
+    if p_type in ('add_money', 'refund', 'cashback', 'credit') then
+      raise exception 'credit transactions must be issued by the backend after payment verification';
+    end if;
+  else
     raise exception 'not authorized';
   end if;
 
@@ -112,11 +142,23 @@ begin
   set "balance" = "balance" + p_amount, "updatedAt" = now()
   where "userId" = p_user_id;
 
-  insert into public.wallet_transactions
-    ("userId","type","amount","description","status","rideId","paymentMethodId","reference","metadata")
-  values
-    (p_user_id, p_type, p_amount, p_description, p_status, p_ride_id, p_payment_method_id, p_reference, p_metadata)
-  returning * into v_txn;
+  begin
+    insert into public.wallet_transactions
+      ("userId","type","amount","description","status","rideId","paymentMethodId","reference","metadata")
+    values
+      (p_user_id, p_type, p_amount, p_description, p_status, p_ride_id, p_payment_method_id, p_reference, p_metadata)
+    returning * into v_txn;
+  exception
+    when unique_violation then
+      -- Same payment reference credited twice (double-tap "Verify Payment",
+      -- a re-fired deep-link callback, etc.) — the balance update above is
+      -- rolled back automatically by this EXCEPTION block, so return the
+      -- original transaction instead of crediting a second time.
+      select * into v_txn
+      from public.wallet_transactions
+      where "reference" = p_reference and "type" = p_type
+      limit 1;
+  end;
 
   return v_txn;
 end;
@@ -124,4 +166,12 @@ $$;
 
 grant execute on function public.add_wallet_transaction(
   uuid, text, numeric, text, text, uuid, text, text, jsonb
-) to authenticated;
+) to authenticated, service_role;
+
+-- Idempotency for verified-payment credits: the same payment reference can
+-- never create two add_money/refund ledger rows. Partial (only applies to
+-- credit types with a non-null reference) so ride_payment/withdraw/etc. —
+-- which don't carry a provider reference — are unaffected.
+create unique index if not exists idx_wallet_transactions_reference_credit
+  on public.wallet_transactions ("reference")
+  where "reference" is not null and "type" in ('add_money', 'refund');

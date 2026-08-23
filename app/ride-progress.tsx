@@ -36,20 +36,6 @@ type RiderStage = RideTrackingStage;
 const COLLAPSED_OFFSET = 208;
 const EXPANDED_OFFSET = 0;
 
-function interpolateLocation(start: Location, end: Location, progress: number): Location {
-  return {
-    latitude: start.latitude + (end.latitude - start.latitude) * progress,
-    longitude: start.longitude + (end.longitude - start.longitude) * progress,
-  };
-}
-
-function buildApproachStart(pickup: Location): Location {
-  return {
-    latitude: pickup.latitude - 0.028,
-    longitude: pickup.longitude - 0.02,
-  };
-}
-
 function getStageTitle(stage: RiderStage): string {
   switch (stage) {
     case 'searching':
@@ -160,7 +146,6 @@ export default function RideProgressScreen() {
   const currentRideStatus = currentRide?.status ?? null;
   const currentRideTrackingStage = currentRide?.trackingStage ?? null;
   const currentRideStatusText = currentRide?.statusText ?? null;
-  const lastSimulationStageRef = useRef<string | null>(null);
   const liveStageRef = useRef<RiderStage>('searching');
   const currentRideDriverRef = useRef<Driver | null>(null);
   const currentRideDriverLocationRef = useRef<Location | null>(null);
@@ -205,171 +190,17 @@ export default function RideProgressScreen() {
     }
   }, [currentRide, isHydratingRide, resolvedDropoffLocation, resolvedPickupLocation]);
 
-  // Fallback simulation for rides that never made it to Supabase (no real backend row to subscribe to).
-  useEffect(() => {
-    if (!currentRideId || !currentRideId.startsWith('local-ride-') || !resolvedPickupLocation || !resolvedDropoffLocation) {
-      lastSimulationStageRef.current = null;
-      return;
-    }
-
-    const fallbackDriver: Driver = {
-      id: 'fallback-driver',
-      name: 'Alex Johnson',
-      rating: 4.9,
-      carModel: 'Toyota Corolla',
-      licensePlate: 'RIDE-204',
-      eta: 3,
-      phone: '+1234567890',
-      carType: 'Standard',
-      location: buildApproachStart(resolvedPickupLocation),
-    };
-
-    const activeDriver = currentRideDriverRef.current ?? fallbackDriver;
-    const persistedStage = currentRideTrackingStage ?? (currentRideStatus === 'in_progress' ? 'trip_in_progress' : 'searching');
-    const persistedStatusText = currentRideStatusTextRef.current ?? (persistedStage === 'trip_in_progress'
-      ? 'Trip in progress to your destination'
-      : 'Looking for a nearby driver');
-    const persistedDriverLocation = currentRideDriverLocationRef.current ?? activeDriver.location ?? buildApproachStart(resolvedPickupLocation);
-    const simulationKey = `${currentRideId}:${persistedStage}`;
-
-    setStage(persistedStage);
-    setStatusText(persistedStatusText);
-    setDriverLocation(persistedDriverLocation);
-    setDriverEtaMinutes(activeDriver.eta ?? 3);
-    liveStageRef.current = persistedStage;
-
-    if (lastSimulationStageRef.current === simulationKey) {
-      return;
-    }
-
-    lastSimulationStageRef.current = simulationKey;
-
-    let searchingInterval: ReturnType<typeof setInterval> | null = null;
-    let stageTimer: ReturnType<typeof setTimeout> | null = null;
-    let arrivalInterval: ReturnType<typeof setInterval> | null = null;
-    let tripInterval: ReturnType<typeof setInterval> | null = null;
-
-    const setPersistedStage = (nextStage: RiderStage, nextStatus: string, nextLocation?: Location, nextRideStatus?: 'pending' | 'confirmed' | 'in_progress') => {
-      liveStageRef.current = nextStage;
-      setStage(nextStage);
-      setStatusText(nextStatus);
-      if (nextLocation) {
-        setDriverLocation(nextLocation);
-      }
-      void updateRideSession({
-        trackingStage: nextStage,
-        statusText: nextStatus,
-        driverLocation: nextLocation,
-        status: nextRideStatus ?? currentRideStatus ?? 'pending',
-        driver: activeDriver,
-      });
-    };
-
-    if (persistedStage === 'searching') {
-      const searchingMessages = [
-        'Looking for a nearby driver',
-        'Checking who can reach you fastest',
-        'Sending your request to active drivers',
-      ];
-      let searchingIndex = 0;
-
-      searchingInterval = setInterval(() => {
-        if (liveStageRef.current !== 'searching') {
-          return;
-        }
-
-        searchingIndex = (searchingIndex + 1) % searchingMessages.length;
-        const nextMessage = searchingMessages[searchingIndex];
-        setStatusText(nextMessage);
-        void updateRideSession({ statusText: nextMessage, driver: activeDriver, driverLocation: persistedDriverLocation });
-      }, 1800);
-
-      stageTimer = setTimeout(() => {
-        if (searchingInterval) {
-          clearInterval(searchingInterval);
-        }
-        setPersistedStage('driver_assigned', `${activeDriver.name} accepted your ride`, persistedDriverLocation, 'confirmed');
-      }, assignedDriver ? 1200 : 3200);
-    }
-
-    if (persistedStage === 'driver_assigned' || persistedStage === 'driver_arriving') {
-      let progress = persistedStage === 'driver_arriving' ? 0.35 : 0.12;
-
-      arrivalInterval = setInterval(() => {
-        if (liveStageRef.current !== 'driver_assigned' && liveStageRef.current !== 'driver_arriving') {
-          return;
-        }
-
-        progress = Math.min(1, progress + 0.18);
-        const nextLocation = interpolateLocation(persistedDriverLocation, resolvedPickupLocation, progress);
-        const nextEta = Math.max(1, Math.round((1 - progress) * (activeDriver.eta ?? 3)));
-        setDriverEtaMinutes(nextEta);
-        const nextStage: RiderStage = progress >= 0.92 ? 'driver_arrived' : progress > 0.2 ? 'driver_arriving' : 'driver_assigned';
-        const nextStatus = nextStage === 'driver_arrived' ? 'Driver has arrived at your pickup' : 'Driver is on the way';
-        setPersistedStage(nextStage, nextStatus, nextLocation, 'confirmed');
-        if (nextStage === 'driver_arrived' && arrivalInterval) {
-          clearInterval(arrivalInterval);
-        }
-      }, 1800);
-    }
-
-    if (persistedStage === 'driver_arrived') {
-      setDriverEtaMinutes(0);
-      stageTimer = setTimeout(() => {
-        const tripStartLocation = resolvedPickupLocation;
-        setPersistedStage('trip_in_progress', 'Trip started. Driver is heading to your destination', tripStartLocation, 'in_progress');
-      }, 4500);
-    }
-
-    if (persistedStage === 'trip_in_progress') {
-      let progress = 0;
-      const tripStart = currentRideDriverLocationRef.current ?? resolvedPickupLocation;
-      tripInterval = setInterval(() => {
-        if (liveStageRef.current !== 'trip_in_progress') {
-          return;
-        }
-
-        progress = Math.min(1, progress + 0.08);
-        const nextLocation = interpolateLocation(tripStart, resolvedDropoffLocation, progress);
-        const nextStatus = progress < 1
-          ? 'Trip started. Driver is heading to your destination'
-          : 'You have arrived at your destination';
-        setPersistedStage('trip_in_progress', nextStatus, nextLocation, 'in_progress');
-        if (progress >= 1 && tripInterval) {
-          clearInterval(tripInterval);
-        }
-      }, 1800);
-    }
-
-    return () => {
-      if (searchingInterval) {
-        clearInterval(searchingInterval);
-      }
-      if (stageTimer) {
-        clearTimeout(stageTimer);
-      }
-      if (arrivalInterval) {
-        clearInterval(arrivalInterval);
-      }
-      if (tripInterval) {
-        clearInterval(tripInterval);
-      }
-    };
-  }, [assignedDriver, currentRideId, currentRideStatus, currentRideTrackingStage, resolvedDropoffLocation, resolvedPickupLocation, updateRideSession]);
-
   const ARRIVED_AT_PICKUP_KM = 0.15;
 
   // Live tracking for rides backed by a real Supabase row: subscribe to ride status changes
   // and the assigned driver's GPS position instead of simulating progress with timers.
   useEffect(() => {
-    if (!currentRideId || currentRideId.startsWith('local-ride-') || !resolvedPickupLocation || !resolvedDropoffLocation) {
+    if (!currentRideId || !resolvedPickupLocation || !resolvedDropoffLocation) {
       return;
     }
 
     let isCancelled = false;
-    let knownDriverId: string | null = currentRideDriverRef.current && currentRideDriverRef.current.id !== 'fallback-driver'
-      ? currentRideDriverRef.current.id
-      : null;
+    let knownDriverId: string | null = currentRideDriverRef.current?.id ?? null;
     let latestRideStatus: RideRequest['status'] = currentRideStatusRef.current ?? 'pending';
     let driverLocationUnsubscribe: (() => void) | null = null;
 
@@ -492,7 +323,9 @@ export default function RideProgressScreen() {
         const profile = await FirebaseDriverService.getDriver(driverId);
         if (isCancelled) return;
 
-        const driverLoc: Location = profile?.location ?? buildApproachStart(resolvedPickupLocation);
+        // No fabricated fallback — a just-assigned driver whose device hasn't sent a
+        // GPS ping yet simply has no marker until a real one arrives.
+        const driverLoc: Location | undefined = profile?.location;
         const mappedDriver: Driver = profile
           ? {
               id: profile.id,
@@ -525,7 +358,7 @@ export default function RideProgressScreen() {
         liveStageRef.current = nextStage;
         setStage(nextStage);
         setStatusText(nextStatus);
-        setDriverLocation(driverLoc);
+        setDriverLocation(driverLoc ?? null);
         setDriverEtaMinutes(mappedDriver.eta);
 
         void updateRideSession({

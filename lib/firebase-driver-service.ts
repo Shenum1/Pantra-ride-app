@@ -233,8 +233,6 @@ export class FirebaseDriverService {
         dropoffAddress: ride.dropoffAddress || '',
         rideType: ride.rideType || 'standard',
         price: ride.fare || 0,
-        offeredFare: ride.offeredFare ?? undefined,
-        negotiationStatus: ride.negotiationStatus ?? undefined,
         passengerName: ride.passengerName ?? undefined,
         passengerPhone: ride.passengerPhone ?? undefined,
         distance: ride.distance || 0,
@@ -249,25 +247,27 @@ export class FirebaseDriverService {
           bookerName: booker.displayName || undefined,
           bookerPhone: booker.phoneNumber || undefined,
         },
-        estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0).netAmount,
+        estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0, ride.priorityFee || 0).netAmount,
+        isPriority: !!ride.isPriority,
         distanceToPickup,
         createdAt: ride.createdAt ? new Date(ride.createdAt) : new Date(),
       });
     }
 
-    return results.sort((a, b) => a.distanceToPickup - b.distanceToPickup);
+    // Priority-paid rides sort to the top of every online driver's list —
+    // this is a pull-model broadcast (all online drivers see the same
+    // pending ride at once), so "priority" can only bias ordering here, not
+    // guarantee a faster match.
+    return results.sort((a, b) => {
+      if (!!a.isPriority !== !!b.isPriority) {
+        return a.isPriority ? -1 : 1;
+      }
+      return a.distanceToPickup - b.distanceToPickup;
+    });
   }
 
-  static async acceptRide(rideId: string, driverId: string, acceptedOfferedFare?: number): Promise<void> {
+  static async acceptRide(rideId: string, driverId: string): Promise<void> {
     const updates: any = { driverId, status: 'accepted', acceptedAt: new Date().toISOString() };
-
-    // Accepting a negotiated ride locks in the rider's proposed price as the
-    // real fare from this point on — everything downstream (payout, admin
-    // breakdown, ride history) treats it identically to a normal metered ride.
-    if (acceptedOfferedFare !== undefined) {
-      updates.fare = acceptedOfferedFare;
-      updates.negotiationStatus = 'accepted';
-    }
 
     const { error } = await supabase
       .from('rides')
@@ -312,6 +312,31 @@ export class FirebaseDriverService {
       }
     } else if (status === 'completed') {
       updates.completedAt = new Date().toISOString();
+
+      // Snapshot the commission split at the moment the ride actually
+      // settles, using whatever fare/fees are on the row right now (the
+      // waiting charge, if any, was already folded into `fare` above when
+      // the ride started). This locks in the rate that was in effect for
+      // this ride — see PLATFORM_COMMISSION_RATE's doc comment.
+      const { data: completingRow } = await supabase
+        .from('rides')
+        .select('fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee')
+        .eq('id', rideId)
+        .single();
+
+      if (completingRow) {
+        const payout = calculateDriverPayout(
+          completingRow.fare || 0,
+          completingRow.bookingFee || 0,
+          completingRow.serviceFee || 0,
+          completingRow.zoneFee || 0,
+          completingRow.waitingCharge || 0,
+          completingRow.priorityFee || 0
+        );
+        updates.platformCommissionRate = payout.commissionRate;
+        updates.platformCommissionAmount = payout.commission;
+        updates.driverEarningsAmount = payout.netAmount;
+      }
     } else if (status === 'cancelled') {
       updates.cancelledAt = new Date().toISOString();
     }
@@ -355,7 +380,7 @@ export class FirebaseDriverService {
   static async getDriverEarnings(driverId: string, limitCount = 50): Promise<DriverEarnings[]> {
     const { data, error } = await supabase
       .from('rides')
-      .select('id, fare, bookingFee, serviceFee, zoneFee, waitingCharge, cancellationFee, status, completedAt, cancelledAt, createdAt')
+      .select('id, fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee, cancellationFee, status, completedAt, cancelledAt, createdAt, platformCommissionAmount, driverEarningsAmount')
       .eq('driverId', driverId)
       .in('status', ['completed', 'cancelled'])
       .order('createdAt', { ascending: false })
@@ -370,9 +395,17 @@ export class FirebaseDriverService {
       .map((ride: any) => {
         const isCancelled = ride.status === 'cancelled';
         const amount = isCancelled ? (ride.cancellationFee || 0) : (ride.fare || 0);
-        const { commission, netAmount } = isCancelled
-          ? calculateDriverPayout(amount)
-          : calculateDriverPayout(amount, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0);
+        // Prefer the commission snapshotted at settlement time (see
+        // updateRideStatus) so a later PLATFORM_COMMISSION_RATE change never
+        // rewrites a historical trip's numbers. Only legacy rows from before
+        // that snapshot existed fall back to a live recalculation.
+        const hasSnapshot = ride.platformCommissionAmount != null && ride.driverEarningsAmount != null;
+        const payout = hasSnapshot
+          ? { commission: ride.platformCommissionAmount, netAmount: ride.driverEarningsAmount }
+          : isCancelled
+            ? calculateDriverPayout(amount)
+            : calculateDriverPayout(amount, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0, ride.priorityFee || 0);
+        const { commission, netAmount } = payout;
         return {
           id: ride.id,
           driverId,
@@ -393,7 +426,7 @@ export class FirebaseDriverService {
     const [ridesResult, assignedResult, declinedResult, sessionsResult] = await Promise.all([
       supabase
         .from('rides')
-        .select('fare, bookingFee, serviceFee, zoneFee, waitingCharge, cancellationFee, completedAt, cancelledAt, driverRating, status')
+        .select('fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee, cancellationFee, completedAt, cancelledAt, driverRating, status, platformCommissionAmount, driverEarningsAmount')
         .eq('driverId', driverId)
         .in('status', ['completed', 'cancelled']),
       supabase
@@ -422,13 +455,19 @@ export class FirebaseDriverService {
     let todayEarnings = 0, weekEarnings = 0, monthEarnings = 0;
 
     for (const ride of ridesResult.data) {
+      // Prefer the commission snapshotted at settlement time (see
+      // updateRideStatus) so a later PLATFORM_COMMISSION_RATE change never
+      // rewrites a historical trip's numbers. Only legacy rows from before
+      // that snapshot existed fall back to a live recalculation.
+      const hasSnapshot = (ride as any).platformCommissionAmount != null && (ride as any).driverEarningsAmount != null;
+
       if (ride.status === 'cancelled') {
         cancelledCount++;
         // A cancellation fee (if any) still pays the driver via the normal
-        // 80/20 split — it just isn't a "completed ride" for the trip count.
+        // commission split — it just isn't a "completed ride" for the trip count.
         const cancellationFee = (ride as any).cancellationFee || 0;
         if (cancellationFee > 0) {
-          const amount = calculateDriverPayout(cancellationFee).netAmount;
+          const amount = hasSnapshot ? (ride as any).driverEarningsAmount : calculateDriverPayout(cancellationFee).netAmount;
           const cancelledAt = (ride as any).cancelledAt ? new Date((ride as any).cancelledAt) : null;
           totalEarnings += amount;
           if (cancelledAt) {
@@ -440,7 +479,9 @@ export class FirebaseDriverService {
         continue;
       }
       completedCount++;
-      const amount = calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0).netAmount;
+      const amount = hasSnapshot
+        ? (ride as any).driverEarningsAmount
+        : calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0, ride.priorityFee || 0).netAmount;
       const completedAt = ride.completedAt ? new Date(ride.completedAt) : null;
       const rating = ride.driverRating || 0;
 

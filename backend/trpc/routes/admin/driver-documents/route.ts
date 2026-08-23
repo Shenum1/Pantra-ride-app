@@ -11,7 +11,7 @@ export default adminProcedure
 
     let query = db
       .from("driver_documents")
-      .select("id, driverId, type, documentUrl, status, uploadedAt, reviewedAt, rejectionReason")
+      .select("id, driverId, type, documentUrl, status, uploadedAt, reviewedAt, rejectionReason, expiryDate")
       .order("uploadedAt", { ascending: false })
       .limit(100);
 
@@ -52,6 +52,7 @@ export default adminProcedure
           uploadedAt: doc.uploadedAt,
           reviewedAt: doc.reviewedAt,
           rejectionReason: doc.rejectionReason,
+          expiryDate: doc.expiryDate,
           signedUrl,
         };
       })

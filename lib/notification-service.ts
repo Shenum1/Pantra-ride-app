@@ -1,7 +1,10 @@
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
+
+const DRIVER_NOTIFICATIONS_PREF_KEY = 'driver_notifications_enabled';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -44,6 +47,30 @@ async function getExpoPushToken(): Promise<string | null> {
 }
 
 export class NotificationService {
+  // Wraps the module-private permission flow so callers (e.g. a settings
+  // toggle) can request permission explicitly, outside of push-token registration.
+  static async requestPermissions(): Promise<boolean> {
+    return requestPermissions();
+  }
+
+  // Local, per-device preference — there is no server-side notification-preference
+  // table for drivers today. Gates whether this device raises local alerts for
+  // driver-facing events (see notifyNewRideRequest's call site in useDriverStore);
+  // it does not affect registerDriverPushToken, which the OS-level permission
+  // check above already gates.
+  static async getDriverNotificationsEnabled(): Promise<boolean> {
+    try {
+      const stored = await AsyncStorage.getItem(DRIVER_NOTIFICATIONS_PREF_KEY);
+      return stored === null ? true : stored === 'true';
+    } catch {
+      return true;
+    }
+  }
+
+  static async setDriverNotificationsEnabled(enabled: boolean): Promise<void> {
+    await AsyncStorage.setItem(DRIVER_NOTIFICATIONS_PREF_KEY, String(enabled));
+  }
+
   static async registerRiderPushToken(userId: string): Promise<void> {
     if (Platform.OS === 'web') return;
     const granted = await requestPermissions();

@@ -3,6 +3,7 @@ import { Home, MapPin, Wallet, User } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { AuthGuard } from "@/components/AuthGuard";
+import { DriverVerificationGate } from "@/components/DriverVerificationGate";
 import { useTheme } from "@/hooks/useThemeStore";
 
 export default function DriverTabLayout() {
@@ -10,6 +11,7 @@ export default function DriverTabLayout() {
 
   return (
     <AuthGuard requireDriver>
+    <DriverVerificationGate>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -88,6 +90,7 @@ export default function DriverTabLayout() {
         }}
       />
     </Tabs>
+    </DriverVerificationGate>
     </AuthGuard>
   );
 }

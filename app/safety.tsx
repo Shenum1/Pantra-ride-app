@@ -1,5 +1,5 @@
 import { Shield, Phone, Users, AlertTriangle, MapPin, Clock } from "lucide-react-native";
-import React, { useState } from "react";
+import React from "react";
 import {
   Pressable,
   ScrollView,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
 import { Stack } from "expo-router";
+import { useRiderPreferences } from '@/hooks/useRiderPreferences';
 
 interface SafetyFeatureProps {
   icon: React.ReactElement;
@@ -59,9 +60,7 @@ const SafetyFeature: React.FC<SafetyFeatureProps> = ({
 export default function SafetyScreen() {
   const { colors } = useTheme();
   
-  const [shareTrip, setShareTrip] = useState(true);
-  const [emergencyContacts, setEmergencyContacts] = useState(true);
-  const [rideCheck, setRideCheck] = useState(false);
+  const { preferences, updatePreference } = useRiderPreferences();
   
   const handleEmergencyCall = () => {
     Alert.alert(
@@ -119,24 +118,24 @@ export default function SafetyScreen() {
               icon={<MapPin size={24} color={colors.primary} />}
               title="Share Trip Details"
               description="Let trusted contacts follow your ride in real-time"
-              isEnabled={shareTrip}
-              onToggle={setShareTrip}
+              isEnabled={preferences.shareTrip}
+              onToggle={(value) => void updatePreference('shareTrip', value)}
             />
             
             <SafetyFeature
               icon={<Users size={24} color={colors.primary} />}
               title="Emergency Contacts"
               description="Quick access to your trusted contacts"
-              isEnabled={emergencyContacts}
-              onToggle={setEmergencyContacts}
+              isEnabled={preferences.emergencyContactsEnabled}
+              onToggle={(value) => void updatePreference('emergencyContactsEnabled', value)}
             />
             
             <SafetyFeature
               icon={<Clock size={24} color={colors.primary} />}
               title="RideCheck"
               description="Get notified if your trip is taking longer than expected"
-              isEnabled={rideCheck}
-              onToggle={setRideCheck}
+              isEnabled={preferences.rideCheck}
+              onToggle={(value) => void updatePreference('rideCheck', value)}
             />
             
             <SafetyFeature

@@ -1,4 +1,5 @@
 import { adminProcedure } from "../../../create-context";
+import { calculateDriverPayout } from "@/lib/fare-calculator";
 
 interface RecentActivityItem {
   id: string;
@@ -30,7 +31,10 @@ export default adminProcedure.query(async ({ ctx }) => {
     db.from("users").select("uid", { count: "exact", head: true }).eq("role", "driver"),
     db.from("drivers").select("id", { count: "exact", head: true }).eq("isOnline", true),
     db.from("rides").select("id", { count: "exact", head: true }).gte("createdAt", startOfToday.toISOString()),
-    db.from("rides").select("fare").eq("status", "completed"),
+    db
+      .from("rides")
+      .select("fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee, platformCommissionAmount, driverEarningsAmount")
+      .eq("status", "completed"),
     db.from("users").select("uid, displayName, email, role, createdAt").order("createdAt", { ascending: false }).limit(5),
     db.from("drivers").select("id, name, email, createdAt").order("createdAt", { ascending: false }).limit(5),
     db.from("rides").select("id, status, fare, createdAt").order("createdAt", { ascending: false }).limit(5),
@@ -40,6 +44,31 @@ export default adminProcedure.query(async ({ ctx }) => {
     (sum: number, row: { fare: number | null }) => sum + (row.fare ?? 0),
     0
   );
+
+  // Prefer the commission snapshotted per-ride at completion time (see
+  // FirebaseDriverService.updateRideStatus) so the admin total reflects the
+  // rate actually applied to each ride, not today's PLATFORM_COMMISSION_RATE
+  // retroactively applied to every ride ever completed. Only rows that
+  // predate the snapshot fall back to a live recalculation.
+  let totalPlatformCommission = 0;
+  let totalDriverEarnings = 0;
+  for (const row of completedFaresRes.data ?? []) {
+    if (row.platformCommissionAmount != null && row.driverEarningsAmount != null) {
+      totalPlatformCommission += row.platformCommissionAmount;
+      totalDriverEarnings += row.driverEarningsAmount;
+    } else {
+      const payout = calculateDriverPayout(
+        row.fare ?? 0,
+        row.bookingFee ?? 0,
+        row.serviceFee ?? 0,
+        row.zoneFee ?? 0,
+        row.waitingCharge ?? 0,
+        row.priorityFee ?? 0
+      );
+      totalPlatformCommission += payout.commission;
+      totalDriverEarnings += payout.netAmount;
+    }
+  }
 
   const recentActivity: RecentActivityItem[] = [];
 
@@ -82,6 +111,8 @@ export default adminProcedure.query(async ({ ctx }) => {
     activeDrivers: activeDriversRes.count ?? 0,
     ridesToday: ridesTodayRes.count ?? 0,
     totalRevenue,
+    totalPlatformCommission,
+    totalDriverEarnings,
     recentActivity: recentActivity.slice(0, 5),
   };
 });

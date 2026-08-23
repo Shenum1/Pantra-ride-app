@@ -110,6 +110,9 @@ export interface DirectionsResult {
   duration: number;
   coordinates: { latitude: number; longitude: number }[];
   polyline: string;
+  // true when this came from the haversine fallback (getEstimatedDirections), not the real
+  // Directions API — callers must not present it as a live routed distance/fare.
+  isEstimate: boolean;
 }
 
 export interface AutocompleteResult {
@@ -143,6 +146,13 @@ function buildNigeriaQuery(query: string): string {
   return trimmed.toLowerCase().includes('nigeria') ? trimmed : `${trimmed}, Nigeria`;
 }
 
+// The app only operates in Nigeria, so every displayed address ending in
+// ", Nigeria" (from Google's formatted_address/secondary_text) is redundant
+// clutter on every single result row — strip it for display.
+function stripNigeriaSuffix(address: string): string {
+  return address.replace(/,?\s*Nigeria\s*$/i, '').trim();
+}
+
 function dedupeByAddress<T extends { name: string; address: string }>(results: T[]): T[] {
   const seen = new Set<string>();
   return results.filter((result) => {
@@ -164,7 +174,7 @@ function normalizeGooglePlace(place: GooglePlaceResult, index: number): PlaceRes
   return {
     id: place.place_id ?? `google-place-${index}`,
     name: place.name?.trim() || place.formatted_address?.split(',')[0]?.trim() || 'Unknown place',
-    address: place.formatted_address?.trim() || 'Nigeria',
+    address: place.formatted_address ? stripNigeriaSuffix(place.formatted_address) : '',
     location,
   };
 }
@@ -276,10 +286,10 @@ export class GoogleMapsService {
   static async autocomplete(input: string, location?: Location): Promise<AutocompleteResult[]> {
     const query = input.trim();
     if (query.length < 2) return [];
-    if (!GOOGLE_MAPS_API_KEY) return this.getMockPlaces(query).map(this.placeToAutocomplete);
+    if (!GOOGLE_MAPS_API_KEY) return [];
 
     try {
-      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=100000&strictbounds=false` : '&location=9.0765,7.3986&radius=900000&strictbounds=false';
+      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=50000&strictbounds=false` : '&location=9.0765,7.3986&radius=50000&strictbounds=false';
       const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ng&language=en${loc}&key=${GOOGLE_MAPS_API_KEY}`;
       const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
@@ -296,24 +306,24 @@ export class GoogleMapsService {
           placeId: prediction.place_id,
           location: place.location,
           name: prediction.structured_formatting?.main_text ?? place.name,
-          address: prediction.structured_formatting?.secondary_text ?? place.address,
+          address: stripNigeriaSuffix(prediction.structured_formatting?.secondary_text ?? place.address ?? ''),
         };
       }));
       const results = details.filter((item): item is AutocompleteResult => item !== null);
       return results.length > 0 ? dedupeByAddress(results) : this.searchPlaces(query, location).then((places) => places.map(this.placeToAutocomplete));
     } catch (error) {
       console.error('Google autocomplete error:', error);
-      return this.getMockPlaces(query).map(this.placeToAutocomplete);
+      return [];
     }
   }
 
   static async searchPlaces(query: string, location?: Location): Promise<PlaceResult[]> {
     const trimmed = query.trim();
     if (trimmed.length < 2) return [];
-    if (!GOOGLE_MAPS_API_KEY) return this.getMockPlaces(trimmed);
+    if (!GOOGLE_MAPS_API_KEY) return [];
 
     try {
-      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=100000` : '';
+      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=50000` : '&location=9.0765,7.3986&radius=50000';
       const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(buildNigeriaQuery(trimmed))}${loc}&region=ng&language=en&key=${GOOGLE_MAPS_API_KEY}`;
       const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
@@ -322,10 +332,10 @@ export class GoogleMapsService {
       }
       const places: GooglePlaceResult[] = Array.isArray(data?.results) ? data.results : [];
       const normalized = places.map(normalizeGooglePlace).filter((item): item is PlaceResult => item !== null);
-      return normalized.length > 0 ? dedupeByAddress(normalized).slice(0, 12) : this.getMockPlaces(trimmed);
+      return dedupeByAddress(normalized).slice(0, 12);
     } catch (error) {
       console.error('Google place search error:', error);
-      return this.getMockPlaces(trimmed);
+      return [];
     }
   }
 
@@ -362,7 +372,7 @@ export class GoogleMapsService {
   }
 
   static async getPlaceDetails(placeId: string): Promise<PlaceResult | null> {
-    if (!GOOGLE_MAPS_API_KEY) return this.getMockPlaces(placeId)[0] ?? null;
+    if (!GOOGLE_MAPS_API_KEY) return null;
 
     try {
       const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=place_id,name,formatted_address,geometry&key=${GOOGLE_MAPS_API_KEY}`;
@@ -398,6 +408,7 @@ export class GoogleMapsService {
         duration: typeof leg.duration?.value === 'number' ? leg.duration.value : 0,
         coordinates: this.decodePolyline(polyline),
         polyline,
+        isEstimate: false,
       };
     } catch (error) {
       console.error('Google directions error:', error);
@@ -410,7 +421,8 @@ export class GoogleMapsService {
     try {
       const response = await fetchGoogleMaps(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.latitude},${location.longitude}&region=ng&key=${GOOGLE_MAPS_API_KEY}`);
       const data = await response.json();
-      return data?.results?.[0]?.formatted_address ?? 'Current location';
+      const formatted = data?.results?.[0]?.formatted_address;
+      return formatted ? stripNigeriaSuffix(formatted) : 'Current location';
     } catch {
       return 'Current location';
     }
@@ -447,27 +459,13 @@ export class GoogleMapsService {
     ];
   }
 
-  static getMockPlaces(query: string): PlaceResult[] {
-    const lowerQuery = query.toLowerCase();
-    const places: PlaceResult[] = [
-      { id: 'mock-kubwa', name: 'Kubwa', address: 'Kubwa, Abuja, Nigeria', location: normalizeLocation(9.1538, 7.3220) },
-      { id: 'mock-shoprite-jabi', name: 'Jabi Lake Mall Shoprite', address: 'Bala Sokoto Way, Jabi, Abuja, Nigeria', location: normalizeLocation(9.0835, 7.4514) },
-      { id: 'mock-transcorp', name: 'Transcorp Hilton Abuja', address: '1 Aguiyi Ironsi Street, Maitama, Abuja, Nigeria', location: normalizeLocation(9.0762, 7.4967) },
-      { id: 'mock-shoprite-ikeja', name: 'Shoprite Ikeja City Mall', address: 'Obafemi Awolowo Way, Ikeja, Lagos, Nigeria', location: normalizeLocation(6.6018, 3.3515) },
-      { id: 'mock-eko', name: 'Eko Hotels & Suites', address: 'Victoria Island, Lagos, Nigeria', location: normalizeLocation(6.4308, 3.4219) },
-      { id: 'mock-airport-abuja', name: 'Nnamdi Azikiwe International Airport', address: 'Airport Road, Abuja, Nigeria', location: normalizeLocation(9.0068, 7.2632) },
-    ];
-    const filtered = places.filter((place) => `${place.name} ${place.address}`.toLowerCase().includes(lowerQuery));
-    return filtered.length > 0 ? filtered : places;
-  }
-
   private static placeToAutocomplete(place: PlaceResult): AutocompleteResult {
     return { id: place.id, description: place.address, placeId: place.id, location: place.location, name: place.name, address: place.address };
   }
 
   private static getEstimatedDirections(origin: Location, destination: Location): DirectionsResult {
     const distance = this.calculateDistance(origin, destination);
-    return { distance, duration: (distance / 1000 / 35) * 3600, coordinates: [origin, destination], polyline: '' };
+    return { distance, duration: (distance / 1000 / 35) * 3600, coordinates: [origin, destination], polyline: '', isEstimate: true };
   }
 
   private static calculateDistance(origin: Location, destination: Location): number {

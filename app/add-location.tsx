@@ -7,6 +7,7 @@ import Colors from '@/constants/colors';
 import { useSavedLocations } from '@/hooks/useSavedLocationsStore';
 import Button from '@/components/Button';
 import { SavedLocation } from '@/types';
+import { GoogleMapsService } from '@/lib/google-maps-service';
 
 export default function AddLocationScreen() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function AddLocationScreen() {
     }
   }, [params.id, params.edit, savedLocations]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!address.trim()) {
       Alert.alert('Error', 'Please enter an address');
       return;
@@ -39,12 +40,22 @@ export default function AddLocationScreen() {
     setIsSubmitting(true);
 
     try {
+      const trimmedAddress = address.trim();
+      const geocoded = await GoogleMapsService.searchPlaces(trimmedAddress);
+      const match = geocoded[0];
+
+      if (!match) {
+        Alert.alert('Error', "Couldn't find that address, try a more specific one");
+        setIsSubmitting(false);
+        return;
+      }
+
       const locationData: Omit<SavedLocation, 'id'> = {
         type: locationType === 'custom' ? 'favorite' : (locationType as 'home' | 'work' | 'favorite'),
         name: locationName.trim() || getDefaultName(locationType),
-        address: address.trim(),
-        latitude: 37.7749, // In a real app, these would come from geocoding the address
-        longitude: -122.4194,
+        address: trimmedAddress,
+        latitude: match.location.latitude,
+        longitude: match.location.longitude,
       };
 
       if (isEditing && params.id) {
@@ -179,10 +190,6 @@ export default function AddLocationScreen() {
             testID="address-input"
           />
         </View>
-
-        <Text style={styles.note}>
-          Note: In a real app, this would include address autocomplete and map selection
-        </Text>
       </ScrollView>
 
       <View style={styles.buttonContainer}>
@@ -274,12 +281,6 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     minHeight: 48,
-  },
-  note: {
-    fontSize: 14,
-    fontStyle: 'italic',
-    color: Colors.light.gray,
-    marginTop: 8,
   },
   buttonContainer: {
     padding: 16,

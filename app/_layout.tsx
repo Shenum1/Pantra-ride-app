@@ -17,6 +17,7 @@ import { PointsProvider } from "@/hooks/usePointsStore";
 import { RatingsProvider } from "@/hooks/useRatingsStore";
 import { DriverStoreProvider } from "@/hooks/useDriverStore";
 import { DriverAuthProvider, useDriverAuth } from "@/hooks/useDriverAuthStore";
+import { DriverVerificationProvider } from "@/hooks/useDriverVerification";
 import { AdminAuthProvider } from "@/hooks/useAdminAuthStore";
 import { ThemeProvider } from "@/hooks/useThemeStore";
 import { WeatherProvider } from "@/hooks/useWeatherStore";
@@ -60,6 +61,7 @@ function RootLayoutNav() {
         <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="driver-login" options={{ headerShown: false }} />
         <Stack.Screen name="driver-signup" options={{ headerShown: false }} />
+        <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(driver-tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="search" options={{ title: "Set destination" }} />
@@ -81,6 +83,8 @@ function RootLayoutNav() {
         <Stack.Screen name="driver-goals" options={{ headerShown: false }} />
         <Stack.Screen name="driver-trip-history" options={{ headerShown: false }} />
         <Stack.Screen name="driver-documents" options={{ headerShown: false }} />
+        <Stack.Screen name="driver-contact-info" options={{ title: "Contact & Information" }} />
+        <Stack.Screen name="driver-privacy-security" options={{ title: "Privacy & Security" }} />
         <Stack.Screen name="personal-info" options={{ title: "Personal Info" }} />
         <Stack.Screen name="family-profile" options={{ title: "Family Profile" }} />
         <Stack.Screen name="safety" options={{ title: "Safety" }} />
@@ -135,6 +139,7 @@ export default function RootLayout() {
               <ThemeProvider>
                 <AuthProvider>
                 <DriverAuthProvider>
+                <DriverVerificationProvider>
                 <PushTokenRegistrar />
                 <AdminAuthProvider>
                   <PaymentProvider>
@@ -159,6 +164,7 @@ export default function RootLayout() {
                   </WalletProvider>
                 </PaymentProvider>
                 </AdminAuthProvider>
+                </DriverVerificationProvider>
                 </DriverAuthProvider>
                 </AuthProvider>
               </ThemeProvider>

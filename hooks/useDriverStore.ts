@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, Alert } from 'react-native';
 import * as ExpoLocation from 'expo-location';
 import createContextHook from '@nkzw/create-context-hook';
 import { DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
 import { NotificationService } from '@/lib/notification-service';
+import { trpcClient } from '@/lib/trpc';
 import { useDriverAuth } from './useDriverAuthStore';
 
 export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
@@ -87,11 +88,14 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
             setRideRequests(requests);
 
             newRequests.forEach((request) => {
-              void NotificationService.notifyNewRideRequest(
-                activeDriverId,
-                request.pickupAddress ?? 'a nearby pickup point',
-                request.price ?? 0
-              );
+              void NotificationService.getDriverNotificationsEnabled().then((enabled) => {
+                if (!enabled) return;
+                void NotificationService.notifyNewRideRequest(
+                  activeDriverId,
+                  request.pickupAddress ?? 'a nearby pickup point',
+                  request.price ?? 0
+                );
+              });
             });
           }
         }
@@ -166,8 +170,17 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
         knownRequestIdsRef.current = new Set(requests.map((r) => r.id).filter((id): id is string => !!id));
         setRideRequests(requests);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error toggling online status:', error);
+      // The actual security boundary is the enforce_driver_verified_before_online
+      // Postgres trigger (see database/schemas/supabase-schema-driver-verification-v2.sql)
+      // — this just turns its raw error into something readable. The dashboard UI
+      // (app/(driver-tabs)/dashboard.tsx) already blocks this path for a known-unverified
+      // driver, so reaching the trigger here means the driver's status changed
+      // server-side since the screen last refreshed.
+      if (typeof error?.message === 'string' && error.message.includes('must be VERIFIED')) {
+        Alert.alert('Verification Required', 'You must be a fully verified driver before going online.');
+      }
       return;
     }
 
@@ -192,12 +205,11 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       const ride = rideRequests.find(r => r.id === rideId);
       if (!ride) return;
 
-      const acceptedOfferedFare = ride.negotiationStatus === 'pending' ? ride.offeredFare : undefined;
-      await FirebaseDriverService.acceptRide(rideId, driverProfile.id, acceptedOfferedFare);
+      await FirebaseDriverService.acceptRide(rideId, driverProfile.id);
       setCurrentRide({
         ...ride,
         status: 'confirmed',
-        price: acceptedOfferedFare ?? ride.price,
+        price: ride.price,
       });
       setRideRequests(prev => prev.filter(r => r.id !== rideId));
       
@@ -225,6 +237,19 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     try {
       if (!currentRide || !driverProfile) return;
 
+      if (status === 'completed') {
+        // Must land before the status write below — the rides_settle_guard
+        // DB trigger requires paymentStatus='paid' in the SAME statement
+        // that sets status='completed', so payment has to be confirmed
+        // first. For a wallet-method ride this actually debits the rider's
+        // wallet (see backend/trpc/routes/rides/confirm-payment/route.ts);
+        // cash/card rides are marked paid immediately, same as before.
+        const payment = await trpcClient.rides.confirmPayment.mutate({ rideId: currentRide.id! });
+        if (!payment.status) {
+          throw new Error(payment.message || 'Payment could not be confirmed for this ride.');
+        }
+      }
+
       await FirebaseDriverService.updateRideStatus(currentRide.id!, status, driverProfile.id);
 
       if (status === 'completed' || status === 'cancelled') {
@@ -244,6 +269,11 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       console.log('Ride status updated:', status);
     } catch (error) {
       console.error('Error updating ride status:', error);
+      // Re-throw so callers (e.g. handleCompleteTrip's own try/catch) know
+      // the update did NOT happen — in particular, a failed payment
+      // confirmation must stop the driver from navigating away as if the
+      // ride had completed and the rider/driver had been settled.
+      throw error;
     }
   }, [currentRide, driverProfile]);
 

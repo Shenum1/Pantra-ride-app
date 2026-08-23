@@ -13,11 +13,11 @@ import {
   MapPin,
   Navigation,
   Clock,
-  DollarSign,
   User,
   Phone,
   MessageCircle,
   Star,
+  Zap,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import Map from '@/components/Map';
@@ -137,6 +137,12 @@ export default function DriverTrips() {
 
   const RideCard = ({ ride }: { ride: any }) => (
     <View style={[styles.rideCard, { borderLeftColor: getTypeColor(ride.rideType || 'standard') }]}>
+      {ride.isPriority && (
+        <View style={styles.priorityBadge}>
+          <Zap size={12} color="#FFFFFF" fill="#FFFFFF" />
+          <Text style={styles.priorityBadgeText}>Priority</Text>
+        </View>
+      )}
       <View style={styles.rideHeader}>
         <View style={styles.passengerInfo}>
           <Text style={styles.passengerName}>{ride.passenger?.name || 'Passenger'}</Text>
@@ -152,15 +158,6 @@ export default function DriverTrips() {
           )}
         </View>
       </View>
-
-      {ride.negotiationStatus === 'pending' && ride.offeredFare != null && (
-        <View style={styles.offerBadge}>
-          <DollarSign size={14} color={Colors.light.primary} />
-          <Text style={styles.offerBadgeText}>
-            Rider offered ₦{ride.offeredFare.toFixed(0)} (metered ₦{(ride.price || 0).toFixed(0)})
-          </Text>
-        </View>
-      )}
 
       <View style={styles.routeInfo}>
         <View style={styles.locationRow}>
@@ -210,11 +207,7 @@ export default function DriverTrips() {
           style={styles.acceptButton}
           onPress={() => handleAcceptRide(ride.id!)}
         >
-          <Text style={styles.acceptText}>
-            {ride.negotiationStatus === 'pending' && ride.offeredFare != null
-              ? `Accept ₦${ride.offeredFare.toFixed(0)}`
-              : 'Accept'}
-          </Text>
+          <Text style={styles.acceptText}>Accept</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -376,6 +369,24 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  priorityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    backgroundColor: '#F59E0B',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 8,
+  },
+  priorityBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   rideHeader: {
     flexDirection: 'row',

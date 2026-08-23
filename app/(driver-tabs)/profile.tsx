@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,13 @@ import {
   SafeAreaView,
   Switch,
   Alert,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import {
   User,
   Star,
   Award,
-  Settings,
   Bell,
   Shield,
   CreditCard,
@@ -21,44 +22,33 @@ import {
   Phone,
   Mail,
   Camera,
-  Palette,
   Moon,
   Sun,
   LogOut,
   ChevronRight,
-  Trophy,
-  Target,
   FileCheck,
-  Check,
 } from 'lucide-react-native';
-import Colors from '@/constants/colors';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
-
-interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  icon: React.ReactNode;
-  earned: boolean;
-  progress: number;
-  total: number;
-  color: string;
-}
-
-interface Theme {
-  id: string;
-  name: string;
-  primary: string;
-  secondary: string;
-  background: string;
-}
+import { useTheme } from '@/hooks/useThemeStore';
+import { NotificationService } from '@/lib/notification-service';
 
 export default function DriverProfile() {
-  const { logout, driver } = useDriverAuth();
-  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const { logout, driver, updateProfileImage } = useDriverAuth();
+  const { colors, isDark, changeTheme } = useTheme();
   const [notifications, setNotifications] = useState<boolean>(true);
-  const [selectedTheme, setSelectedTheme] = useState<string>('default');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
+
+  useEffect(() => {
+    let active = true;
+    NotificationService.getDriverNotificationsEnabled().then((enabled) => {
+      if (active) setNotifications(enabled);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const totalTrips = driver?.totalRides ?? 0;
   const driverStats = {
@@ -70,174 +60,104 @@ export default function DriverProfile() {
       : 0,
   };
 
-  const achievements: Achievement[] = [
-    {
-      id: 'first-ride',
-      title: 'First Ride',
-      description: 'Complete your first ride',
-      icon: <Star size={20} color="#FFD700" />,
-      earned: totalTrips >= 1,
-      progress: Math.min(totalTrips, 1),
-      total: 1,
-      color: '#FFD700',
-    },
-    {
-      id: 'century-club',
-      title: 'Century Club',
-      description: 'Complete 100 rides',
-      icon: <Trophy size={20} color="#FF9800" />,
-      earned: totalTrips >= 100,
-      progress: Math.min(totalTrips, 100),
-      total: 100,
-      color: '#FF9800',
-    },
-    {
-      id: 'perfect-rating',
-      title: 'Highly Rated',
-      description: 'Maintain a 4.9+ rating across 50 rides',
-      icon: <Award size={20} color="#4CAF50" />,
-      earned: totalTrips >= 50 && (driverStats.rating ?? 0) >= 4.9,
-      progress: Math.min(totalTrips, 50),
-      total: 50,
-      color: '#4CAF50',
-    },
-    {
-      id: 'thousand-club',
-      title: 'Thousand Club',
-      description: 'Complete 1000 rides',
-      icon: <Target size={20} color="#FF5722" />,
-      earned: totalTrips >= 1000,
-      progress: Math.min(totalTrips, 1000),
-      total: 1000,
-      color: '#FF5722',
-    },
-  ];
-
-  const themes: Theme[] = [
-    {
-      id: 'default',
-      name: 'Ocean Blue',
-      primary: '#0066FF',
-      secondary: '#E6F0FF',
-      background: '#FFFFFF',
-    },
-    {
-      id: 'forest',
-      name: 'Forest Green',
-      primary: '#4CAF50',
-      secondary: '#E8F5E8',
-      background: '#FFFFFF',
-    },
-    {
-      id: 'sunset',
-      name: 'Sunset Orange',
-      primary: '#FF9800',
-      secondary: '#FFF3E0',
-      background: '#FFFFFF',
-    },
-    {
-      id: 'royal',
-      name: 'Royal Purple',
-      primary: '#9C27B0',
-      secondary: '#F3E5F5',
-      background: '#FFFFFF',
-    },
-  ];
-
   const ProfileStat = ({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) => (
-    <View style={styles.statItem}>
-      <View style={styles.statIcon}>
+    <View style={[styles.statItem, { backgroundColor: colors.card }]}>
+      <View style={[styles.statIcon, { backgroundColor: colors.primaryLight }]}>
         {icon}
       </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
     </View>
   );
 
-  const AchievementBadge = ({ achievement }: { achievement: Achievement }) => (
-    <View style={[
-      styles.achievementBadge,
-      !achievement.earned && styles.lockedBadge
-    ]}>
-      <View style={[
-        styles.badgeIcon,
-        { backgroundColor: achievement.earned ? achievement.color : Colors.light.lightGray }
-      ]}>
-        {achievement.icon}
-      </View>
-      <Text style={[
-        styles.badgeTitle,
-        !achievement.earned && styles.lockedText
-      ]} numberOfLines={2}>
-        {achievement.title}
-      </Text>
-      {!achievement.earned && (
-        <View style={styles.progressContainer}>
-          <View style={styles.progressBar}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { 
-                  width: `${(achievement.progress / achievement.total) * 100}%`,
-                  backgroundColor: achievement.color 
-                }
-              ]} 
-            />
-          </View>
-          <Text style={styles.progressText}>
-            {achievement.progress}/{achievement.total}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-
-  const ThemeOption = ({ theme }: { theme: Theme }) => (
-    <TouchableOpacity 
-      style={[
-        styles.themeOption,
-        selectedTheme === theme.id && styles.selectedTheme
-      ]}
-      onPress={() => setSelectedTheme(theme.id)}
-    >
-      <View style={styles.themePreview}>
-        <View style={[styles.themeColor, { backgroundColor: theme.primary }]} />
-        <View style={[styles.themeColor, { backgroundColor: theme.secondary }]} />
-        <View style={[styles.themeColor, { backgroundColor: theme.background }]} />
-      </View>
-      <Text style={styles.themeName}>{theme.name}</Text>
-      {selectedTheme === theme.id && (
-        <View style={styles.selectedIndicator}>
-          <Check size={14} color={Colors.light.white} />
-        </View>
-      )}
-    </TouchableOpacity>
-  );
-
-  const SettingsItem = ({ 
-    icon, 
-    title, 
-    subtitle, 
-    onPress, 
-    rightElement 
-  }: { 
-    icon: React.ReactNode; 
-    title: string; 
-    subtitle?: string; 
-    onPress?: () => void; 
-    rightElement?: React.ReactNode; 
+  const SettingsItem = ({
+    icon,
+    title,
+    subtitle,
+    onPress,
+    rightElement
+  }: {
+    icon: React.ReactNode;
+    title: string;
+    subtitle?: string;
+    onPress?: () => void;
+    rightElement?: React.ReactNode;
   }) => (
-    <TouchableOpacity style={styles.settingsItem} onPress={onPress}>
-      <View style={styles.settingsIcon}>
+    <TouchableOpacity style={[styles.settingsItem, { backgroundColor: colors.card }]} onPress={onPress}>
+      <View style={[styles.settingsIcon, { backgroundColor: colors.primaryLight }]}>
         {icon}
       </View>
       <View style={styles.settingsContent}>
-        <Text style={styles.settingsTitle}>{title}</Text>
-        {subtitle && <Text style={styles.settingsSubtitle}>{subtitle}</Text>}
+        <Text style={[styles.settingsTitle, { color: colors.text }]}>{title}</Text>
+        {subtitle && <Text style={[styles.settingsSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>}
       </View>
-      {rightElement || <ChevronRight size={20} color={Colors.light.textSecondary} />}
+      {rightElement || <ChevronRight size={20} color={colors.textSecondary} />}
     </TouchableOpacity>
   );
+
+  const handleToggleNotifications = useCallback(async (value: boolean) => {
+    if (value) {
+      const granted = await NotificationService.requestPermissions();
+      if (!granted) {
+        Alert.alert(
+          'Permission Required',
+          'Enable notifications for this app in your device settings to receive ride request alerts.'
+        );
+        await NotificationService.setDriverNotificationsEnabled(false);
+        setNotifications(false);
+        return;
+      }
+    }
+    setNotifications(value);
+    await NotificationService.setDriverNotificationsEnabled(value);
+  }, []);
+
+  const pickAndUploadAvatar = useCallback(async (source: 'camera' | 'library') => {
+    try {
+      const permission = source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          'Permission Required',
+          `Please allow access to your ${source === 'camera' ? 'camera' : 'photo library'} to update your profile photo.`
+        );
+        return;
+      }
+
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.8 })
+        : await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+
+      if (result.canceled || !result.assets[0]) return;
+
+      setIsUploadingAvatar(true);
+      await updateProfileImage(result.assets[0].uri);
+    } catch (error) {
+      console.error('Driver Profile: avatar upload error:', error);
+      Alert.alert('Error', 'Failed to update profile photo. Please try again.');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  }, [updateProfileImage]);
+
+  const handleChangeAvatar = useCallback(() => {
+    Alert.alert(
+      'Change Profile Photo',
+      'Choose an option',
+      [
+        { text: 'Take Photo', onPress: () => void pickAndUploadAvatar('camera') },
+        { text: 'Choose from Library', onPress: () => void pickAndUploadAvatar('library') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }, [pickAndUploadAvatar]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -262,44 +182,56 @@ export default function DriverProfile() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView 
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView
         style={styles.scrollView}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
         {/* Profile Header */}
-        <View style={styles.profileHeader}>
+        <View style={[styles.profileHeader, { backgroundColor: colors.card }]}>
           <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <User size={40} color={Colors.light.white} />
-            </View>
-            <TouchableOpacity style={styles.cameraButton}>
-              <Camera size={16} color={Colors.light.white} />
+            {driver?.profileImage ? (
+              <Image source={{ uri: driver.profileImage }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
+                <User size={40} color={colors.white} />
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.cameraButton, { backgroundColor: colors.success, borderColor: colors.card }]}
+              onPress={handleChangeAvatar}
+              disabled={isUploadingAvatar}
+            >
+              {isUploadingAvatar ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <Camera size={16} color={colors.white} />
+              )}
             </TouchableOpacity>
           </View>
-          <Text style={styles.driverName}>{driver?.name ?? 'Driver'}</Text>
-          <Text style={styles.driverInfo}>{driver?.vehicle ? `${driver.vehicle.make} ${driver.vehicle.model}` : 'Vehicle not set'}</Text>
+          <Text style={[styles.driverName, { color: colors.text }]}>{driver?.name ?? 'Driver'}</Text>
+          <Text style={[styles.driverInfo, { color: colors.textSecondary }]}>{driver?.vehicle ? `${driver.vehicle.make} ${driver.vehicle.model}` : 'Vehicle not set'}</Text>
           <View style={styles.ratingContainer}>
             <Star size={16} color="#FFD700" fill="#FFD700" />
-            <Text style={styles.rating}>{driverStats.rating != null ? driverStats.rating.toFixed(1) : 'New'}</Text>
-            <Text style={styles.ratingCount}>({driverStats.totalTrips} trips)</Text>
+            <Text style={[styles.rating, { color: colors.text }]}>{driverStats.rating != null ? driverStats.rating.toFixed(1) : 'New'}</Text>
+            <Text style={[styles.ratingCount, { color: colors.textSecondary }]}>({driverStats.totalTrips} trips)</Text>
           </View>
         </View>
 
         {/* Stats */}
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Your Stats</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Stats</Text>
           <View style={styles.statsGrid}>
             <ProfileStat
               label="Total Trips"
               value={driverStats.totalTrips.toLocaleString()}
-              icon={<MapPin size={20} color={Colors.light.primary} />}
+              icon={<MapPin size={20} color={colors.primary} />}
             />
             <ProfileStat
               label="Total Earned"
               value={`₦${driverStats.totalEarnings.toLocaleString()}`}
-              icon={<CreditCard size={20} color={Colors.light.success} />}
+              icon={<CreditCard size={20} color={colors.success} />}
             />
             <ProfileStat
               label="Rating"
@@ -309,111 +241,79 @@ export default function DriverProfile() {
             <ProfileStat
               label="Years Active"
               value={driverStats.yearsActive.toString()}
-              icon={<Award size={20} color={Colors.light.primary} />}
+              icon={<Award size={20} color={colors.primary} />}
             />
           </View>
         </View>
 
-        {/* Achievements */}
-        <View style={styles.achievementsSection}>
-          <Text style={styles.sectionTitle}>Achievements</Text>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.achievementsContainer}
-          >
-            {achievements.map((achievement) => (
-              <AchievementBadge key={achievement.id} achievement={achievement} />
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Theme Selection */}
-        <View style={styles.themesSection}>
-          <Text style={styles.sectionTitle}>Choose Theme</Text>
-          <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.themesContainer}
-          >
-            {themes.map((theme) => (
-              <ThemeOption key={theme.id} theme={theme} />
-            ))}
-          </ScrollView>
-        </View>
-
         {/* Settings */}
         <View style={styles.settingsSection}>
-          <Text style={styles.sectionTitle}>Settings</Text>
-          
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Settings</Text>
+
           <SettingsItem
-            icon={<Bell size={20} color={Colors.light.primary} />}
+            icon={<Bell size={20} color={colors.primary} />}
             title="Notifications"
             subtitle="Ride requests, messages, and updates"
             rightElement={
               <Switch
                 value={notifications}
-                onValueChange={setNotifications}
-                trackColor={{ false: Colors.light.lightGray, true: Colors.light.primaryLight }}
-                thumbColor={notifications ? Colors.light.primary : Colors.light.gray}
+                onValueChange={(value) => void handleToggleNotifications(value)}
+                trackColor={{ false: colors.lightGray, true: colors.primaryLight }}
+                thumbColor={notifications ? colors.primary : colors.gray}
               />
             }
           />
-          
+
           <SettingsItem
-            icon={darkMode ? <Moon size={20} color={Colors.light.primary} /> : <Sun size={20} color={Colors.light.primary} />}
+            icon={isDark ? <Moon size={20} color={colors.primary} /> : <Sun size={20} color={colors.primary} />}
             title="Dark Mode"
             subtitle="Switch between light and dark themes"
             rightElement={
               <Switch
-                value={darkMode}
-                onValueChange={setDarkMode}
-                trackColor={{ false: Colors.light.lightGray, true: Colors.light.primaryLight }}
-                thumbColor={darkMode ? Colors.light.primary : Colors.light.gray}
+                value={isDark}
+                onValueChange={(value) => void changeTheme(value ? 'dark' : 'light')}
+                trackColor={{ false: colors.lightGray, true: colors.primaryLight }}
+                thumbColor={isDark ? colors.primary : colors.gray}
               />
             }
           />
-          
+
           <SettingsItem
-            icon={<Palette size={20} color={Colors.light.primary} />}
-            title="Appearance"
-            subtitle="Customize your app experience"
-            onPress={() => {}}
-          />
-          
-          <SettingsItem
-            icon={<Shield size={20} color={Colors.light.primary} />}
+            icon={<Shield size={20} color={colors.primary} />}
             title="Privacy & Security"
-            subtitle="Manage your privacy settings"
-            onPress={() => {}}
+            subtitle="Password and account protection"
+            onPress={() => router.push('/driver-privacy-security' as any)}
           />
 
           <SettingsItem
-            icon={<FileCheck size={20} color={Colors.light.primary} />}
+            icon={<FileCheck size={20} color={colors.primary} />}
             title="Document Verification"
-            subtitle={driver?.isVerified ? 'Verified' : 'Upload your documents for verification'}
-            onPress={() => router.push('/driver-documents' as any)}
+            subtitle={driver?.isVerified ? 'Verified' : 'Complete your driver verification'}
+            onPress={() => router.push('/driver-verification/personal-info' as any)}
           />
-          
+
           <SettingsItem
-            icon={<Phone size={20} color={Colors.light.primary} />}
+            icon={<Phone size={20} color={colors.primary} />}
             title="Contact Info"
-            subtitle="Update your phone and email"
-            onPress={() => {}}
+            subtitle="View your phone and email"
+            onPress={() => router.push('/driver-contact-info' as any)}
           />
-          
+
           <SettingsItem
-            icon={<Mail size={20} color={Colors.light.primary} />}
+            icon={<Mail size={20} color={colors.primary} />}
             title="Support"
             subtitle="Get help and report issues"
-            onPress={() => {}}
+            onPress={() => router.push('/support')}
           />
         </View>
 
         {/* Logout */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <LogOut size={20} color={Colors.light.danger} />
-          <Text style={styles.logoutText}>Sign Out</Text>
+        <TouchableOpacity
+          style={[styles.logoutButton, { backgroundColor: colors.card, borderColor: colors.danger }]}
+          onPress={handleLogout}
+        >
+          <LogOut size={20} color={colors.danger} />
+          <Text style={[styles.logoutText, { color: colors.danger }]}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -423,7 +323,6 @@ export default function DriverProfile() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
   },
   scrollView: {
     flex: 1,
@@ -434,7 +333,6 @@ const styles = StyleSheet.create({
   profileHeader: {
     alignItems: 'center',
     paddingVertical: 30,
-    backgroundColor: Colors.light.white,
     marginBottom: 20,
   },
   avatarContainer: {
@@ -445,7 +343,6 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.light.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -456,21 +353,17 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Colors.light.success,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: Colors.light.white,
   },
   driverName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: Colors.light.text,
     marginBottom: 4,
   },
   driverInfo: {
     fontSize: 14,
-    color: Colors.light.textSecondary,
     marginBottom: 12,
   },
   ratingContainer: {
@@ -480,13 +373,11 @@ const styles = StyleSheet.create({
   rating: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.light.text,
     marginLeft: 4,
     marginRight: 4,
   },
   ratingCount: {
     fontSize: 14,
-    color: Colors.light.textSecondary,
   },
   statsSection: {
     marginBottom: 30,
@@ -494,7 +385,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: Colors.light.text,
     marginHorizontal: 20,
     marginBottom: 15,
   },
@@ -506,7 +396,6 @@ const styles = StyleSheet.create({
   },
   statItem: {
     width: '48%',
-    backgroundColor: Colors.light.white,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -521,7 +410,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.light.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
@@ -529,122 +417,11 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: Colors.light.text,
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
     textAlign: 'center',
-  },
-  achievementsSection: {
-    marginBottom: 30,
-  },
-  achievementsContainer: {
-    paddingHorizontal: 20,
-  },
-  achievementBadge: {
-    width: 100,
-    alignItems: 'center',
-    marginRight: 16,
-    padding: 12,
-    backgroundColor: Colors.light.white,
-    borderRadius: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  lockedBadge: {
-    opacity: 0.6,
-  },
-  badgeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  badgeTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.light.text,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  lockedText: {
-    color: Colors.light.textSecondary,
-  },
-  progressContainer: {
-    width: '100%',
-    marginTop: 4,
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: Colors.light.lightGray,
-    borderRadius: 2,
-    marginBottom: 4,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  progressText: {
-    fontSize: 10,
-    color: Colors.light.textSecondary,
-    textAlign: 'center',
-  },
-  themesSection: {
-    marginBottom: 30,
-  },
-  themesContainer: {
-    paddingHorizontal: 20,
-  },
-  themeOption: {
-    alignItems: 'center',
-    marginRight: 16,
-    padding: 12,
-    backgroundColor: Colors.light.white,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  selectedTheme: {
-    borderColor: Colors.light.primary,
-  },
-  themePreview: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  themeColor: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    marginHorizontal: 2,
-  },
-  themeName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.light.text,
-    textAlign: 'center',
-  },
-  selectedIndicator: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.light.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   settingsSection: {
     marginBottom: 30,
@@ -654,7 +431,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: Colors.light.white,
     marginHorizontal: 20,
     marginBottom: 8,
     borderRadius: 12,
@@ -668,7 +444,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.light.primaryLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -679,12 +454,10 @@ const styles = StyleSheet.create({
   settingsTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.light.text,
     marginBottom: 2,
   },
   settingsSubtitle: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
   },
   logoutButton: {
     flexDirection: 'row',
@@ -692,16 +465,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: Colors.light.white,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.light.danger,
     marginBottom: 20,
   },
   logoutText: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.light.danger,
     marginLeft: 8,
   },
 });

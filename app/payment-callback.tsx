@@ -6,17 +6,17 @@ import { CheckCircle, XCircle } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import Button from '@/components/Button';
 import { FlutterwaveService } from '@/lib/flutterwave-service';
-import { useWallet } from '@/hooks/useWalletStore';
+import { trpcClient } from '@/lib/trpc';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function PaymentCallbackScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { addMoneyAsync } = useWallet();
+  const queryClient = useQueryClient();
 
   const txRef = (params.tx_ref as string) || (params['tx-ref'] as string) || '';
   const purpose = (params.purpose as string) || '';
   const paymentMethodId = (params.payment_method_id as string) || 'flutterwave';
-  const amount = parseFloat((params.amount as string) || '0');
 
   const [status, setStatus] = useState<'verifying' | 'success' | 'failed'>('verifying');
   const [message, setMessage] = useState('Verifying your payment…');
@@ -38,8 +38,21 @@ export default function PaymentCallbackScreen() {
       const result = await FlutterwaveService.verifyTransaction(txRef);
 
       if (result.status === 'success') {
-        if (purpose === 'wallet_funding' && amount > 0) {
-          await addMoneyAsync({ amount, paymentMethodId });
+        if (purpose === 'wallet_funding') {
+          // The backend re-verifies txRef with Flutterwave itself and credits
+          // the provider's confirmed amount — see
+          // backend/trpc/routes/payments/wallet/credit/route.ts.
+          const credit = await trpcClient.payments.wallet.credit.mutate({
+            gateway: 'flutterwave',
+            reference: txRef,
+            paymentMethodId,
+          });
+          if (!credit.status) {
+            setStatus('failed');
+            setMessage(credit.message || 'Payment could not be verified. Please contact support if funds were deducted.');
+            return;
+          }
+          await queryClient.invalidateQueries({ queryKey: ['walletData'] });
           setMessage('Wallet funded successfully!');
         } else {
           setMessage('Payment successful!');

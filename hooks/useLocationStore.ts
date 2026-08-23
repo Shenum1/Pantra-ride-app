@@ -6,13 +6,6 @@ import { Alert, Platform } from "react-native";
 import { Location as LocationType } from "@/types";
 import { GoogleMapsService, DirectionsResult } from "@/lib/google-maps-service";
 
-const DEFAULT_LOCATION: LocationType = {
-  latitude: 9.0765,
-  longitude: 7.3986,
-  latitudeDelta: 0.01,
-  longitudeDelta: 0.01,
-};
-
 export const [LocationProvider, useLocation] = createContextHook(() => {
   const [userLocation, setUserLocation] = useState<LocationType | null>(null);
   const [pickupLocation, setPickupLocation] = useState<LocationType | null>(null);
@@ -21,101 +14,112 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
   const [dropoffAddress, setDropoffAddress] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
   const [routeInfo, setRouteInfo] = useState<DirectionsResult | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState<boolean>(false);
   const lastRouteKeyRef = useRef<string | null>(null);
   const activeRouteKeyRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        setIsLoading(true);
-        
-        if (Platform.OS === 'web') {
-          // Use web geolocation API
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              (position) => {
-                const newLocation = {
-                  latitude: position.coords.latitude,
-                  longitude: position.coords.longitude,
-                  latitudeDelta: 0.01,
-                  longitudeDelta: 0.01,
-                };
-                setUserLocation(newLocation);
-                setPickupLocation(newLocation);
-                setPickupAddress("Current Location");
-                setHasPermission(true);
-                setIsLoading(false);
-              },
-              (error) => {
-                console.log("Web geolocation error:", error);
-                setUserLocation(DEFAULT_LOCATION);
-                setPickupLocation(DEFAULT_LOCATION);
-                setPickupAddress("Abuja, Nigeria");
-                setHasPermission(false);
-                setIsLoading(false);
-              }
-            );
-          } else {
-            // Geolocation not supported
-            setUserLocation(DEFAULT_LOCATION);
-            setPickupLocation(DEFAULT_LOCATION);
-            setPickupAddress("Abuja, Nigeria");
-            setHasPermission(false);
-            setIsLoading(false);
-          }
-        } else {
-          // Use expo-location for mobile
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          setHasPermission(status === "granted");
+  const retryLocation = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setLocationError(null);
 
-          if (status === "granted") {
-            const location = await Location.getCurrentPositionAsync({});
-            const newLocation = {
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            };
-            setUserLocation(newLocation);
-            setPickupLocation(newLocation);
-            
-            // Get address for current location
-            const addresses = await Location.reverseGeocodeAsync({
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-            });
-            
-            if (addresses && addresses.length > 0) {
-              const address = addresses[0];
-              const formattedAddress = `${address.street || ""} ${address.name || ""}, ${address.city || ""}`;
-              setPickupAddress(formattedAddress);
+      if (Platform.OS === 'web') {
+        // Use web geolocation API
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const newLocation = {
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01,
+              };
+              setUserLocation(newLocation);
+              setPickupLocation(newLocation);
+              setPickupAddress("Current Location");
+              setHasPermission(true);
+              setLocationError(null);
+              setIsLoading(false);
+            },
+            (error) => {
+              console.log("Web geolocation error:", error);
+              setUserLocation(null);
+              setPickupLocation(null);
+              setPickupAddress("");
+              setHasPermission(false);
+              setLocationError("Location unavailable");
+              setIsLoading(false);
             }
-          } else {
-            // Use default location if permission not granted
-            setUserLocation(DEFAULT_LOCATION);
-            setPickupLocation(DEFAULT_LOCATION);
-            setPickupAddress("Abuja, Nigeria");
-            
-            Alert.alert(
-              "Location Permission Required",
-              "Please enable location services to use all features of this app.",
-              [{ text: "OK" }]
-            );
-          }
+          );
+        } else {
+          // Geolocation not supported
+          setUserLocation(null);
+          setPickupLocation(null);
+          setPickupAddress("");
+          setHasPermission(false);
+          setLocationError("Location services not supported");
           setIsLoading(false);
         }
-      } catch (error) {
-        console.error("Error getting location:", error);
-        setUserLocation(DEFAULT_LOCATION);
-        setPickupLocation(DEFAULT_LOCATION);
-        setPickupAddress("Abuja, Nigeria");
-        setHasPermission(false);
+      } else {
+        // Use expo-location for mobile
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        setHasPermission(status === "granted");
+
+        if (status === "granted") {
+          const location = await Location.getCurrentPositionAsync({});
+          const newLocation = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          };
+          setUserLocation(newLocation);
+          setPickupLocation(newLocation);
+          setLocationError(null);
+
+          // Get address for current location
+          const addresses = await Location.reverseGeocodeAsync({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          });
+
+          if (addresses && addresses.length > 0) {
+            const address = addresses[0];
+            const formattedAddress = `${address.street || ""} ${address.name || ""}, ${address.city || ""}`;
+            setPickupAddress(formattedAddress);
+          }
+        } else {
+          // No default location — surface the denial explicitly instead of
+          // silently booking off a fake coordinate.
+          setUserLocation(null);
+          setPickupLocation(null);
+          setPickupAddress("");
+          setLocationError("Location permission denied");
+
+          Alert.alert(
+            "Location Permission Required",
+            "Please enable location services to use all features of this app.",
+            [{ text: "OK" }]
+          );
+        }
         setIsLoading(false);
       }
-    })();
+    } catch (error) {
+      console.error("Error getting location:", error);
+      setUserLocation(null);
+      setPickupLocation(null);
+      setPickupAddress("");
+      setHasPermission(false);
+      setLocationError("Location unavailable");
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void retryLocation();
+  }, [retryLocation]);
 
   const getRecentLocations = useCallback(async () => {
     try {
@@ -211,6 +215,8 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
     dropoffAddress,
     isLoading,
     hasPermission,
+    locationError,
+    retryLocation,
     routeInfo,
     isCalculatingRoute,
     setUserLocation,
@@ -230,6 +236,8 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
     dropoffAddress,
     isLoading,
     hasPermission,
+    locationError,
+    retryLocation,
     routeInfo,
     isCalculatingRoute,
     saveRecentLocation,

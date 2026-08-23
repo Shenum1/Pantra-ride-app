@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   Platform,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,6 +30,7 @@ import { router } from 'expo-router';
 
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
+import { useDriverVerification } from '@/hooks/useDriverVerification';
 import { SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 const { width } = Dimensions.get('window');
@@ -44,6 +46,46 @@ const WEEKLY_GOAL_NGN = 1000;
 export default function DriverDashboard() {
   const { driver } = useDriverAuth();
   const { driverProfile, stats, earnings, isOnline, toggleOnlineStatus, isLoading } = useDriverStore();
+  const { isVerified, verificationStatus, status: verification } = useDriverVerification();
+
+  const VERIFICATION_BANNER_COPY: Record<string, { title: string; body: string }> = {
+    DOCUMENTS_SUBMITTED: {
+      title: 'Verification submitted',
+      body: 'Your details and documents are in — we\'ll notify you once they\'ve been reviewed.',
+    },
+    VERIFYING: {
+      title: 'Verification in progress',
+      body: 'Your documents are being checked. This usually only takes a short while.',
+    },
+    MANUAL_REVIEW: {
+      title: 'Under manual review',
+      body: 'An admin is reviewing your submission — you\'ll be notified once a decision is made.',
+    },
+    REJECTED: {
+      title: 'Verification rejected',
+      body: verification?.rejectionReason || 'Some details need to be fixed before you can be verified.',
+    },
+  };
+  const verificationBanner = !isVerified ? VERIFICATION_BANNER_COPY[verificationStatus] : undefined;
+
+  // Server-side triggers (see database/schemas/supabase-schema-driver-verification-v2.sql,
+  // enforce_driver_verified_before_online) are the actual security boundary — this is
+  // purely a UX shortcut so an unverified driver sees why the toggle won't work
+  // instead of a raw Postgres error.
+  const handleToggleOnline = () => {
+    if (!isVerified) {
+      Alert.alert(
+        'Verification Required',
+        verificationBanner?.body ?? 'Complete your driver verification before going online.',
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'View Status', onPress: () => router.push('/driver-verification/personal-info' as any) },
+        ]
+      );
+      return;
+    }
+    void toggleOnlineStatus();
+  };
   const player = useVideoPlayer(
     DRIVING_VIDEOS[Math.floor(Math.random() * DRIVING_VIDEOS.length)],
     (p) => { p.loop = true; p.muted = true; p.playbackRate = 0.7; p.play(); }
@@ -156,15 +198,33 @@ export default function DriverDashboard() {
             <Text style={styles.greeting}>{getGreeting()},</Text>
             <Text style={styles.driverName}>{driver?.name?.split(' ')[0] || 'Driver'}!</Text>
           </View>
-          <TouchableOpacity 
-            style={[styles.statusButton, { backgroundColor: isOnline ? '#10B981' : '#EF4444' }]}
-            onPress={toggleOnlineStatus}
+          <TouchableOpacity
+            style={[
+              styles.statusButton,
+              { backgroundColor: !isVerified ? '#9CA3AF' : isOnline ? '#10B981' : '#EF4444' },
+            ]}
+            onPress={handleToggleOnline}
             activeOpacity={0.8}
           >
             <View style={[styles.onlineIndicator, { opacity: isOnline ? 1 : 0.5 }]} />
-            <Text style={styles.statusText}>{isOnline ? 'Online' : 'Offline'}</Text>
+            <Text style={styles.statusText}>{!isVerified ? 'Unverified' : isOnline ? 'Online' : 'Offline'}</Text>
           </TouchableOpacity>
         </View>
+
+        {verificationBanner && (
+          <TouchableOpacity
+            style={styles.verificationBanner}
+            onPress={() => router.push('/driver-verification/personal-info' as any)}
+            activeOpacity={0.85}
+            testID="driver-verification-banner"
+          >
+            <Text style={styles.verificationBannerTitle}>{verificationBanner.title}</Text>
+            <Text style={styles.verificationBannerBody}>{verificationBanner.body}</Text>
+            <Text style={styles.verificationBannerCta}>
+              {verificationStatus === 'REJECTED' ? 'Fix and resubmit →' : 'View status →'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Today's Earnings Card */}
         <View style={styles.earningsCard}>
@@ -427,6 +487,32 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
+  verificationBanner: {
+    marginHorizontal: 20,
+    marginBottom: 15,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: 'rgba(245, 158, 11, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+  },
+  verificationBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  verificationBannerBody: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: 18,
+  },
+  verificationBannerCta: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#F59E0B',
+    marginTop: 8,
+  },
   statDivider: {
     width: 1,
     backgroundColor: 'rgba(255,255,255,0.2)',

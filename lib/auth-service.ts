@@ -8,6 +8,8 @@ export interface UserProfile {
   displayName: string;
   photoURL?: string;
   phoneNumber?: string;
+  dateOfBirth?: string;
+  address?: string;
   role: UserRole;
   rating: number | null;
   totalRatings: number;

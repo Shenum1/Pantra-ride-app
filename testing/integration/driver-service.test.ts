@@ -1,241 +1,242 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/firebase', () => ({ db: {} }));
-
-vi.mock('firebase/firestore', () => ({
-  collection: vi.fn().mockReturnValue({}),
-  doc: vi.fn().mockReturnValue({}),
-  getDoc: vi.fn(),
-  getDocs: vi.fn(),
-  setDoc: vi.fn().mockResolvedValue(undefined),
-  updateDoc: vi.fn().mockResolvedValue(undefined),
-  query: vi.fn().mockReturnValue({}),
-  where: vi.fn().mockReturnValue({}),
-  orderBy: vi.fn().mockReturnValue({}),
-  limit: vi.fn().mockReturnValue({}),
-  onSnapshot: vi.fn().mockReturnValue(() => {}),
-  serverTimestamp: vi.fn(() => new Date()),
+// FirebaseDriverService is Supabase-backed (the name predates the migration
+// off Firebase) — mock @/lib/supabase's client, not firebase/firestore. The
+// previous version of this file mocked firebase/firestore, an API surface
+// the service hasn't called in a long time, so none of its assertions were
+// actually exercising real code.
+const fromMock = vi.fn();
+vi.mock('@/lib/supabase', () => ({
+  supabase: { from: (...args: any[]) => fromMock(...args) },
 }));
 
-import * as firestore from 'firebase/firestore';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
+import { PLATFORM_COMMISSION_RATE, DRIVER_PAYOUT_RATE } from '@/lib/pricing-config';
 
-describe('WAT Agent 1 — Driver Service (TC-3.1 / TC-3.4)', () => {
+// Minimal chainable query-builder stand-in. Every one of select/eq/in/order/
+// limit/is/update/upsert/insert returns `this` so calls can be chained in any
+// order the real code uses; single()/maybeSingle() resolve with the
+// configured result, and the builder itself is awaitable (Supabase's actual
+// builders are thenables) for call sites that don't terminate with .single().
+function makeBuilder(result: { data?: any; error?: any }) {
+  const builder: any = {
+    select: vi.fn(() => builder),
+    eq: vi.fn(() => builder),
+    in: vi.fn(() => builder),
+    order: vi.fn(() => builder),
+    limit: vi.fn(() => builder),
+    is: vi.fn(() => builder),
+    update: vi.fn(() => builder),
+    upsert: vi.fn(() => builder),
+    insert: vi.fn(() => builder),
+    single: vi.fn(async () => result),
+    maybeSingle: vi.fn(async () => result),
+    then: (resolve: (v: typeof result) => any) => Promise.resolve(result).then(resolve),
+  };
+  return builder;
+}
+
+describe('FirebaseDriverService — Supabase-backed (10/90 commission)', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    fromMock.mockReset();
   });
 
-  // ── Pure function: distance ───────────────────────────────────────────
   describe('calculateDistance — pure utility', () => {
-    it('TC-3.P1 PASS — identical points return 0', () => {
+    it('identical points return 0', () => {
       expect(FirebaseDriverService.calculateDistance(9.0765, 7.3986, 9.0765, 7.3986)).toBe(0);
     });
 
-    it('TC-3.P2 PASS — long distance is correctly estimated', () => {
+    it('long distance is correctly estimated', () => {
       const dist = FirebaseDriverService.calculateDistance(9.0765, 7.3986, 6.5244, 3.3792);
       expect(dist).toBeGreaterThan(400);
       expect(dist).toBeLessThan(700);
     });
   });
 
-  // ── TC-3.2 Online/Offline toggle ──────────────────────────────────────
   describe('setDriverOnlineStatus', () => {
-    it('TC-3.2.1 PASS — sets driver online', async () => {
-      vi.mocked(firestore.updateDoc).mockResolvedValue(undefined);
+    it('sets isOnline via an update on the drivers table', async () => {
+      const builder = makeBuilder({ data: null, error: null });
+      fromMock.mockReturnValue(builder);
 
       await FirebaseDriverService.setDriverOnlineStatus('drv-001', true);
 
-      expect(firestore.updateDoc).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ isOnline: true }),
-      );
+      expect(fromMock).toHaveBeenCalledWith('drivers');
+      expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ isOnline: true }));
+      expect(builder.eq).toHaveBeenCalledWith('id', 'drv-001');
     });
 
-    it('TC-3.2.2 PASS — sets driver offline', async () => {
-      vi.mocked(firestore.updateDoc).mockResolvedValue(undefined);
+    it('throws when Supabase returns an error', async () => {
+      fromMock.mockReturnValue(makeBuilder({ data: null, error: { message: 'Permission denied' } }));
 
-      await FirebaseDriverService.setDriverOnlineStatus('drv-001', false);
-
-      expect(firestore.updateDoc).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ isOnline: false }),
-      );
-    });
-
-    it('TC-3.2.3 PASS — throws on Firestore error', async () => {
-      vi.mocked(firestore.updateDoc).mockRejectedValue(new Error('Permission denied'));
-
-      await expect(
-        FirebaseDriverService.setDriverOnlineStatus('drv-001', true),
-      ).rejects.toThrow('Permission denied');
+      await expect(FirebaseDriverService.setDriverOnlineStatus('drv-001', true)).rejects.toThrow('Permission denied');
     });
   });
 
-  // ── TC-3.2 Accept ride ────────────────────────────────────────────────
   describe('acceptRide', () => {
-    it('TC-3.2.4 PASS — updates ride with driverId and status=accepted', async () => {
-      vi.mocked(firestore.updateDoc).mockResolvedValue(undefined);
+    it('assigns driverId and sets status=accepted', async () => {
+      const rideBuilder = makeBuilder({ data: null, error: null });
+      const driverBuilder = makeBuilder({ data: null, error: null });
+      fromMock.mockImplementation((table: string) => (table === 'rides' ? rideBuilder : driverBuilder));
 
       await FirebaseDriverService.acceptRide('ride-001', 'drv-001');
 
-      expect(firestore.updateDoc).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ driverId: 'drv-001', status: 'accepted' }),
+      expect(rideBuilder.update).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 'drv-001', status: 'accepted' })
       );
-    });
-
-    it('TC-3.2.5 PASS — throws on Firestore error', async () => {
-      vi.mocked(firestore.updateDoc).mockRejectedValue(new Error('Write failed'));
-
-      await expect(
-        FirebaseDriverService.acceptRide('ride-001', 'drv-001'),
-      ).rejects.toThrow('Write failed');
     });
   });
 
-  // ── BUG-F-001: declineRide not implemented ────────────────────────────
   describe('declineRide', () => {
-    it('TC-3.2.6 DOCUMENT BUG — declineRide is a no-op (not implemented)', async () => {
-      // This test documents BUG-F-001: declineRide only logs, no DB write.
-      // When a driver declines, the ride should be returned to the pool —
-      // instead nothing happens and the ride stays in 'pending'.
-      const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    it('upserts an ignore-duplicate row into ride_declines', async () => {
+      const builder = makeBuilder({ data: null, error: null });
+      fromMock.mockReturnValue(builder);
 
-      await FirebaseDriverService.declineRide('ride-001');
+      await FirebaseDriverService.declineRide('ride-001', 'drv-001');
 
-      expect(firestore.updateDoc).not.toHaveBeenCalled();
-      consoleSpy.mockRestore();
+      expect(fromMock).toHaveBeenCalledWith('ride_declines');
+      expect(builder.upsert).toHaveBeenCalledWith(
+        { rideId: 'ride-001', driverId: 'drv-001' },
+        { onConflict: 'rideId,driverId', ignoreDuplicates: true }
+      );
     });
   });
 
-  // ── TC-3.2 Ride status transitions ───────────────────────────────────
-  describe('updateRideStatus', () => {
-    it('TC-3.2.7 PASS — in_progress adds startedAt timestamp', async () => {
-      vi.mocked(firestore.updateDoc).mockResolvedValue(undefined);
-
-      await FirebaseDriverService.updateRideStatus('ride-001', 'in_progress', 'drv-001');
-
-      expect(firestore.updateDoc).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ startedAt: expect.anything() }),
-      );
-    });
-
-    it('TC-3.2.8 PASS — completed adds completedAt and sets driver back online', async () => {
-      vi.mocked(firestore.updateDoc).mockResolvedValue(undefined);
+  describe('updateRideStatus — completion snapshots commission at the CURRENT (10/90) rate', () => {
+    it('₦5,000 fare, no flat fees → ₦500 platform commission, ₦4,500 driver earnings', async () => {
+      const selectBuilder = makeBuilder({
+        data: { fare: 5000, bookingFee: 0, serviceFee: 0, zoneFee: 0, waitingCharge: 0, priorityFee: 0 },
+        error: null,
+      });
+      const updateBuilder = makeBuilder({ data: null, error: null });
+      let call = 0;
+      fromMock.mockImplementation((table: string) => {
+        if (table !== 'rides') return makeBuilder({ data: null, error: null });
+        call += 1;
+        return call === 1 ? selectBuilder : updateBuilder;
+      });
 
       await FirebaseDriverService.updateRideStatus('ride-001', 'completed', 'drv-001');
 
-      const calls = vi.mocked(firestore.updateDoc).mock.calls;
-      const statusCall = calls.find((c) => (c[1] as any).completedAt);
-      expect(statusCall).toBeDefined();
-      // Driver re-enabled (isOnline: true)
-      const driverCall = calls.find((c) => (c[1] as any).isOnline === true);
-      expect(driverCall).toBeDefined();
-    });
-
-    it('TC-3.2.9 PASS — cancelled adds cancelledAt timestamp', async () => {
-      vi.mocked(firestore.updateDoc).mockResolvedValue(undefined);
-
-      await FirebaseDriverService.updateRideStatus('ride-001', 'cancelled', 'drv-001');
-
-      expect(firestore.updateDoc).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ cancelledAt: expect.anything() }),
-      );
-    });
-  });
-
-  // ── TC-3.3 Driver location ────────────────────────────────────────────
-  describe('updateDriverLocation', () => {
-    it('TC-3.3.1 PASS — saves latitude and longitude', async () => {
-      vi.mocked(firestore.updateDoc).mockResolvedValue(undefined);
-
-      await FirebaseDriverService.updateDriverLocation('drv-001', 9.0765, 7.3986);
-
-      expect(firestore.updateDoc).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(PLATFORM_COMMISSION_RATE).toBe(0.1);
+      expect(DRIVER_PAYOUT_RATE).toBe(0.9);
+      expect(updateBuilder.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          location: { latitude: 9.0765, longitude: 7.3986 },
-        }),
+          platformCommissionRate: 0.1,
+          platformCommissionAmount: 500,
+          driverEarningsAmount: 4500,
+          completedAt: expect.anything(),
+        })
       );
+      // Explicitly NOT the pre-migration 20/80 split.
+      const written = updateBuilder.update.mock.calls[0][0];
+      expect(written.platformCommissionAmount).not.toBe(1000);
+      expect(written.driverEarningsAmount).not.toBe(4000);
+    });
+
+    it('excludes flat platform fees (bookingFee/serviceFee/zoneFee/priorityFee) from the commissionable base', async () => {
+      const selectBuilder = makeBuilder({
+        data: { fare: 5000, bookingFee: 100, serviceFee: 50, zoneFee: 200, waitingCharge: 0, priorityFee: 150 },
+        error: null,
+      });
+      const updateBuilder = makeBuilder({ data: null, error: null });
+      let call = 0;
+      fromMock.mockImplementation(() => {
+        call += 1;
+        return call === 1 ? selectBuilder : updateBuilder;
+      });
+
+      await FirebaseDriverService.updateRideStatus('ride-002', 'completed', 'drv-001');
+
+      // meteredFare = 5000 - 100 - 50 - 200 - 0 - 150 = 4500; commission = 450
+      const written = updateBuilder.update.mock.calls[0][0];
+      expect(written.platformCommissionAmount).toBe(450);
+      expect(written.driverEarningsAmount).toBe(5000 - 450);
+    });
+
+    it('cancelled adds cancelledAt and does not touch commission fields', async () => {
+      const builder = makeBuilder({ data: null, error: null });
+      fromMock.mockReturnValue(builder);
+
+      await FirebaseDriverService.updateRideStatus('ride-003', 'cancelled', 'drv-001');
+
+      expect(builder.update).toHaveBeenCalledWith(expect.objectContaining({ cancelledAt: expect.anything() }));
+      const written = builder.update.mock.calls[0][0];
+      expect(written.platformCommissionAmount).toBeUndefined();
     });
   });
 
-  // ── TC-3.3 Earnings ───────────────────────────────────────────────────
   describe('getDriverEarnings', () => {
-    it('TC-3.3.2 PASS — calculates net earnings as 80% of fare', async () => {
-      const mockSnapshot = {
-        forEach: (fn: (doc: any) => void) => {
-          fn({
-            id: 'ride-complete-1',
-            data: () => ({ fare: 100, completedAt: { toDate: () => new Date() } }),
-          });
-        },
-      };
-      vi.mocked(firestore.getDocs).mockResolvedValue(mockSnapshot as any);
+    it('prefers the persisted commission snapshot over a live recompute', async () => {
+      fromMock.mockReturnValue(
+        makeBuilder({
+          data: [
+            {
+              id: 'ride-complete-1',
+              fare: 5000,
+              bookingFee: 0,
+              serviceFee: 0,
+              zoneFee: 0,
+              waitingCharge: 0,
+              priorityFee: 0,
+              cancellationFee: 0,
+              status: 'completed',
+              completedAt: new Date().toISOString(),
+              cancelledAt: null,
+              createdAt: new Date().toISOString(),
+              // Snapshotted at an old (pre-migration) rate — must win over a
+              // live recompute at today's 10% rate.
+              platformCommissionAmount: 1000,
+              driverEarningsAmount: 4000,
+            },
+          ],
+          error: null,
+        })
+      );
 
       const earnings = await FirebaseDriverService.getDriverEarnings('drv-001');
 
       expect(earnings).toHaveLength(1);
-      expect(earnings[0].amount).toBe(100);
-      expect(earnings[0].commission).toBe(20);    // 20%
-      expect(earnings[0].netAmount).toBe(80);     // 80%
+      expect(earnings[0].commission).toBe(1000);
+      expect(earnings[0].netAmount).toBe(4000);
     });
 
-    it('TC-3.3.3 PASS — returns empty array when no completed rides', async () => {
-      vi.mocked(firestore.getDocs).mockResolvedValue({
-        forEach: () => {},
-      } as any);
+    it('falls back to a live 10/90 recompute for legacy rows with no snapshot', async () => {
+      fromMock.mockReturnValue(
+        makeBuilder({
+          data: [
+            {
+              id: 'ride-legacy-1',
+              fare: 1000,
+              bookingFee: 0,
+              serviceFee: 0,
+              zoneFee: 0,
+              waitingCharge: 0,
+              priorityFee: 0,
+              cancellationFee: 0,
+              status: 'completed',
+              completedAt: new Date().toISOString(),
+              cancelledAt: null,
+              createdAt: new Date().toISOString(),
+              platformCommissionAmount: null,
+              driverEarningsAmount: null,
+            },
+          ],
+          error: null,
+        })
+      );
+
+      const earnings = await FirebaseDriverService.getDriverEarnings('drv-001');
+
+      expect(earnings[0].commission).toBe(100);
+      expect(earnings[0].netAmount).toBe(900);
+    });
+
+    it('returns an empty array when there are no completed/charged-cancelled rides', async () => {
+      fromMock.mockReturnValue(makeBuilder({ data: [], error: null }));
 
       const earnings = await FirebaseDriverService.getDriverEarnings('drv-new');
 
       expect(earnings).toHaveLength(0);
-    });
-  });
-
-  // ── TC-3.3 Driver stats ───────────────────────────────────────────────
-  describe('getDriverStats', () => {
-    it('TC-3.3.4 PASS — aggregates total rides and earnings correctly', async () => {
-      const mockSnapshot = {
-        forEach: (fn: (doc: any) => void) => {
-          [
-            { fare: 50, driverRating: 5 },
-            { fare: 80, driverRating: 4 },
-          ].forEach((data) =>
-            fn({ id: `ride-${Math.random()}`, data: () => ({ ...data, completedAt: { toDate: () => new Date() } }) }),
-          );
-        },
-      };
-      vi.mocked(firestore.getDocs).mockResolvedValue(mockSnapshot as any);
-
-      const stats = await FirebaseDriverService.getDriverStats('drv-001');
-
-      expect(stats.totalRides).toBe(2);
-      expect(stats.totalEarnings).toBeCloseTo((50 + 80) * 0.8, 1);
-    });
-
-    it('TC-3.3.5 PASS — new driver with no rides returns safe defaults', async () => {
-      vi.mocked(firestore.getDocs).mockResolvedValue({
-        forEach: () => {},
-      } as any);
-
-      const stats = await FirebaseDriverService.getDriverStats('drv-new');
-
-      expect(stats.totalRides).toBe(0);
-      expect(stats.averageRating).toBe(5.0);
-    });
-  });
-
-  // ── TC-3.4 Edge cases ─────────────────────────────────────────────────
-  describe('subscribeToRideRequests — edge cases', () => {
-    it('TC-3.4.1 PASS — returns unsubscribe function', () => {
-      const mockUnsub = vi.fn();
-      vi.mocked(firestore.onSnapshot).mockReturnValue(mockUnsub);
-
-      const unsub = FirebaseDriverService.subscribeToRideRequests('drv-001', vi.fn());
-
-      expect(typeof unsub).toBe('function');
     });
   });
 });

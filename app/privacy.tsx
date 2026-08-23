@@ -1,5 +1,5 @@
 import { Eye, MapPin, MessageSquare, Share, Database } from "lucide-react-native";
-import React, { useState } from "react";
+import React from "react";
 import {
   Pressable,
   ScrollView,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
 import { Stack } from "expo-router";
+import { useRiderPreferences } from '@/hooks/useRiderPreferences';
 
 interface PrivacyOptionProps {
   icon: React.ReactElement;
@@ -59,10 +60,7 @@ const PrivacyOption: React.FC<PrivacyOptionProps> = ({
 export default function PrivacyScreen() {
   const { colors } = useTheme();
   
-  const [locationSharing, setLocationSharing] = useState(true);
-  const [dataCollection, setDataCollection] = useState(false);
-  const [personalizedAds, setPersonalizedAds] = useState(true);
-  const [profileVisibility, setProfileVisibility] = useState(false);
+  const { preferences, updatePreference } = useRiderPreferences();
   
   const handleDataDownload = () => {
     Alert.alert(
@@ -116,32 +114,32 @@ export default function PrivacyScreen() {
               icon={<MapPin size={24} color={colors.primary} />}
               title="Location Sharing"
               description="Share your location for better ride matching"
-              isEnabled={locationSharing}
-              onToggle={setLocationSharing}
+              isEnabled={preferences.locationSharing}
+              onToggle={(value) => void updatePreference('locationSharing', value)}
             />
             
             <PrivacyOption
               icon={<Database size={24} color={colors.primary} />}
               title="Data Collection"
               description="Allow collection of usage data for app improvement"
-              isEnabled={dataCollection}
-              onToggle={setDataCollection}
+              isEnabled={preferences.dataCollection}
+              onToggle={(value) => void updatePreference('dataCollection', value)}
             />
             
             <PrivacyOption
               icon={<MessageSquare size={24} color={colors.primary} />}
               title="Personalized Ads"
               description="Show ads based on your preferences and activity"
-              isEnabled={personalizedAds}
-              onToggle={setPersonalizedAds}
+              isEnabled={preferences.personalizedAds}
+              onToggle={(value) => void updatePreference('personalizedAds', value)}
             />
             
             <PrivacyOption
               icon={<Eye size={24} color={colors.primary} />}
               title="Profile Visibility"
               description="Make your profile visible to other users"
-              isEnabled={profileVisibility}
-              onToggle={setProfileVisibility}
+              isEnabled={preferences.profileVisibility}
+              onToggle={(value) => void updatePreference('profileVisibility', value)}
             />
           </View>
           

@@ -23,6 +23,7 @@ import { useAuth } from '@/hooks/useAuthStore';
 import { useTermsStore } from '@/hooks/useTermsStore';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
+import { validatePassword, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
 
 const { width, height } = Dimensions.get('window');
 
@@ -131,12 +132,14 @@ export default function SignupScreen() {
       return;
     }
 
-    if (password.length < 6) {
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.valid) {
       Toast.show({
         type: 'error',
         text1: 'Weak Password',
-        text2: 'Password must be at least 6 characters',
+        text2: passwordCheck.message ?? undefined,
         position: 'top',
+        visibilityTime: 5000,
       });
       return;
     }
@@ -268,6 +271,7 @@ export default function SignupScreen() {
                   )}
                 </Pressable>
               </View>
+              <Text style={styles.hintText}>{PASSWORD_POLICY_HINT}</Text>
             </View>
 
             <View style={styles.inputContainer}>
@@ -477,6 +481,11 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     paddingHorizontal: 16,
+  },
+  hintText: {
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginTop: 8,
   },
   signupButton: {
     marginTop: 8,
