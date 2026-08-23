@@ -221,6 +221,11 @@ export default function DriverEarnings() {
                   <Text style={styles.earningDetail}>
                     Commission: -₦{earning.commission.toFixed(2)}
                   </Text>
+                  {!!earning.tipAmount && (
+                    <Text style={styles.earningDetail}>
+                      Tip: +₦{earning.tipAmount.toFixed(2)}
+                    </Text>
+                  )}
                 </View>
               </View>
             </View>

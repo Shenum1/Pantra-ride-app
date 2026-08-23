@@ -593,5 +593,6 @@ function defaultStats(): DriverStats {
     totalRides: 0, totalEarnings: 0, averageRating: null,
     acceptanceRate: 0, cancellationRate: 0, onlineHours: 0,
     completionRate: 0, todayEarnings: 0, weekEarnings: 0, monthEarnings: 0,
+    totalTips: 0, todayTips: 0, weekTips: 0, monthTips: 0,
   };
 }

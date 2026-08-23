@@ -11,6 +11,7 @@ interface OverviewData {
   totalRevenue: number;
   totalPlatformCommission: number;
   totalDriverEarnings: number;
+  totalTips: number;
   recentActivity: { id: string; type: string; title: string; subtitle: string; createdAt: string }[];
 }
 
@@ -61,6 +62,9 @@ export default function Dashboard() {
     { label: 'Total Revenue', value: `₦${(data?.totalRevenue ?? 0).toLocaleString()}`, icon: Wallet, color: 'text-emerald-500' },
     { label: 'Platform Commission', value: `₦${(data?.totalPlatformCommission ?? 0).toLocaleString()}`, icon: Wallet, color: 'text-pink-500' },
     { label: 'Driver Earnings', value: `₦${(data?.totalDriverEarnings ?? 0).toLocaleString()}`, icon: Wallet, color: 'text-indigo-500' },
+    // Tips are 100% driver / 0% platform — shown separately from the
+    // revenue/commission figures above, never folded into them.
+    { label: 'Total Tips', value: `₦${(data?.totalTips ?? 0).toLocaleString()}`, icon: Wallet, color: 'text-amber-500' },
   ];
 
   return (

@@ -50,7 +50,6 @@ interface EarningsData {
   today: number;
   week: number;
   month: number;
-  tips: number;
 }
 
 export default function DriverWallet() {
@@ -95,33 +94,64 @@ export default function DriverWallet() {
     today: stats.todayEarnings ?? 0,
     week: stats.weekEarnings ?? 0,
     month: stats.monthEarnings ?? 0,
-    tips: 0,
+  };
+  // Tips are a separate 100%-driver figure — bucketed the same way as
+  // earnings above (see DriverStats.todayTips/weekTips/monthTips) but never
+  // added into `earnings`, so the two rows on the Earnings Breakdown card
+  // stay independently correct.
+  const tipsByPeriod: EarningsData = {
+    today: stats.todayTips ?? 0,
+    week: stats.weekTips ?? 0,
+    month: stats.monthTips ?? 0,
   };
 
   const currentEarnings = earnings[selectedPeriod];
+  const currentTips = tipsByPeriod[selectedPeriod];
 
   // Pending/processing payouts already claim part of the driver's earnings —
   // not just completed ones — otherwise this would show a balance a driver
   // could file a second withdrawal request against before the first is even
   // reviewed. The backend enforces this for real (get_driver_available_balance
-  // in database/schemas/supabase-schema-driver-payouts.sql); this mirrors the
-  // same math purely for display.
+  // in database/schemas/supabase-schema-driver-payouts.sql, which now also
+  // includes tips); this mirrors the same math purely for display.
   const claimedPayoutsTotal = payouts
     .filter(p => p.status === 'completed' || p.status === 'pending' || p.status === 'processing')
     .reduce((sum, p) => sum + p.amount, 0);
-  const availableBalance = Math.max(0, stats.totalEarnings - claimedPayoutsTotal);
+  const availableBalance = Math.max(0, stats.totalEarnings + (stats.totalTips ?? 0) - claimedPayoutsTotal);
 
-  const transactions: Transaction[] = earningsHistory.map((e: any) => {
-    const dt = e.payoutDate ?? e.createdAt;
-    return {
-      id: e.id ?? String(Math.random()),
-      type: 'earning' as const,
-      amount: e.netAmount ?? e.amount ?? 0,
-      description: 'Trip Earnings',
-      date: dt ? new Date(dt).toLocaleDateString() : '',
-      time: dt ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-    };
-  });
+  const transactions: Transaction[] = [
+    ...earningsHistory.map((e: any) => {
+      const dt = e.payoutDate ?? e.createdAt;
+      return {
+        id: e.id ?? String(Math.random()),
+        type: 'earning' as const,
+        amount: e.netAmount ?? e.amount ?? 0,
+        description: 'Trip Earnings',
+        date: dt ? new Date(dt).toLocaleDateString() : '',
+        time: dt ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+        rawDate: dt ? new Date(dt) : null,
+      };
+    }),
+    // Synthesized from the same per-ride earnings entries (tipAmount, joined
+    // in FirebaseDriverService.getDriverEarnings) rather than a separate
+    // fetch — one row per ride that received a tip.
+    ...earningsHistory
+      .filter((e: any) => (e.tipAmount ?? 0) > 0)
+      .map((e: any) => {
+        const dt = e.payoutDate ?? e.createdAt;
+        return {
+          id: `${e.id ?? String(Math.random())}-tip`,
+          type: 'tip' as const,
+          amount: e.tipAmount,
+          description: 'Tip received',
+          date: dt ? new Date(dt).toLocaleDateString() : '',
+          time: dt ? new Date(dt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+          rawDate: dt ? new Date(dt) : null,
+        };
+      }),
+  ]
+    .sort((a, b) => (b.rawDate?.getTime() ?? 0) - (a.rawDate?.getTime() ?? 0))
+    .map(({ rawDate: _rawDate, ...t }) => t);
 
 
 
@@ -385,6 +415,15 @@ export default function DriverWallet() {
                 <Text style={[styles.breakdownLabel, { color: colors.text }]}>Trip Earnings</Text>
               </View>
               <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{currentEarnings.toFixed(2)}</Text>
+            </View>
+            <View style={styles.breakdownItem}>
+              <View style={styles.breakdownLeft}>
+                <View style={[styles.breakdownIcon, { backgroundColor: '#FFD700' + '20' }]}>
+                  <Star size={18} color="#FFD700" />
+                </View>
+                <Text style={[styles.breakdownLabel, { color: colors.text }]}>Tips</Text>
+              </View>
+              <Text style={[styles.breakdownValue, { color: colors.text }]}>₦{currentTips.toFixed(2)}</Text>
             </View>
           </View>
         </View>

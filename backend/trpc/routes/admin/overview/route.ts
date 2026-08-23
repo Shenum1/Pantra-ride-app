@@ -25,6 +25,7 @@ export default adminProcedure.query(async ({ ctx }) => {
     recentUsersRes,
     recentDriversRes,
     recentRidesRes,
+    tipsRes,
   ] = await Promise.all([
     db.from("users").select("uid", { count: "exact", head: true }),
     db.from("users").select("uid", { count: "exact", head: true }).eq("role", "rider"),
@@ -38,6 +39,7 @@ export default adminProcedure.query(async ({ ctx }) => {
     db.from("users").select("uid, displayName, email, role, createdAt").order("createdAt", { ascending: false }).limit(5),
     db.from("drivers").select("id, name, email, createdAt").order("createdAt", { ascending: false }).limit(5),
     db.from("rides").select("id, status, fare, createdAt").order("createdAt", { ascending: false }).limit(5),
+    db.from("tips").select("amount").eq("status", "successful"),
   ]);
 
   const totalRevenue = (completedFaresRes.data ?? []).reduce(
@@ -69,6 +71,14 @@ export default adminProcedure.query(async ({ ctx }) => {
       totalDriverEarnings += payout.netAmount;
     }
   }
+
+  // Tips are 100% driver / 0% platform — a separate figure, deliberately
+  // never added into totalRevenue/totalPlatformCommission/totalDriverEarnings
+  // above (which are all fare/commission math and don't know tips exist).
+  const totalTips = (tipsRes.data ?? []).reduce(
+    (sum: number, row: { amount: number | null }) => sum + (row.amount ?? 0),
+    0
+  );
 
   const recentActivity: RecentActivityItem[] = [];
 
@@ -113,6 +123,7 @@ export default adminProcedure.query(async ({ ctx }) => {
     totalRevenue,
     totalPlatformCommission,
     totalDriverEarnings,
+    totalTips,
     recentActivity: recentActivity.slice(0, 5),
   };
 });

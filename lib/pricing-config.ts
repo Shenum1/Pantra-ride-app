@@ -88,9 +88,18 @@ export const TIP_CONFIG = {
   windowHours: 72,
 } as const;
 
+export interface TipAmountConfig {
+  minAmount: number;
+  maxAmount: number;
+}
+
+export interface TipWindowConfig {
+  windowHours: number;
+}
+
 export function isTipAmountValid(
   amount: number,
-  config: Pick<typeof TIP_CONFIG, 'minAmount' | 'maxAmount'> = TIP_CONFIG
+  config: TipAmountConfig = TIP_CONFIG
 ): boolean {
   return (
     Number.isFinite(amount) &&
@@ -103,7 +112,7 @@ export function isTipAmountValid(
 export function isTipWindowOpen(
   completedAt: string | Date | null | undefined,
   now: Date = new Date(),
-  config: Pick<typeof TIP_CONFIG, 'windowHours'> = TIP_CONFIG
+  config: TipWindowConfig = TIP_CONFIG
 ): boolean {
   if (!completedAt) return false;
   const completed = typeof completedAt === 'string' ? new Date(completedAt) : completedAt;
