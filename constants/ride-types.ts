@@ -1,6 +1,6 @@
 import { RideType } from "@/types";
 
-export const mockRideTypes: RideType[] = [
+export const RIDE_TYPES: RideType[] = [
   {
     id: "standard",
     name: "Standard",

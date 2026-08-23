@@ -39,6 +39,7 @@ export default function DriverActiveTrip() {
   const { currentRide, updateRideStatus, updateLocation } = useDriverStore();
   const { driver } = useDriverAuth();
   const [driverLocation, setDriverLocation] = useState<Location | null>(null);
+  const [driverLocationError, setDriverLocationError] = useState<string | null>(null);
   const [tripStatus, setTripStatus] = useState<DriverTripStatus>('heading_to_pickup');
   const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null);
 
@@ -50,19 +51,51 @@ export default function DriverActiveTrip() {
 
     let active = true;
     let subscription: ExpoLocation.LocationSubscription | null = null;
+    let webWatchId: number | null = null;
 
     const startLocationTracking = async () => {
       if (Platform.OS === 'web') {
-        const fallbackLocation = {
-          latitude: currentRide.pickupLocation.latitude - 0.018,
-          longitude: currentRide.pickupLocation.longitude - 0.012,
-        };
-        setDriverLocation(fallbackLocation);
+        if (!navigator.geolocation) {
+          setDriverLocation(null);
+          setDriverLocationError('Location services not supported');
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            if (!active) return;
+            const loc: Location = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+            setDriverLocation(loc);
+            setDriverLocationError(null);
+            void updateLocation(loc.latitude, loc.longitude);
+          },
+          (error) => {
+            console.log('Web geolocation error:', error);
+            if (!active) return;
+            setDriverLocation(null);
+            setDriverLocationError('Unable to determine your location');
+          }
+        );
+
+        webWatchId = navigator.geolocation.watchPosition(
+          (position) => {
+            if (!active) return;
+            const loc: Location = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+            setDriverLocation(loc);
+            setDriverLocationError(null);
+            void updateLocation(loc.latitude, loc.longitude);
+          },
+          (error) => {
+            console.log('Web geolocation watch error:', error);
+          }
+        );
         return;
       }
 
       const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        setDriverLocation(null);
+        setDriverLocationError('Location permission denied');
         Alert.alert('Permission Required', 'Location permission is required to track the trip.');
         return;
       }
@@ -79,6 +112,7 @@ export default function DriverActiveTrip() {
 
       console.log('Driver live location initialized:', currentLoc);
       setDriverLocation(currentLoc);
+      setDriverLocationError(null);
       void updateLocation(location.coords.latitude, location.coords.longitude);
 
       subscription = await ExpoLocation.watchPositionAsync(
@@ -104,6 +138,9 @@ export default function DriverActiveTrip() {
     return () => {
       active = false;
       subscription?.remove();
+      if (webWatchId !== null && Platform.OS === 'web' && navigator.geolocation) {
+        navigator.geolocation.clearWatch(webWatchId);
+      }
     };
   }, [currentRide, updateLocation]);
 
@@ -518,11 +555,13 @@ export default function DriverActiveTrip() {
         <View style={styles.liveStatusCard}>
           <MapPin size={16} color={Colors.light.primary} />
           <Text style={styles.liveStatusText}>
-            {tripStatus === 'in_progress'
-              ? 'Destination route is live on the map.'
-              : tripStatus === 'at_pickup'
-                ? 'You are at pickup. Rider live position remains pinned on the map.'
-                : 'Rider live position is pinned on the map while you approach pickup.'}
+            {!driverLocation && driverLocationError
+              ? driverLocationError
+              : tripStatus === 'in_progress'
+                ? 'Destination route is live on the map.'
+                : tripStatus === 'at_pickup'
+                  ? 'You are at pickup. Rider live position remains pinned on the map.'
+                  : 'Rider live position is pinned on the map while you approach pickup.'}
           </Text>
         </View>
 

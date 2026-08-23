@@ -7,7 +7,7 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Calendar, Star, ChevronRight } from 'lucide-react-native';
 import { useRide } from '@/hooks/useRideStore';
 import { useTheme } from '@/hooks/useThemeStore';
@@ -104,8 +104,17 @@ export default function MyRidesScreen() {
     <Pressable
       style={[styles.rideCard, { backgroundColor: colors.card, borderColor: colors.border }]}
       onPress={() => {
-        // Navigate to ride details if needed
-        console.log('Navigate to ride details:', ride.id);
+        if (ride.driver && ride.status === 'completed') {
+          router.push({
+            pathname: '/tip-driver',
+            params: {
+              rideId: ride.id,
+              driverId: ride.driver.id,
+              driverName: ride.driver.name,
+              source: 'history',
+            },
+          });
+        }
       }}
     >
       <View style={styles.rideHeader}>

@@ -1,42 +1,7 @@
 import { z } from 'zod';
 import { publicProcedure } from '@/backend/trpc/create-context';
 import { supabaseAdmin } from '@/backend/lib/supabase-admin';
-
-const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
-
-async function batchSendPush(
-  tokens: string[],
-  title: string,
-  body: string,
-  data: Record<string, unknown>
-): Promise<number> {
-  let sent = 0;
-  // Expo supports up to 100 messages per request
-  for (let i = 0; i < tokens.length; i += 100) {
-    const chunk = tokens.slice(i, i + 100);
-    const messages = chunk.map((token) => ({
-      to: token,
-      title,
-      body,
-      data,
-      sound: 'default',
-      priority: 'high',
-      channelId: 'default',
-    }));
-
-    try {
-      const res = await fetch(EXPO_PUSH_URL, {
-        method: 'POST',
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(messages),
-      });
-      if (res.ok) sent += chunk.length;
-    } catch (err) {
-      console.error('Expo push batch failed:', err);
-    }
-  }
-  return sent;
-}
+import { batchSendPush } from '@/backend/trpc/lib/push-notify';
 
 export default publicProcedure
   .input(

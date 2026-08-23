@@ -1,3 +1,4 @@
+-- DEV/TEST ONLY — DO NOT RUN AGAINST PRODUCTION.
 -- Run in Supabase SQL Editor to create a test driver.
 -- Each run creates a new unique driver. Credentials are printed in the output.
 

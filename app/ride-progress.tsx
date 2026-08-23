@@ -304,12 +304,15 @@ export default function RideProgressScreen() {
         const completedRide = completeRideRef.current();
         void NotificationService.notifyRideCompleted(user?.id ?? '', completedRide?.price ?? 0);
         if (completedRide?.driver) {
+          // Tip prompt first, then rating — tip-driver.tsx forwards into
+          // /rate-driver itself once the rider tips or taps "Maybe later".
           router.replace({
-            pathname: '/rate-driver',
+            pathname: '/tip-driver',
             params: {
               rideId: completedRide.id,
               driverId: completedRide.driver.id,
               driverName: completedRide.driver.name,
+              source: 'completion',
             },
           });
         } else {

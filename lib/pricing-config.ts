@@ -76,6 +76,52 @@ export const CANCELLATION_FEE_CONFIG = {
   afterArrivalFee: 500,
 } as const;
 
+// Post-trip driver tips. A tip is a separate, 100%-driver / 0%-platform
+// transaction — never folded into fare/commission math (see
+// calculateDriverPayout / rides_settle_trigger / create_tip). windowHours
+// and min/maxAmount mirror the literals hardcoded in create_tip()
+// (database/schemas/supabase-schema-tips.sql) — keep both in sync.
+export const TIP_CONFIG = {
+  presetAmounts: [100, 200, 500, 1000],
+  minAmount: 50,
+  maxAmount: 50000,
+  windowHours: 72,
+} as const;
+
+export function isTipAmountValid(
+  amount: number,
+  config: Pick<typeof TIP_CONFIG, 'minAmount' | 'maxAmount'> = TIP_CONFIG
+): boolean {
+  return (
+    Number.isFinite(amount) &&
+    Number.isInteger(amount) &&
+    amount >= config.minAmount &&
+    amount <= config.maxAmount
+  );
+}
+
+export function isTipWindowOpen(
+  completedAt: string | Date | null | undefined,
+  now: Date = new Date(),
+  config: Pick<typeof TIP_CONFIG, 'windowHours'> = TIP_CONFIG
+): boolean {
+  if (!completedAt) return false;
+  const completed = typeof completedAt === 'string' ? new Date(completedAt) : completedAt;
+  if (Number.isNaN(completed.getTime())) return false;
+  const deadlineMs = completed.getTime() + config.windowHours * 60 * 60 * 1000;
+  return now.getTime() <= deadlineMs;
+}
+
+// A tip's commission is always 0 — documented as a single, testable TS fact.
+// create_tip() itself never computes a commission for a tip at all (not via
+// a zero rate), so this exists purely as an explicit, assertable statement
+// of the business rule for tests and any future display code.
+export const TIP_COMMISSION_RATE = 0;
+export function tipDriverPayout(amount: number): { commission: number; driverAmount: number } {
+  const commission = amount * TIP_COMMISSION_RATE;
+  return { commission, driverAmount: amount - commission };
+}
+
 // Flat "priority" add-on: rider pays extra for the ride to be sorted to the
 // top of every online driver's request list (see mapRidesToRequests in
 // firebase-driver-service.ts) instead of guaranteed faster matching — this

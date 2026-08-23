@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { Location } from "@/types";
 import Colors from "@/constants/colors";
+import { NIGERIA_DEFAULT_COORDS } from "@/constants/nigeria-region";
 import { GoogleMapsService } from "@/lib/google-maps-service";
 
 interface CustomMarker {
@@ -35,7 +36,7 @@ const Map: React.FC<MapProps> = ({
 }) => {
   const [staticMapFailed, setStaticMapFailed] = useState(false);
   const staticMapUrl = useMemo(() => {
-    const center = initialRegion ?? { latitude: 9.0579, longitude: 7.4951 };
+    const center = initialRegion ?? NIGERIA_DEFAULT_COORDS;
     return buildStaticMapUrl(center);
   }, [initialRegion]);
 

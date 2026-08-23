@@ -388,6 +388,19 @@ export class FirebaseDriverService {
 
     if (error || !data) return [];
 
+    // Tips are a separate, 100%-driver transaction — never merged into
+    // amount/commission/netAmount above. Joined in here purely for display
+    // (see DriverEarnings.tipAmount), one query for the whole page of rides.
+    const { data: tipRows } = await supabase
+      .from('tips')
+      .select('rideId, amount')
+      .eq('driverId', driverId)
+      .eq('status', 'successful');
+    const tipsByRide = new Map<string, number>();
+    for (const t of (tipRows ?? []) as { rideId: string; amount: number }[]) {
+      tipsByRide.set(t.rideId, (tipsByRide.get(t.rideId) ?? 0) + Number(t.amount));
+    }
+
     return data
       // A cancelled ride only counts as a payout if it actually charged a
       // cancellation fee — free cancellations aren't a driver earning.
@@ -418,12 +431,13 @@ export class FirebaseDriverService {
             ? (ride.cancelledAt ? new Date(ride.cancelledAt) : undefined)
             : (ride.completedAt ? new Date(ride.completedAt) : undefined),
           createdAt: new Date(ride.createdAt),
+          tipAmount: tipsByRide.get(ride.id) ?? 0,
         };
       });
   }
 
   static async getDriverStats(driverId: string): Promise<DriverStats> {
-    const [ridesResult, assignedResult, declinedResult, sessionsResult] = await Promise.all([
+    const [ridesResult, assignedResult, declinedResult, sessionsResult, tipsResult] = await Promise.all([
       supabase
         .from('rides')
         .select('fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee, cancellationFee, completedAt, cancelledAt, driverRating, status, platformCommissionAmount, driverEarningsAmount')
@@ -441,6 +455,11 @@ export class FirebaseDriverService {
         .from('driver_online_sessions')
         .select('startedAt, endedAt')
         .eq('driverId', driverId),
+      supabase
+        .from('tips')
+        .select('amount, createdAt')
+        .eq('driverId', driverId)
+        .eq('status', 'successful'),
     ]);
 
     if (ridesResult.error || !ridesResult.data) return defaultStats();
@@ -498,6 +517,19 @@ export class FirebaseDriverService {
       }
     }
 
+    // Tips are bucketed the same way ride earnings are above, but kept in
+    // entirely separate accumulators — never folded into totalEarnings/
+    // todayEarnings/etc., per the 100%-driver / 0%-platform tip rule.
+    let totalTips = 0, todayTips = 0, weekTips = 0, monthTips = 0;
+    for (const tip of (tipsResult.data ?? []) as { amount: number; createdAt: string }[]) {
+      const amount = Number(tip.amount) || 0;
+      const createdAt = new Date(tip.createdAt);
+      totalTips += amount;
+      if (createdAt >= today) todayTips += amount;
+      if (createdAt >= weekStart) weekTips += amount;
+      if (createdAt >= monthStart) monthTips += amount;
+    }
+
     // Pull-model marketplace has no per-driver "offer" event to measure acceptance
     // against, so this approximates it from the two events that ARE recorded:
     // rides this driver ended up assigned to vs. rides they explicitly declined.
@@ -530,6 +562,10 @@ export class FirebaseDriverService {
       todayEarnings,
       weekEarnings,
       monthEarnings,
+      totalTips,
+      todayTips,
+      weekTips,
+      monthTips,
     };
   }
 

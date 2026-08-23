@@ -183,6 +183,9 @@ export interface DriverEarnings {
   payoutStatus: 'pending' | 'processing' | 'completed';
   payoutDate?: Date;
   createdAt: Date;
+  // Successful tip(s) received for this ride, if any — 100% driver, kept
+  // separate from `amount`/`commission`/`netAmount` (the ride fare split).
+  tipAmount?: number;
 }
 
 export interface DriverStats {
@@ -196,6 +199,24 @@ export interface DriverStats {
   todayEarnings?: number;
   weekEarnings?: number;
   monthEarnings?: number;
+  // Tip totals — always separate from the ride-earnings fields above.
+  // Screens combine the two for a displayed "Total", but neither field
+  // includes the other.
+  todayTips?: number;
+  weekTips?: number;
+  monthTips?: number;
+  totalTips?: number;
+}
+
+export interface Tip {
+  id: string;
+  rideId: string;
+  driverId: string;
+  amount: number;
+  currency: string;
+  paymentMethod: 'wallet';
+  status: 'pending' | 'successful' | 'failed' | 'cancelled' | 'refunded';
+  createdAt: string;
 }
 
 export interface AdminUser {

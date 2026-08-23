@@ -24,6 +24,8 @@ import driverVerificationSyncAuthStatusRoute from "./routes/driver-verification/
 import driverVerificationCheckExpiryRoute from "./routes/driver-verification/check-expiry/route";
 import claimAdRewardRoute from "./routes/rewards/claim-ad-reward/route";
 import getAdRewardStatusRoute from "./routes/rewards/get-ad-reward-status/route";
+import tipsCreateRoute from "./routes/payments/tips/create/route";
+import tipsGetForRideRoute from "./routes/payments/tips/get-for-ride/route";
 
 export const appRouter = createTRPCRouter({
   example: createTRPCRouter({
@@ -40,6 +42,10 @@ export const appRouter = createTRPCRouter({
     }),
     wallet: createTRPCRouter({
       credit: walletCreditRoute,
+    }),
+    tips: createTRPCRouter({
+      create: tipsCreateRoute,
+      getForRide: tipsGetForRideRoute,
     }),
   }),
   admin: createTRPCRouter({

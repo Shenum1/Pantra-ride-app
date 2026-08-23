@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -132,25 +133,25 @@ export default function AdminDashboard() {
       title: 'Manage Users',
       description: 'View and manage user accounts',
       icon: Users,
-      onPress: () => console.log('Navigate to users'),
+      onPress: () => router.push('/(admin-tabs)/users'),
     },
     {
       title: 'Support Tickets',
-      description: '23 pending tickets',
+      description: 'View and manage support tickets',
       icon: AlertCircle,
-      onPress: () => console.log('Navigate to support'),
+      onPress: () => router.push('/(admin-tabs)/support'),
     },
     {
       title: 'System Status',
       description: 'All systems operational',
       icon: CheckCircle,
-      onPress: () => console.log('Navigate to system status'),
+      onPress: () => Alert.alert('Coming soon', 'This feature is not yet available.'),
     },
     {
       title: 'Analytics',
       description: 'View detailed reports',
       icon: Activity,
-      onPress: () => console.log('Navigate to analytics'),
+      onPress: () => Alert.alert('Coming soon', 'This feature is not yet available.'),
     },
   ];
 

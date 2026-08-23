@@ -1,5 +1,6 @@
 import { Location } from '@/types';
 import { Platform } from 'react-native';
+import { NIGERIA_DEFAULT_COORDS } from '@/constants/nigeria-region';
 
 function buildGoogleMapsProxyUrl(url: string): string {
   const googleUrl = new URL(url);
@@ -261,7 +262,7 @@ export class GoogleMapsService {
         fetchGoogleMaps(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent('Shoprite Abuja Nigeria')}&key=${GOOGLE_MAPS_API_KEY}`),
         fetchGoogleMaps(`https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent('Kubwa')}&components=country:ng&key=${GOOGLE_MAPS_API_KEY}`),
         fetchGoogleMaps(`https://maps.googleapis.com/maps/api/directions/json?origin=9.0820,7.4951&destination=9.0579,7.4951&key=${GOOGLE_MAPS_API_KEY}`),
-        fetchGoogleMaps(`https://maps.googleapis.com/maps/api/staticmap?center=9.0765,7.3986&zoom=14&size=300x200&key=${GOOGLE_MAPS_API_KEY}`),
+        fetchGoogleMaps(`https://maps.googleapis.com/maps/api/staticmap?center=${NIGERIA_DEFAULT_COORDS.latitude},${NIGERIA_DEFAULT_COORDS.longitude}&zoom=14&size=300x200&key=${GOOGLE_MAPS_API_KEY}`),
       ]);
 
       apis.places = await isGoogleJsonApiOk(places);
@@ -289,7 +290,7 @@ export class GoogleMapsService {
     if (!GOOGLE_MAPS_API_KEY) return [];
 
     try {
-      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=50000&strictbounds=false` : '&location=9.0765,7.3986&radius=50000&strictbounds=false';
+      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=50000&strictbounds=false` : `&location=${NIGERIA_DEFAULT_COORDS.latitude},${NIGERIA_DEFAULT_COORDS.longitude}&radius=50000&strictbounds=false`;
       const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ng&language=en${loc}&key=${GOOGLE_MAPS_API_KEY}`;
       const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
@@ -323,7 +324,7 @@ export class GoogleMapsService {
     if (!GOOGLE_MAPS_API_KEY) return [];
 
     try {
-      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=50000` : '&location=9.0765,7.3986&radius=50000';
+      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=50000` : `&location=${NIGERIA_DEFAULT_COORDS.latitude},${NIGERIA_DEFAULT_COORDS.longitude}&radius=50000`;
       const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(buildNigeriaQuery(trimmed))}${loc}&region=ng&language=en&key=${GOOGLE_MAPS_API_KEY}`;
       const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;

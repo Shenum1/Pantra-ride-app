@@ -29,15 +29,14 @@ describe('GoogleMapsService', () => {
     expect(url).toContain('key=unit-test-key');
   });
 
-  it('falls back to mock places when Google place search fails', async () => {
+  it('returns no results when Google place search fails, instead of fake places', async () => {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'unit-test-key';
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
     const { GoogleMapsService } = await import('@/lib/google-maps-service');
 
     const places = await GoogleMapsService.searchPlaces('Kubwa');
 
-    expect(places.length).toBeGreaterThan(0);
-    expect(places[0].name).toContain('Kubwa');
+    expect(places).toEqual([]);
   });
 
   it('returns estimated directions when Google directions fails', async () => {
@@ -53,6 +52,7 @@ describe('GoogleMapsService', () => {
     expect(directions).not.toBeNull();
     expect(directions?.distance).toBeGreaterThan(0);
     expect(directions?.coordinates).toHaveLength(2);
+    expect(directions?.isEstimate).toBe(true);
   });
 
   it('diagnoses rejected Google APIs even when JSON endpoints return HTTP 200', async () => {

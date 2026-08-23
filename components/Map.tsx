@@ -5,6 +5,7 @@ import MapView, { Camera, Marker, Polyline, PROVIDER_GOOGLE, Region } from 'reac
 import * as ExpoLocation from 'expo-location';
 
 import Colors from '@/constants/colors';
+import { NIGERIA_DEFAULT_REGION } from '@/constants/nigeria-region';
 import { Skeleton } from '@/components/skeletons';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
@@ -38,13 +39,6 @@ const EMPTY_MARKERS: CustomMarker[] = [];
 const DEFAULT_DELTA = {
   latitudeDelta: 0.01,
   longitudeDelta: 0.01,
-};
-
-const DEFAULT_NIGERIA_REGION: Location = {
-  latitude: 9.0765,
-  longitude: 7.3986,
-  latitudeDelta: 0.035,
-  longitudeDelta: 0.035,
 };
 
 function buildRouteKey(pickup: Location | null, dropoff: Location | null) {
@@ -166,7 +160,7 @@ const Map: React.FC<MapProps> = ({
   }, [activeMarkers, customMarkers, dropoffLocation, nearbyDrivers, pickupLocation, showDrivers]);
 
   const resolvedInitialRegion = useMemo<Location | undefined>(() => {
-    const source = initialRegion ?? activeRouteStart ?? userLocation ?? DEFAULT_NIGERIA_REGION;
+    const source = initialRegion ?? activeRouteStart ?? userLocation ?? NIGERIA_DEFAULT_REGION;
 
     if (!source) {
       return undefined;

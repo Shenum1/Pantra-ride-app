@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuthStore";
 import { SavedLocationsService } from "@/lib/saved-locations-service";
-import { mockSavedLocations } from "@/mocks/savedLocations";
 import { Location, SavedLocation } from "@/types";
 
 const SAVED_LOCATIONS_STORAGE_KEY = "saved_locations";
@@ -32,15 +31,10 @@ export const [SavedLocationsProvider, useSavedLocations] = createContextHook(() 
 
       try {
         const storedLocations = await AsyncStorage.getItem(SAVED_LOCATIONS_STORAGE_KEY);
-        if (storedLocations) {
-          return JSON.parse(storedLocations) as SavedLocation[];
-        }
-        // If no stored locations, use mock data
-        await AsyncStorage.setItem(SAVED_LOCATIONS_STORAGE_KEY, JSON.stringify(mockSavedLocations));
-        return mockSavedLocations;
+        return storedLocations ? (JSON.parse(storedLocations) as SavedLocation[]) : [];
       } catch (error) {
         console.error("Error fetching saved locations:", error);
-        return mockSavedLocations;
+        return [];
       }
     },
   });

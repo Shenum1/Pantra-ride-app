@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { mockRideTypes } from '@/mocks/rideTypes';
+import { RIDE_TYPES } from '@/constants/ride-types';
 import { Location, PaymentMethod, RideCancellationReason, RideRequest, RideTrackingStage, RideType } from '@/types';
 import { calculateFareBreakdown, calculateAllTierFares, applyRideDiscounts, calculateDriverPayout } from '@/lib/fare-calculator';
 import { calculateCancellationFee } from '@/lib/cancellation-calculator';
@@ -121,7 +121,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
 
   const { data: rideTypes = [] } = useQuery({
     queryKey: ['rideTypes'],
-    queryFn: async () => mockRideTypes,
+    queryFn: async () => RIDE_TYPES,
   });
 
   // Computed on demand from two plain counts, no background job or geospatial
@@ -269,11 +269,11 @@ export const [RideProvider, useRide] = createContextHook(() => {
         const parsedRide = JSON.parse(storedRide) as SerializedRideRequest;
         const hydratedRide = deserializeRide(parsedRide);
 
-        // Local ride IDs (test/non-Supabase accounts) never exist as a real DB row —
-        // trust the local snapshot as-is. Otherwise, re-validate against the server
-        // before restoring it: a ride that finished/was cancelled in a previous
-        // session (or an app crash) must not resurrect a stuck "loading" screen.
-        if (hydratedRide.id && !hydratedRide.id.startsWith('local-ride-')) {
+        // Re-validate against the server before restoring: a ride that finished/was
+        // cancelled in a previous session (or an app crash) must not resurrect a
+        // stuck "loading" screen. A ride with no corresponding DB row (including a
+        // stale local-only session from before this check existed) is discarded.
+        if (hydratedRide.id) {
           const row: any = await DatabaseService.get('rides', hydratedRide.id);
           const isTerminal = row?.status === 'completed' || row?.status === 'cancelled';
           if (!row || row.userId !== userId || isTerminal) {
@@ -789,7 +789,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     // acceptedAt/arrivedAt are never reliably present on local state, so this
     // reads the real row rather than trusting whatever currentRide has.
     let cancellationFee = 0;
-    if (currentRide.id && !currentRide.id.startsWith('local-ride-')) {
+    if (currentRide.id) {
       try {
         const row = await DatabaseService.get('rides', currentRide.id) as
           | { status?: string; acceptedAt?: string; arrivedAt?: string }
