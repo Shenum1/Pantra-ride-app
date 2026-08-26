@@ -1,5 +1,5 @@
 import { MessageCircle, Phone, Mail, FileText, HelpCircle, Bug } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -8,10 +8,21 @@ import {
   View,
   Alert,
   Linking,
+  Modal,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
 import { Stack } from "expo-router";
+import { trpc } from "@/lib/trpc";
+
+const CATEGORIES = [
+  { value: "ride_issue", label: "Ride" },
+  { value: "payment_issue", label: "Payment" },
+  { value: "account_issue", label: "Account" },
+  { value: "safety", label: "Safety" },
+  { value: "other", label: "Other" },
+] as const;
 
 interface SupportOptionProps {
   icon: React.ReactElement;
@@ -41,7 +52,12 @@ const SupportOption: React.FC<SupportOptionProps> = ({ icon, title, description,
 
 export default function SupportScreen() {
   const { colors } = useTheme();
-  
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [category, setCategory] = useState<(typeof CATEGORIES)[number]["value"]>("other");
+  const [message, setMessage] = useState("");
+  const createTicket = trpc.support.createTicket.useMutation();
+
   const handleLiveChat = () => {
     Alert.alert(
       'Live Chat',
@@ -99,9 +115,26 @@ export default function SupportScreen() {
   };
   
   const handleReportIssue = () => {
-    Alert.alert('Report Issue', 'Report a technical issue or bug.');
+    setSubject("");
+    setCategory("other");
+    setMessage("");
+    setReportModalVisible(true);
   };
-  
+
+  const submitReport = async () => {
+    if (!subject.trim() || !message.trim()) {
+      Alert.alert("Missing details", "Please add a subject and a description.");
+      return;
+    }
+    try {
+      await createTicket.mutateAsync({ subject: subject.trim(), category, message: message.trim() });
+      setReportModalVisible(false);
+      Alert.alert("Report submitted", "Our support team will follow up shortly.");
+    } catch (e) {
+      Alert.alert("Could not submit report", (e as Error).message);
+    }
+  };
+
   const handleHelpCenter = () => {
     Alert.alert('Help Center', 'Browse our comprehensive help documentation.');
   };
@@ -193,6 +226,70 @@ export default function SupportScreen() {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      <Modal visible={reportModalVisible} transparent animationType="fade" onRequestClose={() => setReportModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Report an Issue</Text>
+
+            <Text style={[styles.modalLabel, { color: colors.gray }]}>Subject</Text>
+            <TextInput
+              value={subject}
+              onChangeText={setSubject}
+              placeholder="Briefly describe the issue"
+              placeholderTextColor={colors.gray}
+              style={[styles.modalInput, { color: colors.text, borderColor: colors.border }]}
+            />
+
+            <Text style={[styles.modalLabel, { color: colors.gray }]}>Category</Text>
+            <View style={styles.categoryRow}>
+              {CATEGORIES.map((c) => (
+                <Pressable
+                  key={c.value}
+                  onPress={() => setCategory(c.value)}
+                  style={[
+                    styles.categoryChip,
+                    {
+                      borderColor: category === c.value ? colors.primary : colors.border,
+                      backgroundColor: category === c.value ? colors.primary + '15' : 'transparent',
+                    },
+                  ]}
+                >
+                  <Text style={{ color: category === c.value ? colors.primary : colors.text, fontSize: 13, fontWeight: '600' }}>
+                    {c.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={[styles.modalLabel, { color: colors.gray }]}>Description</Text>
+            <TextInput
+              value={message}
+              onChangeText={setMessage}
+              placeholder="What happened?"
+              placeholderTextColor={colors.gray}
+              multiline
+              numberOfLines={4}
+              style={[styles.modalInput, styles.modalTextArea, { color: colors.text, borderColor: colors.border }]}
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable style={[styles.modalButton, { borderColor: colors.border }]} onPress={() => setReportModalVisible(false)}>
+                <Text style={{ color: colors.text, fontWeight: '600' }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: colors.primary }]}
+                onPress={submitReport}
+                disabled={createTicket.isPending}
+              >
+                <Text style={{ color: '#fff', fontWeight: '600' }}>
+                  {createTicket.isPending ? 'Submitting…' : 'Submit'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -279,5 +376,66 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 14,
     lineHeight: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 16,
+    padding: 20,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  modalTextArea: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalButtonPrimary: {
+    borderWidth: 0,
   },
 });

@@ -15,7 +15,7 @@ export default adminProcedure
     let query = db
       .from("rides")
       .select(
-        "id, userId, driverId, pickupAddress, dropoffAddress, rideType, status, fare, baseFare, minFare, maxFare, bookingFee, serviceFee, zoneFee, fareAdjustmentPercent, distance, duration, paymentMethod, createdAt, completedAt, cancelledAt, platformCommissionRate, platformCommissionAmount, driverEarningsAmount",
+        "id, userId, driverId, pickupAddress, dropoffAddress, rideType, status, fare, baseFare, minFare, maxFare, bookingFee, serviceFee, zoneFee, fareAdjustmentPercent, distance, duration, paymentMethod, paymentStatus, createdAt, completedAt, cancelledAt, platformCommissionRate, platformCommissionAmount, driverEarningsAmount",
         { count: "exact" }
       )
       .order("createdAt", { ascending: false })

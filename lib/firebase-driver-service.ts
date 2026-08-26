@@ -304,7 +304,25 @@ export class FirebaseDriverService {
         .single();
 
       if (rideRow?.arrivedAt) {
-        const waitingCharge = calculateWaitingCharge(new Date(rideRow.arrivedAt), startedAt);
+        // Live-tunable from Supabase (waiting_charge_config) rather than the
+        // hardcoded WAITING_CHARGE_CONFIG default — this class has no access
+        // to the react-query cache useRideStore uses for the other tunable
+        // configs, so it fetches directly; this fires once per ride at the
+        // trip-start transition, not on a hot path.
+        const { data: waitingConfigRow } = await supabase
+          .from('waiting_charge_config')
+          .select('graceMinutes, perMinuteRate')
+          .limit(1)
+          .maybeSingle();
+
+        const waitingConfig = waitingConfigRow
+          ? {
+              graceMinutes: Number(waitingConfigRow.graceMinutes),
+              perMinuteRate: Number(waitingConfigRow.perMinuteRate),
+            }
+          : undefined;
+
+        const waitingCharge = calculateWaitingCharge(new Date(rideRow.arrivedAt), startedAt, waitingConfig);
         if (waitingCharge > 0) {
           updates.waitingCharge = waitingCharge;
           updates.fare = (rideRow.fare || 0) + waitingCharge;

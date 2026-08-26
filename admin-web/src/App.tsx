@@ -2,19 +2,27 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Users from './pages/Users';
+import Overview from './pages/Overview';
+import Drivers from './pages/Drivers';
+import DriverDetail from './pages/DriverDetail';
+import Riders from './pages/Riders';
+import RiderDetail from './pages/RiderDetail';
 import Verification from './pages/Verification';
-import Rides from './pages/Rides';
+import Trips from './pages/Trips';
+import Payments from './pages/Payments';
 import Payouts from './pages/Payouts';
+import Pricing from './pages/Pricing';
+import Promotions from './pages/Promotions';
+import Support from './pages/Support';
+import SupportTicketDetail from './pages/SupportTicketDetail';
 
 function RequireAuth() {
   const { user, loading } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -38,11 +46,19 @@ export default function App() {
 
         <Route element={<RequireAuth />}>
           <Route element={<AuthenticatedLayout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/users" element={<Users />} />
+            <Route path="/" element={<Overview />} />
+            <Route path="/trips" element={<Trips />} />
+            <Route path="/drivers" element={<Drivers />} />
+            <Route path="/drivers/:id" element={<DriverDetail />} />
+            <Route path="/riders" element={<Riders />} />
+            <Route path="/riders/:id" element={<RiderDetail />} />
             <Route path="/verification" element={<Verification />} />
-            <Route path="/rides" element={<Rides />} />
+            <Route path="/payments" element={<Payments />} />
             <Route path="/payouts" element={<Payouts />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/promotions" element={<Promotions />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="/support/:id" element={<SupportTicketDetail />} />
           </Route>
         </Route>
 

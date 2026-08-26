@@ -8,7 +8,7 @@ import { calculateFareBreakdown, calculateAllTierFares, applyRideDiscounts, calc
 import { calculateCancellationFee } from '@/lib/cancellation-calculator';
 import { calculateSurgeMultiplier } from '@/lib/surge-calculator';
 import { calculateTrafficMultiplier, TrafficRule } from '@/lib/traffic-multiplier';
-import { SHARED_RIDE_DISCOUNT_MULTIPLIER, TIER_RATES, TierId, TierRatesTable, PRIORITY_FEE_CONFIG } from '@/lib/pricing-config';
+import { SHARED_RIDE_DISCOUNT_MULTIPLIER, TIER_RATES, TierId, TierRatesTable, PRIORITY_FEE_CONFIG, CANCELLATION_FEE_CONFIG } from '@/lib/pricing-config';
 import { useLocation } from './useLocationStore';
 import { usePayment } from './usePaymentStore';
 import { usePromotions } from './usePromotionsStore';
@@ -182,19 +182,22 @@ export const [RideProvider, useRide] = createContextHook(() => {
     }
   }, [liveSurgeMultiplier]);
 
-  // Tunable pricing config — tier rates, traffic/event multiplier rules, and
-  // the priority-fee amount all live in Supabase (pricing_tier_config,
-  // traffic_multiplier_rules, pricing_priority_config) rather than being
+  // Tunable pricing config — tier rates, traffic/event multiplier rules, the
+  // priority-fee amount, and the cancellation-fee schedule all live in
+  // Supabase (pricing_tier_config, traffic_multiplier_rules,
+  // pricing_priority_config, cancellation_fee_config) rather than being
   // hardcoded, so they can be retuned from the dashboard without an app
-  // release. Falls back to the TIER_RATES/PRIORITY_FEE_CONFIG constants in
-  // lib/pricing-config.ts if a row is missing or the fetch fails.
+  // release. Falls back to the TIER_RATES/PRIORITY_FEE_CONFIG/
+  // CANCELLATION_FEE_CONFIG constants in lib/pricing-config.ts if a row is
+  // missing or the fetch fails.
   const { data: pricingConfigData } = useQuery({
     queryKey: ['pricingConfig'],
     queryFn: async () => {
-      const [tierRatesResult, trafficRulesResult, priorityConfigResult] = await Promise.all([
+      const [tierRatesResult, trafficRulesResult, priorityConfigResult, cancellationFeeConfigResult] = await Promise.all([
         supabase.from('pricing_tier_config').select('*'),
         supabase.from('traffic_multiplier_rules').select('*').eq('isEnabled', true),
         supabase.from('pricing_priority_config').select('*').limit(1).maybeSingle(),
+        supabase.from('cancellation_fee_config').select('*').limit(1).maybeSingle(),
       ]);
 
       const tierRates: TierRatesTable = { ...TIER_RATES };
@@ -231,7 +234,18 @@ export const [RideProvider, useRide] = createContextHook(() => {
         ? Number(priorityConfigRow.fee)
         : (PRIORITY_FEE_CONFIG.isEnabled ? PRIORITY_FEE_CONFIG.fee : 0);
 
-      return { tierRates, trafficRules, priorityFeeAmount };
+      const cancellationFeeConfigRow = cancellationFeeConfigResult.data as
+        | { freeWindowSeconds: number; afterAcceptFee: number; afterArrivalFee: number }
+        | null;
+      const cancellationFeeConfig = cancellationFeeConfigRow
+        ? {
+            freeWindowSeconds: Number(cancellationFeeConfigRow.freeWindowSeconds),
+            afterAcceptFee: Number(cancellationFeeConfigRow.afterAcceptFee),
+            afterArrivalFee: Number(cancellationFeeConfigRow.afterArrivalFee),
+          }
+        : CANCELLATION_FEE_CONFIG;
+
+      return { tierRates, trafficRules, priorityFeeAmount, cancellationFeeConfig };
     },
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
@@ -240,6 +254,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const tierRatesTable = pricingConfigData?.tierRates ?? TIER_RATES;
   const trafficRules = pricingConfigData?.trafficRules ?? [];
   const priorityFeeAmount = pricingConfigData?.priorityFeeAmount ?? (PRIORITY_FEE_CONFIG.isEnabled ? PRIORITY_FEE_CONFIG.fee : 0);
+  const cancellationFeeConfig = pricingConfigData?.cancellationFeeConfig ?? CANCELLATION_FEE_CONFIG;
   // Re-evaluated whenever the rules refetch (every 5 min), which is a close
   // enough approximation for entering/exiting a scheduled window like rush hour.
   const trafficMultiplier = useMemo(() => calculateTrafficMultiplier(new Date(), trafficRules), [trafficRules]);
@@ -795,11 +810,15 @@ export const [RideProvider, useRide] = createContextHook(() => {
           | { status?: string; acceptedAt?: string; arrivedAt?: string }
           | null;
         if (row) {
-          cancellationFee = calculateCancellationFee({
-            status: row.status,
-            acceptedAt: row.acceptedAt,
-            arrivedAt: row.arrivedAt,
-          }).fee;
+          cancellationFee = calculateCancellationFee(
+            {
+              status: row.status,
+              acceptedAt: row.acceptedAt,
+              arrivedAt: row.arrivedAt,
+            },
+            new Date(),
+            cancellationFeeConfig
+          ).fee;
         }
       } catch (error) {
         console.error('Error computing cancellation fee:', error);
@@ -821,7 +840,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     console.log('Cancelling ride session:', cancelledRide);
     setCurrentRide(null);
     void savePastRide(cancelledRide);
-  }, [currentRide, savePastRide]);
+  }, [currentRide, savePastRide, cancellationFeeConfig]);
 
   const completeRide = useCallback((): RideRequest | undefined => {
     if (!currentRide) {

@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react';
-import { ShieldCheck, ShieldX, ShieldAlert, Clock, ExternalLink } from 'lucide-react';
-import { trpcQuery, trpcMutate } from '../lib/api';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ShieldCheck, ShieldX, ShieldAlert, ExternalLink } from 'lucide-react';
+import { trpcMutate } from '../lib/api';
+import { useTrpcQuery } from '../hooks/useTrpcQuery';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { EmptyState } from '../components/ui/EmptyState';
+import { CardSkeleton } from '../components/ui/Skeleton';
+import { documentStatusTone, driverVerificationStatusTone } from '../lib/status';
 
 interface DriverDoc {
   id: string;
@@ -45,82 +53,73 @@ const DOC_LABELS: Record<string, string> = {
   registration: 'Vehicle Registration',
   background_check: 'Background Check',
   vehicle_inspection: 'Vehicle Inspection',
-};
-
-const STATUS_STYLE: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
-};
-
-const DRIVER_STATUS_STYLE: Record<string, string> = {
-  PENDING: 'bg-gray-100 text-gray-600',
-  DOCUMENTS_SUBMITTED: 'bg-yellow-100 text-yellow-700',
-  VERIFYING: 'bg-yellow-100 text-yellow-700',
-  MANUAL_REVIEW: 'bg-yellow-100 text-yellow-700',
-  VERIFIED: 'bg-green-100 text-green-700',
-  REJECTED: 'bg-red-100 text-red-700',
+  drivers_license_front: "Driver's License (front)",
+  drivers_license_back: "Driver's License (back)",
+  driver_selfie: 'Selfie',
+  vehicle_registration: 'Vehicle Registration',
+  proof_of_ownership: 'Proof of Ownership',
+  roadworthiness: 'Roadworthiness Certificate',
 };
 
 const DRIVER_FILTERS: { key: DriverStatusFilter; label: string }[] = [
-  { key: 'MANUAL_REVIEW', label: 'Manual Review' },
+  { key: 'MANUAL_REVIEW', label: 'Manual review' },
   { key: 'DOCUMENTS_SUBMITTED', label: 'Submitted' },
   { key: 'VERIFYING', label: 'Verifying' },
   { key: 'all', label: 'All' },
 ];
 
+const DOC_FILTERS = ['pending', 'approved', 'rejected', 'all'] as const;
+
+function FilterPill<T extends string>({ value, current, label, onClick }: { value: T; current: T; label: string; onClick: (v: T) => void }) {
+  return (
+    <button
+      onClick={() => onClick(value)}
+      className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors
+        ${current === value ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function Verification() {
   const [viewMode, setViewMode] = useState<'drivers' | 'documents'>('drivers');
 
-  const [data, setData] = useState<DriverDoc[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
+  const [statusFilter, setStatusFilter] = useState<(typeof DOC_FILTERS)[number]>('pending');
   const [processing, setProcessing] = useState<string | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: string } | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
 
-  const [drivers, setDrivers] = useState<DriverVerificationRow[]>([]);
-  const [driversLoading, setDriversLoading] = useState(true);
-  const [driversError, setDriversError] = useState<string | null>(null);
   const [driverStatusFilter, setDriverStatusFilter] = useState<DriverStatusFilter>('MANUAL_REVIEW');
   const [decidingDriver, setDecidingDriver] = useState<{ id: string; decision: DriverDecision } | null>(null);
-  const [decisionReason, setDecisionReason] = useState('');
   const [decidingProcessing, setDecidingProcessing] = useState(false);
 
-  const load = (status: typeof statusFilter) => {
-    setLoading(true);
-    setError(null);
-    trpcQuery<DocsResponse>('admin.driverDocuments', { status })
-      .then((res) => setData(res.documents))
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  const {
+    data: docsData,
+    loading: docsLoading,
+    error: docsError,
+    setData: setDocsData,
+  } = useTrpcQuery<DocsResponse>('admin.driverDocuments', { status: statusFilter }, [statusFilter]);
 
-  useEffect(() => { load(statusFilter); }, [statusFilter]);
+  const {
+    data: driversData,
+    loading: driversLoading,
+    error: driversError,
+    refetch: refetchDrivers,
+  } = useTrpcQuery<DriversResponse>('admin.driverVerification.list', { status: driverStatusFilter }, [driverStatusFilter]);
 
-  const loadDrivers = (status: DriverStatusFilter) => {
-    setDriversLoading(true);
-    setDriversError(null);
-    trpcQuery<DriversResponse>('admin.driverVerification.list', { status })
-      .then((res) => setDrivers(res.drivers))
-      .catch((e: Error) => setDriversError(e.message))
-      .finally(() => setDriversLoading(false));
-  };
-
-  useEffect(() => { loadDrivers(driverStatusFilter); }, [driverStatusFilter]);
+  const documents = docsData?.documents ?? [];
+  const drivers = driversData?.drivers ?? [];
 
   const review = async (id: string, action: 'approve' | 'reject', reason?: string) => {
     setProcessing(id);
     try {
       await trpcMutate('admin.reviewDocument', { documentId: id, action, rejectionReason: reason });
-      setData((prev) => prev.filter((d) => d.id !== id));
+      setDocsData((prev) => (prev ? { documents: prev.documents.filter((d) => d.id !== id) } : prev));
     } catch (e) {
       alert((e as Error).message);
     } finally {
       setProcessing(null);
       setRejectModal(null);
-      setRejectReason('');
     }
   };
 
@@ -128,118 +127,85 @@ export default function Verification() {
     setDecidingProcessing(true);
     try {
       await trpcMutate('admin.driverVerification.decide', { driverId, decision, reason });
-      loadDrivers(driverStatusFilter);
+      refetchDrivers();
     } catch (e) {
       alert((e as Error).message);
     } finally {
       setDecidingProcessing(false);
       setDecidingDriver(null);
-      setDecisionReason('');
     }
-  };
-
-  const openDriverDecision = (driverId: string, decision: 'REJECTED' | 'MANUAL_REVIEW') => {
-    setDecidingDriver({ id: driverId, decision });
-    setDecisionReason('');
   };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Driver Verification</h1>
+      <div>
+        <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Verification</h1>
+        <p className="mt-1 text-sm text-slate-500">The actionable queue — drivers and documents waiting on a decision.</p>
+      </div>
 
       <div className="flex gap-2">
-        <button
-          onClick={() => setViewMode('drivers')}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors
-            ${viewMode === 'drivers' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-        >
-          Drivers
-        </button>
-        <button
-          onClick={() => setViewMode('documents')}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors
-            ${viewMode === 'documents' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-        >
-          Documents
-        </button>
+        {(['drivers', 'documents'] as const).map((mode) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className={`rounded-md px-4 py-2 text-sm font-semibold capitalize transition-colors
+              ${viewMode === mode ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          >
+            {mode}
+          </button>
+        ))}
       </div>
 
       {viewMode === 'drivers' ? (
         <>
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex flex-wrap gap-2">
             {DRIVER_FILTERS.map((f) => (
-              <button
-                key={f.key}
-                onClick={() => setDriverStatusFilter(f.key)}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors
-                  ${driverStatusFilter === f.key ? 'bg-primary text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-              >
-                {f.label}
-              </button>
+              <FilterPill key={f.key} value={f.key} current={driverStatusFilter} label={f.label} onClick={setDriverStatusFilter} />
             ))}
           </div>
 
-          {driversLoading ? (
-            <div className="flex items-center justify-center h-48">
-              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : driversError ? (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">{driversError}</div>
+          {driversError ? (
+            <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{driversError}</div>
+          ) : driversLoading ? (
+            <CardSkeleton count={6} />
           ) : drivers.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400">
-              No drivers found.
-            </div>
+            <EmptyState title="Nothing to review" description="No drivers match this filter right now." />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {drivers.map((driver) => (
-                <div key={driver.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 space-y-3">
+                <div key={driver.id} className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-gray-900 text-sm">
-                        {driver.fullLegalName || driver.name || 'Unnamed Driver'}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-0.5">{driver.email}</p>
-                      <p className="text-xs text-gray-400">
-                        {driver.operatingState || '—'} · {driver.vehicleCategory || '—'} ·{' '}
-                        {Math.round(driver.verificationProgress ?? 0)}% docs submitted
+                      <Link to={`/drivers/${driver.id}`} className="text-sm font-semibold text-slate-900 hover:text-primary">
+                        {driver.fullLegalName || driver.name || 'Unnamed driver'}
+                      </Link>
+                      <p className="mt-0.5 text-xs text-slate-500">{driver.email}</p>
+                      <p className="text-xs text-slate-400">
+                        {driver.operatingState || '—'} · {driver.vehicleCategory || '—'} · {Math.round(driver.verificationProgress ?? 0)}% docs
                       </p>
                     </div>
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${DRIVER_STATUS_STYLE[driver.verificationStatus] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {driver.verificationStatus}
-                    </span>
+                    <Badge tone={driverVerificationStatusTone[driver.verificationStatus] ?? 'neutral'}>
+                      {driver.verificationStatus.replace(/_/g, ' ').toLowerCase()}
+                    </Badge>
                   </div>
 
                   {driver.rejectionReason && (
-                    <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1">
-                      Reason: {driver.rejectionReason}
-                    </p>
+                    <p className="rounded-md bg-danger-tint px-2.5 py-1.5 text-xs text-danger">{driver.rejectionReason}</p>
                   )}
 
                   <div className="flex gap-2 pt-1">
-                    <button
-                      disabled={decidingProcessing}
-                      onClick={() => openDriverDecision(driver.id, 'REJECTED')}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <ShieldX size={13} />
-                      Reject
-                    </button>
-                    <button
-                      disabled={decidingProcessing}
-                      onClick={() => openDriverDecision(driver.id, 'MANUAL_REVIEW')}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-yellow-50 hover:bg-yellow-100 text-yellow-700 text-xs font-semibold py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <ShieldAlert size={13} />
-                      Flag
-                    </button>
-                    <button
-                      disabled={decidingProcessing}
-                      onClick={() => decideDriver(driver.id, 'VERIFIED')}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
+                    <Button variant="success" size="sm" className="flex-1" disabled={decidingProcessing} onClick={() => decideDriver(driver.id, 'VERIFIED')}>
                       <ShieldCheck size={13} />
                       Verify
-                    </button>
+                    </Button>
+                    <Button variant="warning" size="sm" className="flex-1" disabled={decidingProcessing} onClick={() => setDecidingDriver({ id: driver.id, decision: 'MANUAL_REVIEW' })}>
+                      <ShieldAlert size={13} />
+                      Flag
+                    </Button>
+                    <Button variant="danger" size="sm" className="flex-1" disabled={decidingProcessing} onClick={() => setDecidingDriver({ id: driver.id, decision: 'REJECTED' })}>
+                      <ShieldX size={13} />
+                      Reject
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -247,172 +213,104 @@ export default function Verification() {
           )}
 
           {decidingDriver && (
-            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-                <h3 className="font-semibold text-gray-900">
-                  {decidingDriver.decision === 'REJECTED' ? 'Reject Driver' : 'Flag for Manual Review'}
-                </h3>
-                <p className="text-sm text-gray-500">Explain the reason — the driver will see this.</p>
-                <textarea
-                  value={decisionReason}
-                  onChange={(e) => setDecisionReason(e.target.value)}
-                  placeholder="Reason (optional)"
-                  rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-                />
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => { setDecidingDriver(null); setDecisionReason(''); }}
-                    className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    disabled={decidingProcessing}
-                    onClick={() => decideDriver(decidingDriver.id, decidingDriver.decision, decisionReason || undefined)}
-                    className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
-                  >
-                    Confirm
-                  </button>
-                </div>
-              </div>
-            </div>
+            <ConfirmModal
+              title={decidingDriver.decision === 'REJECTED' ? 'Reject driver' : 'Flag for manual review'}
+              description="The driver will see this reason."
+              reasonLabel="Reason"
+              reasonPlaceholder="Reason (optional)"
+              confirmLabel="Confirm"
+              confirmVariant={decidingDriver.decision === 'REJECTED' ? 'danger' : 'warning'}
+              processing={decidingProcessing}
+              onCancel={() => setDecidingDriver(null)}
+              onConfirm={(reason) => decideDriver(decidingDriver.id, decidingDriver.decision, reason)}
+            />
           )}
         </>
       ) : (
-      <>
-      <div className="flex gap-2 flex-wrap">
-        {(['pending', 'approved', 'rejected', 'all'] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors capitalize
-              ${statusFilter === s ? 'bg-primary text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-          >
-            {s}
-          </button>
-        ))}
-      </div>
+        <>
+          <div className="flex flex-wrap gap-2">
+            {DOC_FILTERS.map((s) => (
+              <FilterPill key={s} value={s} current={statusFilter} label={s} onClick={setStatusFilter} />
+            ))}
+          </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : error ? (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">{error}</div>
-      ) : data.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400">
-          No {statusFilter === 'all' ? '' : statusFilter} documents.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {data.map((doc) => (
-            <div key={doc.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              {doc.signedUrl ? (
-                <div className="relative h-44 bg-gray-100">
-                  <img
-                    src={doc.signedUrl}
-                    alt={DOC_LABELS[doc.type] || doc.type}
-                    className="w-full h-full object-cover"
-                  />
-                  <a
-                    href={doc.signedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="absolute top-2 right-2 bg-white/90 rounded-md p-1.5 hover:bg-white"
-                  >
-                    <ExternalLink size={14} className="text-gray-600" />
-                  </a>
-                </div>
-              ) : (
-                <div className="h-44 bg-gray-100 flex items-center justify-center text-gray-400 text-sm">
-                  No preview available
-                </div>
-              )}
+          {docsError ? (
+            <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{docsError}</div>
+          ) : docsLoading ? (
+            <CardSkeleton count={6} />
+          ) : documents.length === 0 ? (
+            <EmptyState title="No documents" description={`No ${statusFilter === 'all' ? '' : statusFilter} documents right now.`} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {documents.map((doc) => (
+                <div key={doc.id} className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                  {doc.signedUrl ? (
+                    <div className="relative h-44 bg-slate-100">
+                      <img src={doc.signedUrl} alt={DOC_LABELS[doc.type] || doc.type} className="h-full w-full object-cover" />
+                      <a
+                        href={doc.signedUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute right-2 top-2 rounded-md bg-white/90 p-1.5 hover:bg-white"
+                      >
+                        <ExternalLink size={14} className="text-slate-600" />
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="flex h-44 items-center justify-center bg-slate-100 text-sm text-slate-400">No preview available</div>
+                  )}
 
-              <div className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-gray-900 text-sm">
-                      {DOC_LABELS[doc.type] || doc.type}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">{doc.driverName || doc.driverId}</p>
-                    {doc.driverEmail && (
-                      <p className="text-xs text-gray-400">{doc.driverEmail}</p>
+                  <div className="space-y-3 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{DOC_LABELS[doc.type] || doc.type}</p>
+                        <Link to={`/drivers/${doc.driverId}`} className="mt-0.5 block text-xs text-slate-500 hover:text-primary">
+                          {doc.driverName || doc.driverId}
+                        </Link>
+                      </div>
+                      <Badge tone={documentStatusTone[doc.status]}>{doc.status}</Badge>
+                    </div>
+
+                    <div className="text-xs text-slate-400">
+                      Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}
+                      {doc.expiryDate && ` · Expires ${new Date(doc.expiryDate).toLocaleDateString()}`}
+                    </div>
+
+                    {doc.rejectionReason && (
+                      <p className="rounded-md bg-danger-tint px-2.5 py-1.5 text-xs text-danger">Rejected: {doc.rejectionReason}</p>
+                    )}
+
+                    {doc.status === 'pending' && (
+                      <div className="flex gap-2 pt-1">
+                        <Button variant="success" size="sm" className="flex-1" disabled={processing === doc.id} onClick={() => review(doc.id, 'approve')}>
+                          <ShieldCheck size={13} />
+                          Approve
+                        </Button>
+                        <Button variant="danger" size="sm" className="flex-1" disabled={processing === doc.id} onClick={() => setRejectModal({ id: doc.id })}>
+                          <ShieldX size={13} />
+                          Reject
+                        </Button>
+                      </div>
                     )}
                   </div>
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold flex-shrink-0 ${STATUS_STYLE[doc.status]}`}>
-                    <Clock size={10} />
-                    {doc.status}
-                  </span>
                 </div>
-
-                <div className="text-xs text-gray-400">
-                  Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}
-                  {doc.expiryDate && ` · Expires ${new Date(doc.expiryDate).toLocaleDateString()}`}
-                </div>
-
-                {doc.rejectionReason && (
-                  <p className="text-xs text-red-600 bg-red-50 rounded px-2 py-1">
-                    Rejected: {doc.rejectionReason}
-                  </p>
-                )}
-
-                {doc.status === 'pending' && (
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      disabled={processing === doc.id}
-                      onClick={() => review(doc.id, 'approve')}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <ShieldCheck size={13} />
-                      Approve
-                    </button>
-                    <button
-                      disabled={processing === doc.id}
-                      onClick={() => setRejectModal({ id: doc.id })}
-                      className="flex-1 flex items-center justify-center gap-1.5 bg-red-500 hover:bg-red-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      <ShieldX size={13} />
-                      Reject
-                    </button>
-                  </div>
-                )}
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {rejectModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">Reject Document</h3>
-            <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Enter rejection reason (optional)"
-              rows={3}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+          {rejectModal && (
+            <ConfirmModal
+              title="Reject document"
+              reasonLabel="Reason"
+              reasonPlaceholder="Enter rejection reason (optional)"
+              confirmLabel="Reject"
+              confirmVariant="danger"
+              processing={processing === rejectModal.id}
+              onCancel={() => setRejectModal(null)}
+              onConfirm={(reason) => review(rejectModal.id, 'reject', reason)}
             />
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setRejectModal(null); setRejectReason(''); }}
-                className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => review(rejectModal.id, 'reject', rejectReason || undefined)}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors"
-              >
-                Confirm Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      </>
+          )}
+        </>
       )}
     </div>
   );

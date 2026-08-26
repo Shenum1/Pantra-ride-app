@@ -1,40 +1,59 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
+  Car,
+  IdCard,
   Users,
   ShieldCheck,
-  Car,
   Wallet,
+  Receipt,
+  SlidersHorizontal,
+  Percent,
+  LifeBuoy,
   LogOut,
   Menu,
   X,
 } from 'lucide-react';
 import type { AdminUser } from '../hooks/useAuth';
+import { trpcQuery } from '../lib/api';
 
 const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/users', label: 'Users', icon: Users },
+  { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/trips', label: 'Trips', icon: Car },
+  { to: '/drivers', label: 'Drivers', icon: IdCard },
+  { to: '/riders', label: 'Riders', icon: Users },
   { to: '/verification', label: 'Verification', icon: ShieldCheck },
-  { to: '/rides', label: 'Rides', icon: Car },
+  { to: '/support', label: 'Support', icon: LifeBuoy },
+  { to: '/payments', label: 'Payments', icon: Receipt },
   { to: '/payouts', label: 'Payouts', icon: Wallet },
+  { to: '/pricing', label: 'Pricing', icon: SlidersHorizontal },
+  { to: '/promotions', label: 'Promotions', icon: Percent },
 ];
 
 export default function Layout({ user, logout }: { user: AdminUser; logout: () => void }) {
   const [open, setOpen] = useState(false);
+  const [pendingVerification, setPendingVerification] = useState<number | null>(null);
+
+  useEffect(() => {
+    trpcQuery<{ drivers: unknown[] }>('admin.driverVerification.list', { status: 'MANUAL_REVIEW' })
+      .then((res) => setPendingVerification(res.drivers.length))
+      .catch(() => setPendingVerification(null));
+  }, []);
 
   return (
-    <div className="min-h-screen flex bg-gray-50">
-      {/* Sidebar */}
+    <div className="flex min-h-screen bg-slate-50">
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-100 flex flex-col transform transition-transform duration-200
+        className={`fixed inset-y-0 left-0 z-40 flex w-60 transform flex-col border-r border-slate-200 bg-white transition-transform duration-200
           ${open ? 'translate-x-0' : '-translate-x-full'} lg:relative lg:translate-x-0`}
       >
-        <div className="px-6 py-5 border-b border-gray-100">
-          <span className="text-xl font-bold text-primary">Pantra Admin</span>
+        <div className="border-b border-slate-100 px-5 py-5">
+          <span className="text-[15px] font-bold tracking-tight text-slate-900">
+            Pantra <span className="font-semibold text-primary">Admin</span>
+          </span>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -42,22 +61,29 @@ export default function Layout({ user, logout }: { user: AdminUser; logout: () =
               end={end}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors
-                ${isActive ? 'bg-primary/10 text-primary' : 'text-gray-600 hover:bg-gray-100'}`
+                `flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors
+                ${isActive ? 'bg-primary-tint text-primary' : 'text-slate-600 hover:bg-slate-100'}`
               }
             >
-              <Icon size={18} />
-              {label}
+              <span className="flex items-center gap-2.5">
+                <Icon size={17} />
+                {label}
+              </span>
+              {label === 'Verification' && pendingVerification ? (
+                <span className="rounded-full bg-warning-tint px-1.5 py-0.5 text-[11px] font-semibold text-warning">
+                  {pendingVerification}
+                </span>
+              ) : null}
             </NavLink>
           ))}
         </nav>
 
-        <div className="px-4 py-4 border-t border-gray-100">
-          <p className="text-sm font-medium text-gray-800 truncate">{user.name}</p>
-          <p className="text-xs text-gray-400 truncate mb-3">{user.email}</p>
+        <div className="border-t border-slate-100 px-4 py-4">
+          <p className="truncate text-sm font-medium text-slate-800">{user.name}</p>
+          <p className="mb-3 truncate text-xs text-slate-400">{user.email}</p>
           <button
             onClick={logout}
-            className="flex items-center gap-2 text-sm text-red-500 hover:text-red-600 font-medium"
+            className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-danger"
           >
             <LogOut size={15} />
             Sign out
@@ -65,24 +91,21 @@ export default function Layout({ user, logout }: { user: AdminUser; logout: () =
         </div>
       </aside>
 
-      {/* Overlay */}
       {open && (
-        <div
-          className="fixed inset-0 z-30 bg-black/30 lg:hidden"
-          onClick={() => setOpen(false)}
-        />
+        <div className="fixed inset-0 z-30 bg-slate-900/30 lg:hidden" onClick={() => setOpen(false)} />
       )}
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-20 bg-white border-b border-gray-100 px-4 py-3 flex items-center gap-3 lg:hidden">
-          <button onClick={() => setOpen(true)} className="p-1.5 rounded-lg hover:bg-gray-100">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-100 bg-white px-4 py-3 lg:hidden">
+          <button onClick={() => setOpen(true)} className="rounded-md p-1.5 hover:bg-slate-100">
             {open ? <X size={20} /> : <Menu size={20} />}
           </button>
-          <span className="font-bold text-primary">Pantra Admin</span>
+          <span className="font-bold text-slate-900">
+            Pantra <span className="text-primary">Admin</span>
+          </span>
         </header>
 
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 overflow-auto p-6">
           <Outlet />
         </main>
       </div>

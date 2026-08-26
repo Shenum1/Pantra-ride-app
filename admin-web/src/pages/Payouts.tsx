@@ -1,6 +1,13 @@
-import { useEffect, useState } from 'react';
-import { Wallet, ChevronLeft, ChevronRight } from 'lucide-react';
-import { trpcQuery, trpcMutate } from '../lib/api';
+import { useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { trpcMutate } from '../lib/api';
+import { useTrpcQuery } from '../hooks/useTrpcQuery';
+import { Badge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { EmptyState } from '../components/ui/EmptyState';
+import { TableSkeleton } from '../components/ui/Skeleton';
+import { payoutStatusTone } from '../lib/status';
 
 interface PayoutRow {
   id: string;
@@ -20,167 +27,129 @@ interface PayoutsResponse {
   total: number;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700',
-  processing: 'bg-blue-100 text-blue-700',
-  completed: 'bg-green-100 text-green-700',
-  failed: 'bg-red-100 text-red-700',
-};
-
+const STATUSES = ['', 'pending', 'processing', 'completed', 'failed'] as const;
 const LIMIT = 50;
 
 export default function Payouts() {
-  const [data, setData] = useState<PayoutsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'processing' | 'completed' | 'failed' | ''>('pending');
+  const [statusFilter, setStatusFilter] = useState<(typeof STATUSES)[number]>('pending');
   const [offset, setOffset] = useState(0);
   const [updating, setUpdating] = useState<string | null>(null);
   const [failModal, setFailModal] = useState<{ id: string } | null>(null);
-  const [failReason, setFailReason] = useState('');
 
-  const load = (status: typeof statusFilter, off: number) => {
-    setLoading(true);
-    setError(null);
-    trpcQuery<PayoutsResponse>('admin.payouts.list', {
-      status: status || undefined,
-      limit: LIMIT,
-      offset: off,
-    })
-      .then(setData)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false));
-  };
+  const { data, loading, error, setData } = useTrpcQuery<PayoutsResponse>(
+    'admin.payouts.list',
+    { status: statusFilter || undefined, limit: LIMIT, offset },
+    [statusFilter, offset]
+  );
 
-  useEffect(() => {
-    setOffset(0);
-    load(statusFilter, 0);
-  }, [statusFilter]);
+  const payouts = data?.payouts ?? [];
+  const total = data?.total ?? 0;
+  const from = total === 0 ? 0 : offset + 1;
+  const to = Math.min(offset + LIMIT, total);
 
   const updateStatus = async (id: string, status: 'processing' | 'completed' | 'failed', failureReason?: string) => {
     setUpdating(id);
     try {
       await trpcMutate('admin.payouts.updateStatus', { id, status, failureReason });
       setData((prev) =>
-        prev ? { ...prev, payouts: prev.payouts.map((p) => p.id === id ? { ...p, status, failureReason } : p) } : null
+        prev ? { ...prev, payouts: prev.payouts.map((p) => (p.id === id ? { ...p, status, failureReason } : p)) } : prev
       );
     } catch (e) {
       alert((e as Error).message);
     } finally {
       setUpdating(null);
       setFailModal(null);
-      setFailReason('');
     }
   };
 
-  const handlePage = (dir: 'prev' | 'next') => {
-    const next = dir === 'next' ? offset + LIMIT : Math.max(0, offset - LIMIT);
-    setOffset(next);
-    load(statusFilter, next);
-  };
-
-  const total = data?.total ?? 0;
-  const from = total === 0 ? 0 : offset + 1;
-  const to = Math.min(offset + LIMIT, total);
-
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Driver Payouts</h1>
+      <div>
+        <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Payouts</h1>
+        <p className="mt-1 text-sm text-slate-500">Driver withdrawal requests.</p>
+      </div>
 
       <div className="flex flex-wrap gap-2">
-        {(['', 'pending', 'processing', 'completed', 'failed'] as const).map((s) => (
+        {STATUSES.map((s) => (
           <button
             key={s}
-            onClick={() => setStatusFilter(s)}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium capitalize transition-colors
-              ${statusFilter === s ? 'bg-primary text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            onClick={() => {
+              setStatusFilter(s);
+              setOffset(0);
+            }}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors
+              ${statusFilter === s ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
             {s === '' ? 'All' : s}
           </button>
         ))}
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : error ? (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700">{error}</div>
+      {error ? (
+        <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{error}</div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-            <Wallet size={16} className="text-gray-400" />
-            <span className="text-sm text-gray-500">{total.toLocaleString()} payout request{total !== 1 ? 's' : ''}</span>
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
+            {loading ? 'Loading…' : `${total.toLocaleString()} payout request${total !== 1 ? 's' : ''}`}
           </div>
-
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-gray-50 text-left">
-                  <th className="px-4 py-3 font-semibold text-gray-600">Driver</th>
-                  <th className="px-4 py-3 font-semibold text-gray-600">Bank Account</th>
-                  <th className="px-4 py-3 font-semibold text-gray-600 text-right">Amount</th>
-                  <th className="px-4 py-3 font-semibold text-gray-600">Status</th>
-                  <th className="px-4 py-3 font-semibold text-gray-600">Requested</th>
-                  <th className="px-4 py-3 font-semibold text-gray-600">Actions</th>
+                <tr className="text-left">
+                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Driver</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Bank account</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Amount</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Status</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Requested</th>
+                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {(data?.payouts ?? []).length === 0 ? (
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <TableSkeleton rows={8} cols={6} />
+                ) : payouts.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center text-gray-400 py-10">No payout requests.</td>
+                    <td colSpan={6} className="p-0">
+                      <EmptyState title="No payout requests" description="Try a different status filter." />
+                    </td>
                   </tr>
                 ) : (
-                  (data?.payouts ?? []).map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                  payouts.map((p) => (
+                    <tr key={p.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">{p.driver?.name ?? '—'}</p>
-                        <p className="text-xs text-gray-400">{p.driver?.email}</p>
+                        <p className="font-medium text-slate-900">{p.driver?.name ?? '—'}</p>
+                        <p className="text-xs text-slate-400">{p.driver?.email}</p>
                       </td>
                       <td className="px-4 py-3">
                         {p.bankAccount ? (
                           <>
-                            <p className="text-gray-700">{p.bankAccount.bankName}</p>
-                            <p className="text-xs text-gray-400">{p.bankAccount.accountNumber} · {p.bankAccount.accountName}</p>
+                            <p className="text-slate-700">{p.bankAccount.bankName}</p>
+                            <p className="text-xs text-slate-400">{p.bankAccount.accountNumber} · {p.bankAccount.accountName}</p>
                           </>
                         ) : (
-                          <span className="text-gray-300 italic">—</span>
+                          <span className="italic text-slate-300">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">₦{p.amount.toLocaleString()}</td>
+                      <td className="tnum px-4 py-3 text-right font-semibold text-slate-900">₦{p.amount.toLocaleString()}</td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[p.status]}`}>
-                          {p.status}
-                        </span>
-                        {p.failureReason && <p className="text-xs text-red-500 mt-0.5">{p.failureReason}</p>}
+                        <Badge tone={payoutStatusTone[p.status]}>{p.status}</Badge>
+                        {p.failureReason && <p className="mt-0.5 text-xs text-danger">{p.failureReason}</p>}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{new Date(p.requestedAt).toLocaleDateString()}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(p.requestedAt).toLocaleDateString()}</td>
                       <td className="px-4 py-3">
                         {p.status === 'pending' && (
-                          <button
-                            disabled={updating === p.id}
-                            onClick={() => updateStatus(p.id, 'processing')}
-                            className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-                          >
-                            Mark Processing
-                          </button>
+                          <Button variant="primary" size="sm" disabled={updating === p.id} onClick={() => updateStatus(p.id, 'processing')}>
+                            Mark processing
+                          </Button>
                         )}
                         {p.status === 'processing' && (
                           <div className="flex gap-2">
-                            <button
-                              disabled={updating === p.id}
-                              onClick={() => updateStatus(p.id, 'completed')}
-                              className="text-xs bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-                            >
+                            <Button variant="success" size="sm" disabled={updating === p.id} onClick={() => updateStatus(p.id, 'completed')}>
                               Paid
-                            </button>
-                            <button
-                              disabled={updating === p.id}
-                              onClick={() => setFailModal({ id: p.id })}
-                              className="text-xs bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-                            >
+                            </Button>
+                            <Button variant="danger" size="sm" disabled={updating === p.id} onClick={() => setFailModal({ id: p.id })}>
                               Failed
-                            </button>
+                            </Button>
                           </div>
                         )}
                       </td>
@@ -192,13 +161,21 @@ export default function Payouts() {
           </div>
 
           {total > LIMIT && (
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-sm text-gray-500">{from}–{to} of {total.toLocaleString()}</span>
+            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3.5">
+              <span className="text-sm text-slate-500">{from}–{to} of {total.toLocaleString()}</span>
               <div className="flex gap-2">
-                <button onClick={() => handlePage('prev')} disabled={offset === 0} className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                <button
+                  onClick={() => setOffset((o) => Math.max(0, o - LIMIT))}
+                  disabled={offset === 0}
+                  className="rounded-md border border-slate-200 p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   <ChevronLeft size={16} />
                 </button>
-                <button onClick={() => handlePage('next')} disabled={to >= total} className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                <button
+                  onClick={() => setOffset((o) => o + LIMIT)}
+                  disabled={to >= total}
+                  className="rounded-md border border-slate-200 p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   <ChevronRight size={16} />
                 </button>
               </div>
@@ -208,26 +185,16 @@ export default function Payouts() {
       )}
 
       {failModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h3 className="font-semibold text-gray-900">Mark as Failed</h3>
-            <textarea
-              value={failReason}
-              onChange={(e) => setFailReason(e.target.value)}
-              placeholder="Enter failure reason (optional)"
-              rows={3}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-            />
-            <div className="flex gap-3">
-              <button onClick={() => { setFailModal(null); setFailReason(''); }} className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50">
-                Cancel
-              </button>
-              <button onClick={() => updateStatus(failModal.id, 'failed', failReason || undefined)} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg text-sm font-semibold transition-colors">
-                Confirm Failed
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Mark as failed"
+          reasonLabel="Failure reason"
+          reasonPlaceholder="Enter failure reason (optional)"
+          confirmLabel="Confirm failed"
+          confirmVariant="danger"
+          processing={updating === failModal.id}
+          onCancel={() => setFailModal(null)}
+          onConfirm={(reason) => updateStatus(failModal.id, 'failed', reason)}
+        />
       )}
     </div>
   );
