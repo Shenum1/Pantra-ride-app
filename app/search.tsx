@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, LocateFixed, MapPin, Search, Sparkles, X } from "lucide-react-native";
+import { ArrowLeft, Clock, LocateFixed, MapPin, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
@@ -493,17 +493,6 @@ export default function SearchScreen() {
               </Pressable>
             )}
           </View>
-
-          <View style={styles.helperRow}>
-            <View style={styles.helperChip}>
-              <Sparkles size={14} color={Colors.light.primary} />
-              <Text style={styles.helperChipText}>Nigeria POIs</Text>
-            </View>
-            <View style={styles.helperChipMuted}>
-              <Search size={14} color={Colors.light.gray} />
-              <Text style={styles.helperChipMutedText}>Try Shoprite, Transcorp, Eko Hotels</Text>
-            </View>
-          </View>
         </View>
       </Animated.View>
 
@@ -675,43 +664,6 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
     backgroundColor: Colors.light.border,
     marginLeft: 16,
-  },
-  helperRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 10,
-  },
-  helperChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: Colors.light.primaryLight,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
-  },
-  helperChipText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: Colors.light.primary,
-  },
-  helperChipMuted: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: Colors.light.card,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 6,
-  },
-  helperChipMutedText: {
-    fontSize: 12,
-    color: Colors.light.gray,
-    fontWeight: "500",
   },
   inputIcon: {
     marginRight: 8,

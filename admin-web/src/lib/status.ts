@@ -1,4 +1,4 @@
-import type { BadgeTone } from '../components/ui/Badge';
+import type { BadgeTone } from '../components/ui/StatusLabel';
 
 export const rideStatusTone: Record<string, BadgeTone> = {
   pending: 'pending',
@@ -47,4 +47,13 @@ export const ticketPriorityTone: Record<string, BadgeTone> = {
   normal: 'pending',
   high: 'warning',
   urgent: 'danger',
+};
+
+export const paymentStatusTone: Record<string, BadgeTone> = {
+  completed: 'success',
+  successful: 'success',
+  pending: 'pending',
+  failed: 'danger',
+  cancelled: 'danger',
+  refunded: 'neutral',
 };

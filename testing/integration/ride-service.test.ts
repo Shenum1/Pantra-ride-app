@@ -10,14 +10,11 @@ vi.mock('@/lib/database-service', () => ({
   },
 }));
 
-vi.mock('@/lib/firebase', () => ({ db: {} }));
-
-vi.mock('firebase/firestore', () => ({
-  onSnapshot: vi.fn().mockReturnValue(() => {}),
-  collection: vi.fn().mockReturnValue({}),
-  query: vi.fn().mockReturnValue({}),
-  where: vi.fn().mockReturnValue({}),
-  doc: vi.fn().mockReturnValue({}),
+// RideMatchingService imports the Supabase client (used elsewhere in the file
+// for realtime subscriptions) but every path exercised below goes through the
+// mocked DatabaseService — the client just needs to exist, not do anything.
+vi.mock('@/lib/supabase', () => ({
+  supabase: { from: vi.fn(), removeChannel: vi.fn() },
 }));
 
 import { DatabaseService } from '@/lib/database-service';

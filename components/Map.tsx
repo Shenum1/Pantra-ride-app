@@ -552,16 +552,6 @@ const Map: React.FC<MapProps> = ({
                 setStaticMapFailed(true);
               }}
             />
-            {staticMapMarkers.map((marker) => (
-              <View
-                key={`overlay-${marker.id}`}
-                style={[
-                  styles.staticMarkerOverlay,
-                  marker.type === 'dropoff' ? styles.staticDropoffMarkerOverlay : null,
-                  marker.type === 'driver' ? styles.staticDriverMarkerOverlay : null,
-                ]}
-              />
-            ))}
           </View>
         ) : shouldRenderCleanFallback ? (
           <View style={styles.cleanFallback} testID="map-clean-fallback">

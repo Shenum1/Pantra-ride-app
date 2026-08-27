@@ -9,55 +9,31 @@ interface RecentActivityItem {
   createdAt: string;
 }
 
-export default adminProcedure.query(async ({ ctx }) => {
-  const db = ctx.supabaseAdmin;
+interface SettlementRow {
+  fare: number | null;
+  bookingFee: number | null;
+  serviceFee: number | null;
+  zoneFee: number | null;
+  waitingCharge: number | null;
+  priorityFee: number | null;
+  platformCommissionAmount: number | null;
+  driverEarningsAmount: number | null;
+}
 
-  const startOfToday = new Date();
-  startOfToday.setUTCHours(0, 0, 0, 0);
-
-  const [
-    totalUsersRes,
-    totalRidersRes,
-    totalDriversRes,
-    activeDriversRes,
-    ridesTodayRes,
-    completedFaresRes,
-    recentUsersRes,
-    recentDriversRes,
-    recentRidesRes,
-    tipsRes,
-  ] = await Promise.all([
-    db.from("users").select("uid", { count: "exact", head: true }),
-    db.from("users").select("uid", { count: "exact", head: true }).eq("role", "rider"),
-    db.from("users").select("uid", { count: "exact", head: true }).eq("role", "driver"),
-    db.from("drivers").select("id", { count: "exact", head: true }).eq("isOnline", true),
-    db.from("rides").select("id", { count: "exact", head: true }).gte("createdAt", startOfToday.toISOString()),
-    db
-      .from("rides")
-      .select("fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee, platformCommissionAmount, driverEarningsAmount")
-      .eq("status", "completed"),
-    db.from("users").select("uid, displayName, email, role, createdAt").order("createdAt", { ascending: false }).limit(5),
-    db.from("drivers").select("id, name, email, createdAt").order("createdAt", { ascending: false }).limit(5),
-    db.from("rides").select("id, status, fare, createdAt").order("createdAt", { ascending: false }).limit(5),
-    db.from("tips").select("amount").eq("status", "successful"),
-  ]);
-
-  const totalRevenue = (completedFaresRes.data ?? []).reduce(
-    (sum: number, row: { fare: number | null }) => sum + (row.fare ?? 0),
-    0
-  );
-
-  // Prefer the commission snapshotted per-ride at completion time (see
-  // FirebaseDriverService.updateRideStatus) so the admin total reflects the
-  // rate actually applied to each ride, not today's PLATFORM_COMMISSION_RATE
-  // retroactively applied to every ride ever completed. Only rows that
-  // predate the snapshot fall back to a live recalculation.
-  let totalPlatformCommission = 0;
-  let totalDriverEarnings = 0;
-  for (const row of completedFaresRes.data ?? []) {
+// Prefer the commission snapshotted per-ride at completion time (see
+// FirebaseDriverService.updateRideStatus) so totals reflect the rate actually
+// applied to each ride, not today's PLATFORM_COMMISSION_RATE retroactively
+// applied to every ride ever completed. Only rows that predate the snapshot
+// fall back to a live recalculation.
+function sumSettlement(rows: SettlementRow[]) {
+  let revenue = 0;
+  let commission = 0;
+  let driverEarnings = 0;
+  for (const row of rows) {
+    revenue += row.fare ?? 0;
     if (row.platformCommissionAmount != null && row.driverEarningsAmount != null) {
-      totalPlatformCommission += row.platformCommissionAmount;
-      totalDriverEarnings += row.driverEarningsAmount;
+      commission += row.platformCommissionAmount;
+      driverEarnings += row.driverEarningsAmount;
     } else {
       const payout = calculateDriverPayout(
         row.fare ?? 0,
@@ -67,10 +43,67 @@ export default adminProcedure.query(async ({ ctx }) => {
         row.waitingCharge ?? 0,
         row.priorityFee ?? 0
       );
-      totalPlatformCommission += payout.commission;
-      totalDriverEarnings += payout.netAmount;
+      commission += payout.commission;
+      driverEarnings += payout.netAmount;
     }
   }
+  return { revenue, commission, driverEarnings };
+}
+
+export default adminProcedure.query(async ({ ctx }) => {
+  const db = ctx.supabaseAdmin;
+
+  const startOfToday = new Date();
+  startOfToday.setUTCHours(0, 0, 0, 0);
+
+  const SETTLEMENT_COLUMNS =
+    "fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee, platformCommissionAmount, driverEarningsAmount";
+
+  const [
+    totalUsersRes,
+    totalRidersRes,
+    totalDriversRes,
+    activeDriversRes,
+    ridesTodayRes,
+    ridesInProgressRes,
+    completedFaresRes,
+    completedTodayFaresRes,
+    recentUsersRes,
+    recentDriversRes,
+    recentRidesRes,
+    tipsRes,
+    manualReviewRes,
+    pendingDocumentsRes,
+    failedPayoutsRes,
+    failedTransactionsRes,
+    openTicketsRes,
+  ] = await Promise.all([
+    db.from("users").select("uid", { count: "exact", head: true }),
+    db.from("users").select("uid", { count: "exact", head: true }).eq("role", "rider"),
+    db.from("users").select("uid", { count: "exact", head: true }).eq("role", "driver"),
+    db.from("drivers").select("id", { count: "exact", head: true }).eq("isOnline", true),
+    db.from("rides").select("id", { count: "exact", head: true }).gte("createdAt", startOfToday.toISOString()),
+    db.from("rides").select("id", { count: "exact", head: true }).eq("status", "in-progress"),
+    db.from("rides").select(SETTLEMENT_COLUMNS).eq("status", "completed"),
+    db
+      .from("rides")
+      .select(SETTLEMENT_COLUMNS)
+      .eq("status", "completed")
+      .gte("completedAt", startOfToday.toISOString()),
+    db.from("users").select("uid, displayName, email, role, createdAt").order("createdAt", { ascending: false }).limit(5),
+    db.from("drivers").select("id, name, email, createdAt").order("createdAt", { ascending: false }).limit(5),
+    db.from("rides").select("id, status, fare, createdAt").order("createdAt", { ascending: false }).limit(5),
+    db.from("tips").select("amount").eq("status", "successful"),
+    db.from("drivers").select("id", { count: "exact", head: true }).eq("verificationStatus", "MANUAL_REVIEW"),
+    db.from("driver_documents").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    db.from("driver_payouts").select("id", { count: "exact", head: true }).eq("status", "failed"),
+    db.from("wallet_transactions").select("id", { count: "exact", head: true }).eq("status", "failed"),
+    db.from("support_tickets").select("id", { count: "exact", head: true }).eq("status", "open"),
+  ]);
+
+  const { revenue: totalRevenue, commission: totalPlatformCommission, driverEarnings: totalDriverEarnings } =
+    sumSettlement(completedFaresRes.data ?? []);
+  const { revenue: todayRevenue, commission: todayPlatformCommission } = sumSettlement(completedTodayFaresRes.data ?? []);
 
   // Tips are 100% driver / 0% platform — a separate figure, deliberately
   // never added into totalRevenue/totalPlatformCommission/totalDriverEarnings
@@ -120,10 +153,20 @@ export default adminProcedure.query(async ({ ctx }) => {
     totalDrivers: totalDriversRes.count ?? 0,
     activeDrivers: activeDriversRes.count ?? 0,
     ridesToday: ridesTodayRes.count ?? 0,
+    ridesInProgress: ridesInProgressRes.count ?? 0,
     totalRevenue,
     totalPlatformCommission,
     totalDriverEarnings,
     totalTips,
+    todayRevenue,
+    todayPlatformCommission,
+    needsAttention: {
+      manualReview: manualReviewRes.count ?? 0,
+      pendingDocuments: pendingDocumentsRes.count ?? 0,
+      failedPayouts: failedPayoutsRes.count ?? 0,
+      failedTransactions: failedTransactionsRes.count ?? 0,
+      openTickets: openTicketsRes.count ?? 0,
+    },
     recentActivity: recentActivity.slice(0, 5),
   };
 });

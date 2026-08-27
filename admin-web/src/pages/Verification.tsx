@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import { ShieldCheck, ShieldX, ShieldAlert, ExternalLink } from 'lucide-react';
 import { trpcMutate } from '../lib/api';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
-import { Badge } from '../components/ui/Badge';
+import { StatusLabel } from '../components/ui/StatusLabel';
 import { Button } from '../components/ui/Button';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { EmptyState } from '../components/ui/EmptyState';
 import { CardSkeleton } from '../components/ui/Skeleton';
+import { PageHeader } from '../components/ui/PageHeader';
+import { FilterTabs } from '../components/ui/FilterTabs';
 import { documentStatusTone, driverVerificationStatusTone } from '../lib/status';
 
 interface DriverDoc {
@@ -61,31 +63,24 @@ const DOC_LABELS: Record<string, string> = {
   roadworthiness: 'Roadworthiness Certificate',
 };
 
-const DRIVER_FILTERS: { key: DriverStatusFilter; label: string }[] = [
-  { key: 'MANUAL_REVIEW', label: 'Manual review' },
-  { key: 'DOCUMENTS_SUBMITTED', label: 'Submitted' },
-  { key: 'VERIFYING', label: 'Verifying' },
-  { key: 'all', label: 'All' },
+const DRIVER_FILTER_OPTIONS: { value: DriverStatusFilter; label: string }[] = [
+  { value: 'MANUAL_REVIEW', label: 'Manual review' },
+  { value: 'DOCUMENTS_SUBMITTED', label: 'Submitted' },
+  { value: 'VERIFYING', label: 'Verifying' },
+  { value: 'all', label: 'All' },
 ];
 
-const DOC_FILTERS = ['pending', 'approved', 'rejected', 'all'] as const;
-
-function FilterPill<T extends string>({ value, current, label, onClick }: { value: T; current: T; label: string; onClick: (v: T) => void }) {
-  return (
-    <button
-      onClick={() => onClick(value)}
-      className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors
-        ${current === value ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-    >
-      {label}
-    </button>
-  );
-}
+const DOC_FILTER_OPTIONS: { value: 'pending' | 'approved' | 'rejected' | 'all'; label: string }[] = [
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'all', label: 'All' },
+];
 
 export default function Verification() {
   const [viewMode, setViewMode] = useState<'drivers' | 'documents'>('drivers');
 
-  const [statusFilter, setStatusFilter] = useState<(typeof DOC_FILTERS)[number]>('pending');
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
   const [processing, setProcessing] = useState<string | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: string } | null>(null);
 
@@ -138,31 +133,17 @@ export default function Verification() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Verification</h1>
-        <p className="mt-1 text-sm text-slate-500">The actionable queue — drivers and documents waiting on a decision.</p>
-      </div>
+      <PageHeader title="Verification" description="The actionable queue — drivers and documents waiting on a decision." />
 
-      <div className="flex gap-2">
-        {(['drivers', 'documents'] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setViewMode(mode)}
-            className={`rounded-md px-4 py-2 text-sm font-semibold capitalize transition-colors
-              ${viewMode === mode ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            {mode}
-          </button>
-        ))}
-      </div>
+      <FilterTabs
+        options={[{ value: 'drivers', label: 'Drivers' }, { value: 'documents', label: 'Documents' }]}
+        value={viewMode}
+        onChange={(v) => setViewMode(v as typeof viewMode)}
+      />
 
       {viewMode === 'drivers' ? (
         <>
-          <div className="flex flex-wrap gap-2">
-            {DRIVER_FILTERS.map((f) => (
-              <FilterPill key={f.key} value={f.key} current={driverStatusFilter} label={f.label} onClick={setDriverStatusFilter} />
-            ))}
-          </div>
+          <FilterTabs options={DRIVER_FILTER_OPTIONS} value={driverStatusFilter} onChange={setDriverStatusFilter} />
 
           {driversError ? (
             <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{driversError}</div>
@@ -184,9 +165,9 @@ export default function Verification() {
                         {driver.operatingState || '—'} · {driver.vehicleCategory || '—'} · {Math.round(driver.verificationProgress ?? 0)}% docs
                       </p>
                     </div>
-                    <Badge tone={driverVerificationStatusTone[driver.verificationStatus] ?? 'neutral'}>
+                    <StatusLabel tone={driverVerificationStatusTone[driver.verificationStatus] ?? 'neutral'}>
                       {driver.verificationStatus.replace(/_/g, ' ').toLowerCase()}
-                    </Badge>
+                    </StatusLabel>
                   </div>
 
                   {driver.rejectionReason && (
@@ -228,11 +209,7 @@ export default function Verification() {
         </>
       ) : (
         <>
-          <div className="flex flex-wrap gap-2">
-            {DOC_FILTERS.map((s) => (
-              <FilterPill key={s} value={s} current={statusFilter} label={s} onClick={setStatusFilter} />
-            ))}
-          </div>
+          <FilterTabs options={DOC_FILTER_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
 
           {docsError ? (
             <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{docsError}</div>
@@ -268,7 +245,7 @@ export default function Verification() {
                           {doc.driverName || doc.driverId}
                         </Link>
                       </div>
-                      <Badge tone={documentStatusTone[doc.status]}>{doc.status}</Badge>
+                      <StatusLabel tone={documentStatusTone[doc.status]}>{doc.status}</StatusLabel>
                     </div>
 
                     <div className="text-xs text-slate-400">

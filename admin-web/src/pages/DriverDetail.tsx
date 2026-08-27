@@ -3,9 +3,11 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, ShieldCheck, ShieldX, ShieldAlert } from 'lucide-react';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
 import { trpcMutate } from '../lib/api';
-import { Badge } from '../components/ui/Badge';
+import { StatusLabel } from '../components/ui/StatusLabel';
 import { Button } from '../components/ui/Button';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { Field } from '../components/ui/Field';
+import { Table, type TableColumn } from '../components/ui/Table';
 import { driverVerificationStatusTone, documentStatusTone } from '../lib/status';
 
 interface DriverDetailData {
@@ -63,15 +65,6 @@ interface DriverDetailData {
 
 type Decision = 'VERIFIED' | 'REJECTED' | 'MANUAL_REVIEW';
 
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-0.5 text-sm text-slate-800">{value || '—'}</p>
-    </div>
-  );
-}
-
 export default function DriverDetail() {
   const { id } = useParams<{ id: string }>();
   const { data, loading, error, refetch } = useTrpcQuery<DriverDetailData>(
@@ -107,6 +100,13 @@ export default function DriverDetail() {
   const { driver, requiredDocuments, documents, checks, auditLog } = data;
   const documentsByType = new Map(documents.map((d) => [d.type, d]));
 
+  const checksColumns: TableColumn<DriverDetailData['checks'][number]>[] = [
+    { key: 'check', header: 'Check', render: (c) => <span className="capitalize text-slate-700">{c.checkType.replace(/_/g, ' ')}</span> },
+    { key: 'status', header: 'Status', render: (c) => <span className="capitalize text-slate-700">{c.status.replace(/_/g, ' ')}</span> },
+    { key: 'provider', header: 'Provider', render: (c) => <span className="text-slate-500">{c.provider || '—'}</span> },
+    { key: 'checked', header: 'Checked', render: (c) => <span className="text-slate-500">{new Date(c.checkedAt).toLocaleString()}</span> },
+  ];
+
   return (
     <div className="max-w-4xl space-y-8">
       <div>
@@ -122,9 +122,9 @@ export default function DriverDetail() {
             <h1 className="text-[26px] font-bold tracking-tight text-slate-900">
               {driver.fullLegalName || driver.name || 'Unnamed driver'}
             </h1>
-            <Badge tone={driverVerificationStatusTone[driver.verificationStatus] ?? 'neutral'}>
+            <StatusLabel tone={driverVerificationStatusTone[driver.verificationStatus] ?? 'neutral'}>
               {driver.verificationStatus.replace(/_/g, ' ').toLowerCase()}
-            </Badge>
+            </StatusLabel>
           </div>
           <p className="mt-1 text-sm text-slate-500">
             {driver.email || '—'} · {driver.phone || '—'}
@@ -199,7 +199,7 @@ export default function DriverDetail() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {doc ? <Badge tone={documentStatusTone[doc.status]}>{doc.status}</Badge> : <Badge tone="neutral">missing</Badge>}
+                    {doc ? <StatusLabel tone={documentStatusTone[doc.status]}>{doc.status}</StatusLabel> : <StatusLabel tone="neutral">missing</StatusLabel>}
                     {doc?.signedUrl && (
                       <a href={doc.signedUrl} target="_blank" rel="noreferrer" className="rounded-md p-1.5 hover:bg-slate-100">
                         <ExternalLink size={14} className="text-slate-500" />
@@ -216,28 +216,11 @@ export default function DriverDetail() {
       {checks.length > 0 && (
         <section>
           <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Verification checks</h2>
-          <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Check</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Provider</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Checked</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {checks.map((c) => (
-                  <tr key={c.id}>
-                    <td className="px-4 py-2.5 capitalize text-slate-700">{c.checkType.replace(/_/g, ' ')}</td>
-                    <td className="px-4 py-2.5 capitalize text-slate-700">{c.status.replace(/_/g, ' ')}</td>
-                    <td className="px-4 py-2.5 text-slate-500">{c.provider || '—'}</td>
-                    <td className="px-4 py-2.5 text-slate-500">{new Date(c.checkedAt).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table
+            columns={checksColumns}
+            rows={checks}
+            rowKey={(c) => c.id}
+          />
         </section>
       )}
 

@@ -67,7 +67,6 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, title, subtitle, onPress, tit
       onPress={onPress}
     >
       <View style={{ marginRight: 16, width: 24, alignItems: "center" }}>
-        {/* eslint-disable-next-line @rork/linters/general-no-raw-text */}
         {icon}
       </View>
       <View style={{ flex: 1 }}>

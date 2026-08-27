@@ -1,34 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
-import {
-  LayoutDashboard,
-  Car,
-  IdCard,
-  Users,
-  ShieldCheck,
-  Wallet,
-  Receipt,
-  SlidersHorizontal,
-  Percent,
-  LifeBuoy,
-  LogOut,
-  Menu,
-  X,
-} from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import type { AdminUser } from '../hooks/useAuth';
 import { trpcQuery } from '../lib/api';
 
 const NAV = [
-  { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
-  { to: '/trips', label: 'Trips', icon: Car },
-  { to: '/drivers', label: 'Drivers', icon: IdCard },
-  { to: '/riders', label: 'Riders', icon: Users },
-  { to: '/verification', label: 'Verification', icon: ShieldCheck },
-  { to: '/support', label: 'Support', icon: LifeBuoy },
-  { to: '/payments', label: 'Payments', icon: Receipt },
-  { to: '/payouts', label: 'Payouts', icon: Wallet },
-  { to: '/pricing', label: 'Pricing', icon: SlidersHorizontal },
-  { to: '/promotions', label: 'Promotions', icon: Percent },
+  { to: '/', label: 'Overview', end: true },
+  { to: '/trips', label: 'Trips' },
+  { to: '/drivers', label: 'Drivers' },
+  { to: '/riders', label: 'Riders' },
+  { to: '/verification', label: 'Verification' },
+  { to: '/support', label: 'Support' },
+  { to: '/payments', label: 'Payments' },
+  { to: '/payouts', label: 'Payouts' },
+  { to: '/pricing', label: 'Pricing' },
+  { to: '/promotions', label: 'Promotions' },
 ];
 
 export default function Layout({ user, logout }: { user: AdminUser; logout: () => void }) {
@@ -54,21 +40,18 @@ export default function Layout({ user, logout }: { user: AdminUser; logout: () =
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
+          {NAV.map(({ to, label, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
-                `flex items-center justify-between gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors
-                ${isActive ? 'bg-primary-tint text-primary' : 'text-slate-600 hover:bg-slate-100'}`
+                `flex items-center justify-between gap-3 border-l-2 py-2 pl-3.5 pr-3 text-sm transition-colors
+                ${isActive ? 'border-primary font-semibold text-primary' : 'border-transparent font-medium text-slate-600 hover:border-slate-200 hover:text-slate-900'}`
               }
             >
-              <span className="flex items-center gap-2.5">
-                <Icon size={17} />
-                {label}
-              </span>
+              {label}
               {label === 'Verification' && pendingVerification ? (
                 <span className="rounded-full bg-warning-tint px-1.5 py-0.5 text-[11px] font-semibold text-warning">
                   {pendingVerification}
@@ -83,9 +66,8 @@ export default function Layout({ user, logout }: { user: AdminUser; logout: () =
           <p className="mb-3 truncate text-xs text-slate-400">{user.email}</p>
           <button
             onClick={logout}
-            className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-danger"
+            className="text-sm font-medium text-slate-500 hover:text-danger"
           >
-            <LogOut size={15} />
             Sign out
           </button>
         </div>

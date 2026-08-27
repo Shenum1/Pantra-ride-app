@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
+import { PageHeader } from '../components/ui/PageHeader';
 
 interface OverviewData {
   totalUsers: number;
@@ -7,17 +8,21 @@ interface OverviewData {
   totalDrivers: number;
   activeDrivers: number;
   ridesToday: number;
+  ridesInProgress: number;
   totalRevenue: number;
   totalPlatformCommission: number;
   totalDriverEarnings: number;
   totalTips: number;
+  todayRevenue: number;
+  todayPlatformCommission: number;
+  needsAttention: {
+    manualReview: number;
+    pendingDocuments: number;
+    failedPayouts: number;
+    failedTransactions: number;
+    openTickets: number;
+  };
   recentActivity: { id: string; type: 'user' | 'driver' | 'ride'; title: string; subtitle: string; createdAt: string }[];
-}
-
-interface CountResponse {
-  drivers?: unknown[];
-  payouts?: unknown[];
-  total?: number;
 }
 
 function timeAgo(dateStr: string) {
@@ -36,37 +41,31 @@ const ACTIVITY_DOT: Record<string, string> = {
   ride: 'bg-primary',
 };
 
-function AttentionTile({ to, count, label }: { to: string; count: number | null; label: string }) {
-  const hot = (count ?? 0) > 0;
+function AttentionRow({ to, count, label, tone }: { to: string; count: number; label: string; tone: 'danger' | 'warning' }) {
   return (
     <Link
       to={to}
-      className={`flex-1 min-w-[160px] rounded-md border p-4 transition-colors ${
-        hot ? 'border-warning/25 bg-warning-tint hover:bg-warning-tint/70' : 'border-slate-200 bg-white hover:bg-slate-50'
+      className={`flex items-center justify-between gap-4 border-l-2 py-3 pl-4 pr-3 transition-colors hover:bg-slate-50 ${
+        tone === 'danger' ? 'border-danger' : 'border-warning'
       }`}
     >
-      <p className={`tnum text-2xl font-bold tracking-tight ${hot ? 'text-warning' : 'text-slate-900'}`}>
-        {count ?? '—'}
-      </p>
-      <p className="mt-0.5 text-sm text-slate-500">{label}</p>
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <span className={`tnum text-lg font-semibold ${tone === 'danger' ? 'text-danger' : 'text-warning'}`}>{count}</span>
     </Link>
   );
 }
 
-function StatTile({ value, label }: { value: string | number; label: string }) {
+function StatItem({ value, label }: { value: string | number; label: string }) {
   return (
-    <div className="flex-1 min-w-[140px] rounded-md border border-slate-200 bg-white p-4">
+    <div>
       <p className="tnum text-xl font-semibold tracking-tight text-slate-900">{value}</p>
-      <p className="mt-0.5 text-sm text-slate-500">{label}</p>
+      <p className="mt-0.5 text-xs text-slate-500">{label}</p>
     </div>
   );
 }
 
 export default function Overview() {
   const { data, loading, error } = useTrpcQuery<OverviewData>('admin.overview');
-  const { data: manualReview } = useTrpcQuery<CountResponse>('admin.driverVerification.list', { status: 'MANUAL_REVIEW' });
-  const { data: pendingPayouts } = useTrpcQuery<CountResponse>('admin.payouts.list', { status: 'pending', limit: 1 });
-  const { data: failedPayouts } = useTrpcQuery<CountResponse>('admin.payouts.list', { status: 'failed', limit: 1 });
 
   if (loading) {
     return <p className="text-sm text-slate-400">Loading overview…</p>;
@@ -76,29 +75,57 @@ export default function Overview() {
     return <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{error}</div>;
   }
 
+  type AttentionTone = 'danger' | 'warning';
+  const ALL_ATTENTION: { to: string; count: number; label: string; tone: AttentionTone }[] = [
+    { to: '/payouts', count: data.needsAttention.failedPayouts, label: 'Payouts failed', tone: 'danger' },
+    { to: '/payments', count: data.needsAttention.failedTransactions, label: 'Wallet transactions failed', tone: 'danger' },
+    { to: '/verification', count: data.needsAttention.manualReview, label: 'Drivers in manual review', tone: 'warning' },
+    { to: '/verification', count: data.needsAttention.pendingDocuments, label: 'Documents awaiting review', tone: 'warning' },
+    { to: '/support', count: data.needsAttention.openTickets, label: 'Support tickets open', tone: 'warning' },
+  ];
+  const attentionItems = ALL_ATTENTION.filter((i) => i.count > 0).sort((a, b) =>
+    a.tone === b.tone ? b.count - a.count : a.tone === 'danger' ? -1 : 1
+  );
+
   return (
     <div className="space-y-8">
-      <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Overview</h1>
+      <PageHeader title="Overview" />
 
       <section>
         <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Needs attention</h2>
-        <div className="flex flex-wrap gap-3">
-          <AttentionTile to="/verification" count={manualReview?.drivers?.length ?? null} label="Drivers in manual review" />
-          <AttentionTile to="/payouts" count={pendingPayouts?.total ?? null} label="Payouts pending" />
-          <AttentionTile to="/payouts" count={failedPayouts?.total ?? null} label="Payouts failed" />
+        {attentionItems.length === 0 ? (
+          <p className="border-l-2 border-slate-200 py-3 pl-4 text-sm text-slate-500">
+            Nothing needs a decision right now.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
+            {attentionItems.map((item) => (
+              <AttentionRow key={item.label} {...item} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Right now</h2>
+        <div className="flex flex-wrap gap-x-10 gap-y-4">
+          <StatItem value={data.ridesInProgress} label="Trips in progress" />
+          <StatItem value={data.ridesToday} label="Trips today" />
+          <StatItem value={`${data.activeDrivers} / ${data.totalDrivers}`} label="Drivers online" />
+          <StatItem value={`₦${data.todayRevenue.toLocaleString()}`} label="Revenue today" />
+          <StatItem value={`₦${data.todayPlatformCommission.toLocaleString()}`} label="Commission today" />
         </div>
       </section>
 
       <section>
-        <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Performance</h2>
-        <div className="flex flex-wrap gap-3">
-          <StatTile value={data.ridesToday} label="Trips today" />
-          <StatTile value={`${data.activeDrivers} / ${data.totalDrivers}`} label="Drivers online" />
-          <StatTile value={data.totalRiders.toLocaleString()} label="Total riders" />
-          <StatTile value={`₦${data.totalRevenue.toLocaleString()}`} label="Total revenue" />
-          <StatTile value={`₦${data.totalDriverEarnings.toLocaleString()}`} label="Driver earnings" />
-          <StatTile value={`₦${data.totalPlatformCommission.toLocaleString()}`} label="Platform commission" />
-          <StatTile value={`₦${data.totalTips.toLocaleString()}`} label="Tips (driver-only)" />
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">All time</h2>
+        <div className="flex flex-wrap gap-x-10 gap-y-4">
+          <StatItem value={data.totalRiders.toLocaleString()} label="Total riders" />
+          <StatItem value={data.totalDrivers.toLocaleString()} label="Total drivers" />
+          <StatItem value={`₦${data.totalRevenue.toLocaleString()}`} label="Total revenue" />
+          <StatItem value={`₦${data.totalDriverEarnings.toLocaleString()}`} label="Driver earnings" />
+          <StatItem value={`₦${data.totalPlatformCommission.toLocaleString()}`} label="Platform commission" />
+          <StatItem value={`₦${data.totalTips.toLocaleString()}`} label="Tips (driver-only)" />
         </div>
       </section>
 

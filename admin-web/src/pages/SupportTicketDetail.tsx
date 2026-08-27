@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Send } from 'lucide-react';
 import { trpcMutate } from '../lib/api';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
-import { Badge } from '../components/ui/Badge';
+import { StatusLabel } from '../components/ui/StatusLabel';
 import { Button } from '../components/ui/Button';
 import { ticketStatusTone, ticketPriorityTone } from '../lib/status';
 
@@ -104,12 +104,12 @@ export default function SupportTicketDetail() {
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <Badge tone={ticketStatusTone[ticket.status]}>{ticket.status.replace(/_/g, ' ')}</Badge>
-        <Badge tone={ticketPriorityTone[ticket.priority]}>{ticket.priority}</Badge>
+      <div className="flex gap-3">
+        <StatusLabel tone={ticketStatusTone[ticket.status]}>{ticket.status.replace(/_/g, ' ')}</StatusLabel>
+        <StatusLabel tone={ticketPriorityTone[ticket.priority]}>{ticket.priority}</StatusLabel>
       </div>
 
-      <div className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
+<div className="space-y-3 rounded-md border border-slate-200 bg-white p-4">
         {messages.map((m) => (
           <div key={m.id} className={`flex ${m.senderType === 'admin' ? 'justify-end' : 'justify-start'}`}>
             <div

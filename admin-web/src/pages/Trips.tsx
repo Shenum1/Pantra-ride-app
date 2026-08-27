@@ -1,10 +1,12 @@
-import { Fragment, useState } from 'react';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState } from 'react';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
-import { Badge } from '../components/ui/Badge';
-import { EmptyState } from '../components/ui/EmptyState';
-import { TableSkeleton } from '../components/ui/Skeleton';
+import { StatusLabel } from '../components/ui/StatusLabel';
+import { PageHeader } from '../components/ui/PageHeader';
+import { FilterTabs } from '../components/ui/FilterTabs';
+import { Table, type TableColumn } from '../components/ui/Table';
+import { Field } from '../components/ui/Field';
 import { rideStatusTone } from '../lib/status';
+import { cancellationStage, elapsedLabel, buildRideTimeline } from '../lib/rideNarrative';
 
 interface RideRow {
   id: string;
@@ -16,19 +18,24 @@ interface RideRow {
   status: string;
   fare: number;
   baseFare: number | null;
-  minFare: number | null;
-  maxFare: number | null;
   bookingFee: number | null;
   serviceFee: number | null;
   zoneFee: number | null;
-  fareAdjustmentPercent: number | null;
+  waitingCharge: number | null;
+  priorityFee: number | null;
+  cancellationFee: number | null;
   distance: number | null;
   duration: number | null;
   paymentMethod: string | null;
   paymentStatus: string | null;
   createdAt: string;
+  acceptedAt: string | null;
+  arrivedAt: string | null;
+  startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  cancelReason: string | null;
+  cancelReasonDetails: string | null;
   platformCommissionRate: number | null;
   platformCommissionAmount: number | null;
   driverEarningsAmount: number | null;
@@ -41,20 +48,23 @@ interface RidesResponse {
   total: number;
 }
 
-const STATUSES = ['', 'pending', 'accepted', 'in-progress', 'completed', 'cancelled'];
+const STATUS_OPTIONS = [
+  { value: '', label: 'All' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'in-progress', label: 'In progress' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
 const LIMIT = 50;
 
 function money(n: number | null | undefined) {
   return `₦${(n ?? 0).toLocaleString()}`;
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="tnum mt-0.5 text-sm text-slate-800">{value}</p>
-    </div>
-  );
+function statusLabel(r: RideRow) {
+  if (r.status === 'cancelled') return cancellationStage(r) ?? 'Cancelled';
+  return r.status;
 }
 
 export default function Trips() {
@@ -73,130 +83,102 @@ export default function Trips() {
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + LIMIT, total);
 
+  const columns: TableColumn<RideRow>[] = [
+    { key: 'rider', header: 'Rider', render: (r) => <span className="max-w-[120px] truncate font-medium text-slate-900">{r.userName}</span> },
+    {
+      key: 'driver',
+      header: 'Driver',
+      render: (r) => <span className="max-w-[120px] truncate text-slate-500">{r.driverName ?? <span className="italic text-slate-300">—</span>}</span>,
+    },
+    {
+      key: 'route',
+      header: 'Route',
+      render: (r) => (
+        <span className="max-w-[220px] truncate text-slate-600">
+          {r.pickupAddress} <span className="text-slate-300">→</span> {r.dropoffAddress}
+        </span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (r) => <StatusLabel tone={rideStatusTone[r.status] ?? 'neutral'}>{statusLabel(r)}</StatusLabel>,
+    },
+    { key: 'fare', header: 'Fare', align: 'right', render: (r) => <span className="tnum font-medium text-slate-900">{money(r.fare)}</span> },
+    { key: 'date', header: 'Date', render: (r) => <span className="whitespace-nowrap text-slate-500">{new Date(r.createdAt).toLocaleDateString()}</span> },
+  ];
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Trips</h1>
-        <p className="mt-1 text-sm text-slate-500">Expand a trip for the full fare, commission, and payment breakdown.</p>
-      </div>
+      <PageHeader title="Trips" description="Expand a trip for the full timeline, fare, and commission breakdown." />
 
-      <div className="flex flex-wrap gap-2">
-        {STATUSES.map((s) => (
-          <button
-            key={s}
-            onClick={() => {
-              setStatusFilter(s);
-              setOffset(0);
-            }}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition-colors
-              ${statusFilter === s ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-          >
-            {s === '' ? 'All' : s}
-          </button>
-        ))}
-      </div>
+      <FilterTabs options={STATUS_OPTIONS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setOffset(0); }} />
 
       {error ? (
         <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{error}</div>
       ) : (
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-5 py-3 text-sm text-slate-500">
-            {loading ? 'Loading…' : `${total.toLocaleString()} trips`}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="w-8" />
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Rider</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Driver</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Route</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Fare</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <TableSkeleton rows={8} cols={7} />
-                ) : rides.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-0">
-                      <EmptyState title="No trips found" description="Try a different status filter." />
-                    </td>
-                  </tr>
-                ) : (
-                  rides.map((r) => {
-                    const isOpen = expanded === r.id;
-                    return (
-                      <Fragment key={r.id}>
-                        <tr
-                          onClick={() => setExpanded(isOpen ? null : r.id)}
-                          className="cursor-pointer transition-colors hover:bg-slate-50"
-                        >
-                          <td className="px-2 text-slate-400">{isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</td>
-                          <td className="max-w-[120px] truncate px-4 py-3 font-medium text-slate-900">{r.userName}</td>
-                          <td className="max-w-[120px] truncate px-4 py-3 text-slate-500">{r.driverName ?? <span className="italic text-slate-300">—</span>}</td>
-                          <td className="max-w-[220px] truncate px-4 py-3 text-slate-600">
-                            {r.pickupAddress} <span className="text-slate-300">→</span> {r.dropoffAddress}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge tone={rideStatusTone[r.status] ?? 'neutral'}>{r.status}</Badge>
-                          </td>
-                          <td className="tnum px-4 py-3 text-right font-medium text-slate-900">{money(r.fare)}</td>
-                          <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(r.createdAt).toLocaleDateString()}</td>
-                        </tr>
-                        {isOpen && (
-                          <tr>
-                            <td colSpan={7} className="bg-slate-50 px-8 py-5">
-                              <div className="grid grid-cols-2 gap-x-8 gap-y-4 md:grid-cols-4">
-                                <DetailField label="Ride type" value={r.rideType} />
-                                <DetailField label="Payment method" value={r.paymentMethod ?? '—'} />
-                                <DetailField label="Payment status" value={r.paymentStatus ?? '—'} />
-                                <DetailField label="Distance" value={r.distance ? `${r.distance.toFixed(1)} km` : '—'} />
-                                <DetailField label="Duration" value={r.duration ? `${Math.round(r.duration)} min` : '—'} />
-                                <DetailField label="Base fare" value={money(r.baseFare)} />
-                                <DetailField label="Booking fee" value={money(r.bookingFee)} />
-                                <DetailField label="Service fee" value={money(r.serviceFee)} />
-                                <DetailField label="Zone fee" value={money(r.zoneFee)} />
-                                <DetailField label="Platform commission" value={`${money(r.platformCommissionAmount)} (${((r.platformCommissionRate ?? 0) * 100).toFixed(0)}%)`} />
-                                <DetailField label="Driver earnings" value={money(r.driverEarningsAmount)} />
-                                <DetailField label="Completed" value={r.completedAt ? new Date(r.completedAt).toLocaleString() : '—'} />
-                                <DetailField label="Cancelled" value={r.cancelledAt ? new Date(r.cancelledAt).toLocaleString() : '—'} />
-                              </div>
-                            </td>
-                          </tr>
+        <Table
+          columns={columns}
+          rows={rides}
+          rowKey={(r) => r.id}
+          loading={loading}
+          countLabel={`${total.toLocaleString()} trips`}
+          emptyTitle="No trips found"
+          emptyDescription="Try a different status filter."
+          onRowClick={(r) => setExpanded(expanded === r.id ? null : r.id)}
+          expandedKey={expanded}
+          renderExpanded={(r) => {
+            const timeline = buildRideTimeline(r);
+            return (
+              <div className="space-y-5">
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Timeline</p>
+                  <ol className="space-y-1.5">
+                    {timeline.map((step, i) => (
+                      <li key={step.label} className="flex items-center gap-3 text-sm">
+                        <span className="w-32 flex-shrink-0 text-slate-700">{step.label}</span>
+                        <span className="tnum text-slate-500">{new Date(step.at).toLocaleString()}</span>
+                        {i > 0 && (
+                          <span className="text-xs text-slate-400">+{elapsedLabel(timeline[i - 1].at, step.at)}</span>
                         )}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                      </li>
+                    ))}
+                  </ol>
+                  {r.status === 'cancelled' && r.cancelReason && (
+                    <p className="mt-2 text-sm text-slate-600">
+                      Reason: <span className="capitalize">{r.cancelReason.replace(/_/g, ' ')}</span>
+                      {r.cancelReasonDetails ? ` — ${r.cancelReasonDetails}` : ''}
+                    </p>
+                  )}
+                </div>
 
-          {total > LIMIT && (
-            <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3.5">
-              <span className="text-sm text-slate-500">{from}–{to} of {total.toLocaleString()}</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setOffset((o) => Math.max(0, o - LIMIT))}
-                  disabled={offset === 0}
-                  className="rounded-md border border-slate-200 p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  onClick={() => setOffset((o) => o + LIMIT)}
-                  disabled={to >= total}
-                  className="rounded-md border border-slate-200 p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ChevronRight size={16} />
-                </button>
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Fare &amp; payment</p>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-4 md:grid-cols-4">
+                    <Field label="Ride type" value={r.rideType} />
+                    <Field label="Payment method" value={r.paymentMethod} />
+                    <Field label="Payment status" value={r.paymentStatus} />
+                    <Field label="Distance" value={r.distance ? `${r.distance.toFixed(1)} km` : null} />
+                    <Field label="Base fare" value={money(r.baseFare)} mono />
+                    <Field label="Booking fee" value={money(r.bookingFee)} mono />
+                    <Field label="Service fee" value={money(r.serviceFee)} mono />
+                    <Field label="Zone fee" value={money(r.zoneFee)} mono />
+                    <Field label="Waiting charge" value={money(r.waitingCharge)} mono />
+                    <Field label="Priority fee" value={money(r.priorityFee)} mono />
+                    {r.cancellationFee ? <Field label="Cancellation fee" value={money(r.cancellationFee)} mono /> : null}
+                    <Field
+                      label="Platform commission"
+                      value={`${money(r.platformCommissionAmount)} (${((r.platformCommissionRate ?? 0) * 100).toFixed(0)}%)`}
+                      mono
+                    />
+                    <Field label="Driver earnings" value={money(r.driverEarningsAmount)} mono />
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            );
+          }}
+          pagination={{ from, to, total, limit: LIMIT, onPrev: () => setOffset((o) => Math.max(0, o - LIMIT)), onNext: () => setOffset((o) => o + LIMIT) }}
+        />
       )}
     </div>
   );

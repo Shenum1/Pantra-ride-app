@@ -144,7 +144,7 @@ export default function TaskDetailScreen() {
         {isCompleted ? (
           <View style={styles.completedBox}>
             <CheckCircle size={24} color={Colors.light.success} />
-            <Text style={styles.completedText}>You've already claimed this reward!</Text>
+            <Text style={styles.completedText}>You&apos;ve already claimed this reward!</Text>
           </View>
         ) : (
           <>
@@ -182,7 +182,7 @@ export default function TaskDetailScreen() {
 
             {task.type === 'youtube_video' && minSeconds > 0 && !startedAt && (
               <Text style={[styles.hint, { color: colors.textSecondary }]}>
-                You'll need to watch for at least {Math.ceil(minSeconds / 60)} minute{minSeconds >= 120 ? 's' : ''} before claiming.
+                You&apos;ll need to watch for at least {Math.ceil(minSeconds / 60)} minute{minSeconds >= 120 ? 's' : ''} before claiming.
               </Text>
             )}
           </>

@@ -24,10 +24,10 @@ export default function TermsAndConditions() {
         <Text style={styles.effectiveDate}>Last Updated: January 1, 2025</Text>
         
         <Text style={styles.paragraph}>
-          These Terms and Conditions ("Terms") constitute a legally binding agreement between Pantra Limited, 
-          a company duly incorporated under the laws of the Federal Republic of Nigeria ("Pantra", "we", "our", 
-          or "us"), and you ("user", "rider", "driver", or "you") governing your access to and use of the Pantra 
-          App and related services (collectively, the "Services").
+          These Terms and Conditions (&quot;Terms&quot;) constitute a legally binding agreement between Pantra Limited,
+          a company duly incorporated under the laws of the Federal Republic of Nigeria (&quot;Pantra&quot;, &quot;we&quot;, &quot;our&quot;,
+          or &quot;us&quot;), and you (&quot;user&quot;, &quot;rider&quot;, &quot;driver&quot;, or &quot;you&quot;) governing your access to and use of the Pantra
+          App and related services (collectively, the &quot;Services&quot;).
         </Text>
         
         <Text style={styles.paragraph}>
@@ -37,8 +37,8 @@ export default function TermsAndConditions() {
 
         <Text style={styles.sectionTitle}>1. Description of Services</Text>
         <Text style={styles.paragraph}>
-          Pantra provides a digital platform that connects independent third-party drivers ("Drivers") with users 
-          seeking transportation services ("Riders").
+          Pantra provides a digital platform that connects independent third-party drivers (&quot;Drivers&quot;) with users
+          seeking transportation services (&quot;Riders&quot;).
         </Text>
         <Text style={styles.paragraph}>
           Pantra does not own, control, operate, or manage any vehicle. Drivers are independent contractors, not 
@@ -75,7 +75,7 @@ export default function TermsAndConditions() {
         <Text style={styles.sectionTitle}>4. Use of the Services</Text>
         <Text style={styles.paragraph}>By using the Pantra App, you agree not to:</Text>
         <Text style={styles.bulletPoint}>• Engage in fraud, abuse, harassment, or unlawful activity;</Text>
-        <Text style={styles.bulletPoint}>• Interfere with the platform's functionality or servers;</Text>
+        <Text style={styles.bulletPoint}>• Interfere with the platform&apos;s functionality or servers;</Text>
         <Text style={styles.bulletPoint}>• Attempt to manipulate pricing, referrals, or reward systems;</Text>
         <Text style={styles.bulletPoint}>• Create multiple accounts for fraudulent gain (including free ride abuse).</Text>
         <Text style={styles.paragraph}>
@@ -125,7 +125,7 @@ export default function TermsAndConditions() {
 
         <Text style={styles.sectionTitle}>8. Disclaimer and Limitation of Liability</Text>
         <Text style={styles.paragraph}>
-          Pantra provides the App and Services on an "as is" and "as available" basis without warranties of any kind.
+          Pantra provides the App and Services on an &quot;as is&quot; and &quot;as available&quot; basis without warranties of any kind.
         </Text>
         <Text style={styles.paragraph}>Pantra shall not be liable for:</Text>
         <Text style={styles.bulletPoint}>• Any personal injury, property damage, or loss incurred during rides;</Text>
@@ -135,7 +135,7 @@ export default function TermsAndConditions() {
           • Loss of data, revenue, or goodwill resulting from app downtime or cyber incidents.
         </Text>
         <Text style={styles.paragraph}>
-          In any case, Pantra's total liability to any user shall not exceed the cost of the disputed ride.
+          In any case, Pantra&apos;s total liability to any user shall not exceed the cost of the disputed ride.
         </Text>
 
         <Text style={styles.sectionTitle}>9. Data Privacy</Text>

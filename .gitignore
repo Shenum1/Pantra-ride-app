@@ -41,6 +41,9 @@ yarn-error.*
 *.tsbuildinfo
 .vercel
 
+# EAS submit credentials
+google-play-service-account.json
+
 ios/
 android/
 .rork

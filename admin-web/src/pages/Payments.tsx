@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
-import { Badge } from '../components/ui/Badge';
-import { EmptyState } from '../components/ui/EmptyState';
-import { TableSkeleton } from '../components/ui/Skeleton';
+import { StatusLabel } from '../components/ui/StatusLabel';
+import { PageHeader } from '../components/ui/PageHeader';
+import { FilterTabs } from '../components/ui/FilterTabs';
+import { Table, type TableColumn } from '../components/ui/Table';
+import { paymentStatusTone } from '../lib/status';
 
 interface TransactionRow {
   id: string;
@@ -36,16 +37,11 @@ interface TipsResponse {
   total: number;
 }
 
-const STATUS_TONE: Record<string, 'success' | 'pending' | 'danger'> = {
-  completed: 'success',
-  successful: 'success',
-  pending: 'pending',
-  failed: 'danger',
-  cancelled: 'danger',
-  refunded: 'pending',
-};
-
 const LIMIT = 50;
+const TABS: { value: 'transactions' | 'tips'; label: string }[] = [
+  { value: 'transactions', label: 'Transactions' },
+  { value: 'tips', label: 'Tips' },
+];
 
 export default function Payments() {
   const [tab, setTab] = useState<'transactions' | 'tips'>('transactions');
@@ -65,132 +61,46 @@ export default function Payments() {
   const total = tab === 'transactions' ? data?.total ?? 0 : tipsData?.total ?? 0;
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + LIMIT, total);
+  const pagination = { from, to, total, limit: LIMIT, onPrev: () => setOffset((o) => Math.max(0, o - LIMIT)), onNext: () => setOffset((o) => o + LIMIT) };
+
+  const transactionColumns: TableColumn<TransactionRow>[] = [
+    { key: 'user', header: 'User', render: (t) => <span className="max-w-[140px] truncate font-medium text-slate-900">{t.userName || '—'}</span> },
+    { key: 'type', header: 'Type', render: (t) => <span className="capitalize text-slate-600">{t.type.replace(/_/g, ' ')}</span> },
+    { key: 'description', header: 'Description', render: (t) => <span className="max-w-[200px] truncate text-slate-500">{t.description || '—'}</span> },
+    {
+      key: 'amount',
+      header: 'Amount',
+      align: 'right',
+      render: (t) => (
+        <span className={`tnum font-medium ${t.amount < 0 ? 'text-danger' : 'text-slate-900'}`}>
+          {t.amount < 0 ? '−' : '+'}₦{Math.abs(t.amount).toLocaleString()}
+        </span>
+      ),
+    },
+    { key: 'status', header: 'Status', render: (t) => <StatusLabel tone={paymentStatusTone[t.status] ?? 'pending'}>{t.status}</StatusLabel> },
+    { key: 'date', header: 'Date', render: (t) => <span className="whitespace-nowrap text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</span> },
+  ];
+
+  const tipColumns: TableColumn<TipRow>[] = [
+    { key: 'rider', header: 'Rider', render: (t) => <span className="max-w-[140px] truncate font-medium text-slate-900">{t.riderName}</span> },
+    { key: 'driver', header: 'Driver', render: (t) => <span className="max-w-[140px] truncate text-slate-600">{t.driverName}</span> },
+    { key: 'amount', header: 'Amount', align: 'right', render: (t) => <span className="tnum font-medium text-slate-900">₦{t.amount.toLocaleString()}</span> },
+    { key: 'status', header: 'Status', render: (t) => <StatusLabel tone={paymentStatusTone[t.status] ?? 'pending'}>{t.status}</StatusLabel> },
+    { key: 'date', header: 'Date', render: (t) => <span className="whitespace-nowrap text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</span> },
+  ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Payments</h1>
-        <p className="mt-1 text-sm text-slate-500">Platform-wide wallet ledger — read-only.</p>
-      </div>
+      <PageHeader title="Payments" description="Platform-wide wallet ledger — read-only." />
 
-      <div className="flex gap-2">
-        {(['transactions', 'tips'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => {
-              setTab(t);
-              setOffset(0);
-            }}
-            className={`rounded-md px-4 py-2 text-sm font-semibold capitalize transition-colors
-              ${tab === t ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <FilterTabs options={TABS} value={tab} onChange={(v) => { setTab(v); setOffset(0); }} />
 
       {error ? (
         <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{error}</div>
       ) : tab === 'transactions' ? (
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">User</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Type</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Description</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Amount</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <TableSkeleton rows={8} cols={6} />
-              ) : (data?.transactions ?? []).length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-0">
-                    <EmptyState title="No transactions" />
-                  </td>
-                </tr>
-              ) : (
-                (data?.transactions ?? []).map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50">
-                    <td className="max-w-[140px] truncate px-4 py-3 font-medium text-slate-900">{t.userName || '—'}</td>
-                    <td className="px-4 py-3 capitalize text-slate-600">{t.type.replace(/_/g, ' ')}</td>
-                    <td className="max-w-[200px] truncate px-4 py-3 text-slate-500">{t.description || '—'}</td>
-                    <td className={`tnum px-4 py-3 text-right font-medium ${t.amount < 0 ? 'text-danger' : 'text-slate-900'}`}>
-                      {t.amount < 0 ? '−' : '+'}₦{Math.abs(t.amount).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={STATUS_TONE[t.status] ?? 'pending'}>{t.status}</Badge>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Table columns={transactionColumns} rows={data?.transactions ?? []} rowKey={(t) => t.id} loading={loading} emptyTitle="No transactions" pagination={pagination} />
       ) : (
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Rider</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Driver</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Amount</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {tipsLoading ? (
-                <TableSkeleton rows={8} cols={5} />
-              ) : (tipsData?.tips ?? []).length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-0">
-                    <EmptyState title="No tips yet" />
-                  </td>
-                </tr>
-              ) : (
-                (tipsData?.tips ?? []).map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50">
-                    <td className="max-w-[140px] truncate px-4 py-3 font-medium text-slate-900">{t.riderName}</td>
-                    <td className="max-w-[140px] truncate px-4 py-3 text-slate-600">{t.driverName}</td>
-                    <td className="tnum px-4 py-3 text-right font-medium text-slate-900">₦{t.amount.toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      <Badge tone={STATUS_TONE[t.status] ?? 'pending'}>{t.status}</Badge>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {total > LIMIT && (
-        <div className="flex items-center justify-between px-1">
-          <span className="text-sm text-slate-500">{from}–{to} of {total.toLocaleString()}</span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setOffset((o) => Math.max(0, o - LIMIT))}
-              disabled={offset === 0}
-              className="rounded-md border border-slate-200 bg-white p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              onClick={() => setOffset((o) => o + LIMIT)}
-              disabled={to >= total}
-              className="rounded-md border border-slate-200 bg-white p-2 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
+        <Table columns={tipColumns} rows={tipsData?.tips ?? []} rowKey={(t) => t.id} loading={tipsLoading} emptyTitle="No tips yet" pagination={pagination} />
       )}
     </div>
   );

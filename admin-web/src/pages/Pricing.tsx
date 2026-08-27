@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { trpcMutate } from '../lib/api';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
-import { Badge } from '../components/ui/Badge';
+import { StatusLabel } from '../components/ui/StatusLabel';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Table, type TableColumn } from '../components/ui/Table';
+import { Modal } from '../components/ui/Modal';
 
 interface TierConfig {
   id: 'standard' | 'comfort' | 'xl';
@@ -67,9 +70,7 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function minutesToTime(m: number | null): string {
   if (m == null) return '';
-  const h = Math.floor(m / 60)
-    .toString()
-    .padStart(2, '0');
+  const h = Math.floor(m / 60).toString().padStart(2, '0');
   const mm = (m % 60).toString().padStart(2, '0');
   return `${h}:${mm}`;
 }
@@ -95,22 +96,30 @@ function NumberField({ label, value, onChange, step = 1 }: { label: string; valu
   );
 }
 
-function ModalShell({ title, children, onCancel, onSave, saveLabel = 'Save' }: { title: string; children: React.ReactNode; onCancel: () => void; onSave: () => void; saveLabel?: string }) {
+// A live value + an edit affordance, without wrapping every config in its own
+// bordered card — the summary card style. Used for the single-row configs
+// below the tiers/rules tables.
+function ConfigCard({ children, onEdit }: { children: React.ReactNode; onEdit: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="w-full max-w-md rounded-md bg-white p-6 shadow-lg">
-        <h3 className="mb-4 text-sm font-semibold text-slate-900">{title}</h3>
-        <div className="space-y-3">{children}</div>
-        <div className="mt-5 flex gap-2.5">
-          <Button variant="secondary" className="flex-1" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="primary" className="flex-1" onClick={onSave}>
-            {saveLabel}
-          </Button>
-        </div>
-      </div>
+    <div className="flex items-start justify-between gap-3 rounded-md border border-slate-200 bg-white p-4">
+      <div className="min-w-0">{children}</div>
+      <button onClick={onEdit} className="flex-shrink-0 rounded-md p-1.5 hover:bg-slate-100">
+        <Pencil size={14} className="text-slate-500" />
+      </button>
     </div>
+  );
+}
+
+function ModalFooter({ onCancel, onSave, saveLabel = 'Save' }: { onCancel: () => void; onSave: () => void; saveLabel?: string }) {
+  return (
+    <>
+      <Button variant="secondary" className="flex-1" onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button variant="primary" className="flex-1" onClick={onSave}>
+        {saveLabel}
+      </Button>
+    </>
   );
 }
 
@@ -193,67 +202,68 @@ export default function Pricing() {
     refetchCancellationFee();
   };
 
+  const tierColumns: TableColumn<TierConfig>[] = [
+    { key: 'name', header: 'Tier', render: (t) => <span className="font-medium text-slate-900">{t.name}</span> },
+    { key: 'base', header: 'Base', align: 'right', render: (t) => <span className="tnum text-slate-700">₦{t.base.toLocaleString()}</span> },
+    { key: 'perKm', header: 'Per km', align: 'right', render: (t) => <span className="tnum text-slate-700">₦{t.perKm.toLocaleString()}</span> },
+    { key: 'perMin', header: 'Per min', align: 'right', render: (t) => <span className="tnum text-slate-700">₦{t.perMin.toLocaleString()}</span> },
+    { key: 'minFare', header: 'Min fare', align: 'right', render: (t) => <span className="tnum text-slate-700">₦{t.minFare.toLocaleString()}</span> },
+    { key: 'bookingFee', header: 'Booking fee', align: 'right', render: (t) => <span className="tnum text-slate-700">₦{t.bookingFee.toLocaleString()}</span> },
+    { key: 'serviceFee', header: 'Service fee', align: 'right', render: (t) => <span className="tnum text-slate-700">₦{t.serviceFee.toLocaleString()}</span> },
+    {
+      key: 'edit',
+      header: '',
+      render: (t) => (
+        <button onClick={() => setEditingTier(t)} className="rounded-md p-1.5 hover:bg-slate-100">
+          <Pencil size={14} className="text-slate-500" />
+        </button>
+      ),
+    },
+  ];
+
+  const ruleColumns: TableColumn<TrafficRule>[] = [
+    { key: 'label', header: 'Label', render: (r) => <span className="font-medium text-slate-900">{r.label}</span> },
+    {
+      key: 'days',
+      header: 'Days',
+      render: (r) => <span className="text-slate-500">{r.daysOfWeek && r.daysOfWeek.length > 0 ? r.daysOfWeek.map((d) => DAY_LABELS[d]).join(', ') : 'Every day'}</span>,
+    },
+    {
+      key: 'window',
+      header: 'Window',
+      render: (r) => <span className="text-slate-500">{r.startMinute != null && r.endMinute != null ? `${minutesToTime(r.startMinute)}–${minutesToTime(r.endMinute)}` : 'All day'}</span>,
+    },
+    { key: 'multiplier', header: 'Multiplier', align: 'right', render: (r) => <span className="tnum text-slate-700">×{r.multiplier}</span> },
+    { key: 'status', header: 'Status', render: (r) => <StatusLabel tone={r.isEnabled ? 'success' : 'neutral'}>{r.isEnabled ? 'enabled' : 'disabled'}</StatusLabel> },
+    {
+      key: 'actions',
+      header: '',
+      render: (r) => (
+        <div className="flex gap-1">
+          <button onClick={() => setEditingRule(r)} className="rounded-md p-1.5 hover:bg-slate-100">
+            <Pencil size={14} className="text-slate-500" />
+          </button>
+          <button onClick={() => deleteRule(r.id)} className="rounded-md p-1.5 hover:bg-danger-tint">
+            <Trash2 size={14} className="text-danger" />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="max-w-4xl space-y-8">
-      <div>
-        <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Pricing</h1>
-        <p className="mt-1 text-sm text-slate-500">Live, platform-wide fare configuration — changes take effect immediately.</p>
-      </div>
+      <PageHeader title="Pricing" description="Live, platform-wide fare configuration — changes take effect immediately." />
 
       <section>
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Tier rates</h2>
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left">
-                <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Tier</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Base</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Per km</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Per min</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Min fare</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Booking fee</th>
-                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Service fee</th>
-                <th className="w-10" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {tiersLoading ? (
-                <tr>
-                  <td colSpan={8} className="px-4 py-6 text-center text-slate-400">
-                    Loading…
-                  </td>
-                </tr>
-              ) : (
-                (tiersData?.tiers ?? []).map((t) => (
-                  <tr key={t.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">{t.name}</td>
-                    <td className="tnum px-4 py-3 text-right text-slate-700">₦{t.base.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right text-slate-700">₦{t.perKm.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right text-slate-700">₦{t.perMin.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right text-slate-700">₦{t.minFare.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right text-slate-700">₦{t.bookingFee.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right text-slate-700">₦{t.serviceFee.toLocaleString()}</td>
-                    <td className="px-2 py-3">
-                      <button onClick={() => setEditingTier(t)} className="rounded-md p-1.5 hover:bg-slate-100">
-                        <Pencil size={14} className="text-slate-500" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Table columns={tierColumns} rows={tiersData?.tiers ?? []} rowKey={(t) => t.id} loading={tiersLoading} />
       </section>
 
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-[13px] font-semibold uppercase tracking-wide text-slate-400">Traffic multiplier rules</h2>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setEditingRule({ label: '', multiplier: 1, isEnabled: true, daysOfWeek: [] })}
-          >
+          <Button size="sm" variant="secondary" onClick={() => setEditingRule({ label: '', multiplier: 1, isEnabled: true, daysOfWeek: [] })}>
             <Plus size={13} />
             New rule
           </Button>
@@ -263,135 +273,71 @@ export default function Pricing() {
         ) : (rulesData?.rules ?? []).length === 0 ? (
           <EmptyState title="No traffic rules" description="Create one to apply time-based fare multipliers." />
         ) : (
-          <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Label</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Days</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Window</th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Multiplier</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                  <th className="w-20" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {(rulesData?.rules ?? []).map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-3 font-medium text-slate-900">{r.label}</td>
-                    <td className="px-4 py-3 text-slate-500">
-                      {r.daysOfWeek && r.daysOfWeek.length > 0 ? r.daysOfWeek.map((d) => DAY_LABELS[d]).join(', ') : 'Every day'}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">
-                      {r.startMinute != null && r.endMinute != null ? `${minutesToTime(r.startMinute)}–${minutesToTime(r.endMinute)}` : 'All day'}
-                    </td>
-                    <td className="tnum px-4 py-3 text-right text-slate-700">×{r.multiplier}</td>
-                    <td className="px-4 py-3">
-                      <Badge tone={r.isEnabled ? 'success' : 'neutral'}>{r.isEnabled ? 'enabled' : 'disabled'}</Badge>
-                    </td>
-                    <td className="px-2 py-3">
-                      <div className="flex gap-1">
-                        <button onClick={() => setEditingRule(r)} className="rounded-md p-1.5 hover:bg-slate-100">
-                          <Pencil size={14} className="text-slate-500" />
-                        </button>
-                        <button onClick={() => deleteRule(r.id)} className="rounded-md p-1.5 hover:bg-danger-tint">
-                          <Trash2 size={14} className="text-danger" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table columns={ruleColumns} rows={rulesData?.rules ?? []} rowKey={(r) => r.id} />
         )}
       </section>
 
-      <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div>
           <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Priority fee</h2>
           {priorityData?.config && (
-            <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-4">
-              <div>
-                <p className="tnum text-lg font-semibold text-slate-900">₦{priorityData.config.fee.toLocaleString()}</p>
-                <Badge tone={priorityData.config.isEnabled ? 'success' : 'neutral'}>
-                  {priorityData.config.isEnabled ? 'enabled' : 'disabled'}
-                </Badge>
-              </div>
-              <button onClick={() => setEditingPriority(priorityData.config)} className="rounded-md p-1.5 hover:bg-slate-100">
-                <Pencil size={14} className="text-slate-500" />
-              </button>
-            </div>
+            <ConfigCard onEdit={() => setEditingPriority(priorityData.config)}>
+              <p className="tnum text-lg font-semibold text-slate-900">₦{priorityData.config.fee.toLocaleString()}</p>
+              <StatusLabel tone={priorityData.config.isEnabled ? 'success' : 'neutral'}>{priorityData.config.isEnabled ? 'enabled' : 'disabled'}</StatusLabel>
+            </ConfigCard>
           )}
         </div>
 
         <div>
           <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Surge config</h2>
           {surgeData?.config && (
-            <div className="flex items-start justify-between rounded-md border border-slate-200 bg-white p-4">
+            <ConfigCard onEdit={() => setEditingSurge(surgeData.config)}>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600">
                 <span>Min ×{surgeData.config.minMultiplier}</span>
                 <span>Max ×{surgeData.config.maxMultiplier}</span>
                 <span>High demand {surgeData.config.highDemandRatio}</span>
                 <span>Low demand {surgeData.config.lowDemandRatio}</span>
-                <Badge tone={surgeData.config.isEnabled ? 'success' : 'neutral'}>
-                  {surgeData.config.isEnabled ? 'enabled' : 'disabled'}
-                </Badge>
               </div>
-              <button onClick={() => setEditingSurge(surgeData.config)} className="rounded-md p-1.5 hover:bg-slate-100">
-                <Pencil size={14} className="text-slate-500" />
-              </button>
-            </div>
+              <div className="mt-2">
+                <StatusLabel tone={surgeData.config.isEnabled ? 'success' : 'neutral'}>{surgeData.config.isEnabled ? 'enabled' : 'disabled'}</StatusLabel>
+              </div>
+            </ConfigCard>
           )}
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div>
           <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Commission rate</h2>
           {commissionData?.config && (
-            <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-4">
+            <ConfigCard onEdit={() => setEditingCommission({ id: commissionData.config.id, ratePercent: commissionData.config.rate * 100 })}>
               <p className="tnum text-lg font-semibold text-slate-900">{(commissionData.config.rate * 100).toFixed(1)}%</p>
-              <button
-                onClick={() =>
-                  setEditingCommission({ id: commissionData.config.id, ratePercent: commissionData.config.rate * 100 })
-                }
-                className="rounded-md p-1.5 hover:bg-slate-100"
-              >
-                <Pencil size={14} className="text-slate-500" />
-              </button>
-            </div>
+            </ConfigCard>
           )}
         </div>
 
         <div>
           <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Waiting charge</h2>
           {waitingChargeData?.config && (
-            <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-4">
+            <ConfigCard onEdit={() => setEditingWaitingCharge(waitingChargeData.config)}>
               <div className="text-xs text-slate-600">
                 <p>{waitingChargeData.config.graceMinutes} min grace</p>
                 <p className="tnum">₦{waitingChargeData.config.perMinuteRate.toLocaleString()}/min after</p>
               </div>
-              <button onClick={() => setEditingWaitingCharge(waitingChargeData.config)} className="rounded-md p-1.5 hover:bg-slate-100">
-                <Pencil size={14} className="text-slate-500" />
-              </button>
-            </div>
+            </ConfigCard>
           )}
         </div>
 
         <div>
           <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Cancellation fee</h2>
           {cancellationFeeData?.config && (
-            <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-4">
+            <ConfigCard onEdit={() => setEditingCancellationFee(cancellationFeeData.config)}>
               <div className="text-xs text-slate-600">
                 <p>{cancellationFeeData.config.freeWindowSeconds}s free window</p>
                 <p className="tnum">₦{cancellationFeeData.config.afterAcceptFee.toLocaleString()} after accept</p>
                 <p className="tnum">₦{cancellationFeeData.config.afterArrivalFee.toLocaleString()} after arrival</p>
               </div>
-              <button onClick={() => setEditingCancellationFee(cancellationFeeData.config)} className="rounded-md p-1.5 hover:bg-slate-100">
-                <Pencil size={14} className="text-slate-500" />
-              </button>
-            </div>
+            </ConfigCard>
           )}
         </div>
       </section>
@@ -405,18 +351,23 @@ export default function Pricing() {
       </section>
 
       {editingTier && (
-        <ModalShell title={`Edit ${editingTier.name} tier`} onCancel={() => setEditingTier(null)} onSave={saveTier}>
+        <Modal title={`Edit ${editingTier.name} tier`} width="md" onClose={() => setEditingTier(null)} footer={<ModalFooter onCancel={() => setEditingTier(null)} onSave={saveTier} />}>
           <NumberField label="Base fare" value={editingTier.base} onChange={(n) => setEditingTier({ ...editingTier, base: n })} />
           <NumberField label="Per km" value={editingTier.perKm} onChange={(n) => setEditingTier({ ...editingTier, perKm: n })} />
           <NumberField label="Per min" value={editingTier.perMin} onChange={(n) => setEditingTier({ ...editingTier, perMin: n })} />
           <NumberField label="Minimum fare" value={editingTier.minFare} onChange={(n) => setEditingTier({ ...editingTier, minFare: n })} />
           <NumberField label="Booking fee" value={editingTier.bookingFee} onChange={(n) => setEditingTier({ ...editingTier, bookingFee: n })} />
           <NumberField label="Service fee" value={editingTier.serviceFee} onChange={(n) => setEditingTier({ ...editingTier, serviceFee: n })} />
-        </ModalShell>
+        </Modal>
       )}
 
       {editingRule && (
-        <ModalShell title={editingRule.id ? 'Edit traffic rule' : 'New traffic rule'} onCancel={() => setEditingRule(null)} onSave={saveRule}>
+        <Modal
+          title={editingRule.id ? 'Edit traffic rule' : 'New traffic rule'}
+          width="md"
+          onClose={() => setEditingRule(null)}
+          footer={<ModalFooter onCancel={() => setEditingRule(null)} onSave={saveRule} />}
+        >
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">Label</span>
             <input
@@ -468,39 +419,26 @@ export default function Pricing() {
               />
             </label>
           </div>
-          <NumberField
-            label="Multiplier"
-            step={0.05}
-            value={editingRule.multiplier ?? 1}
-            onChange={(n) => setEditingRule({ ...editingRule, multiplier: n })}
-          />
+          <NumberField label="Multiplier" step={0.05} value={editingRule.multiplier ?? 1} onChange={(n) => setEditingRule({ ...editingRule, multiplier: n })} />
           <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={editingRule.isEnabled ?? true}
-              onChange={(e) => setEditingRule({ ...editingRule, isEnabled: e.target.checked })}
-            />
+            <input type="checkbox" checked={editingRule.isEnabled ?? true} onChange={(e) => setEditingRule({ ...editingRule, isEnabled: e.target.checked })} />
             Enabled
           </label>
-        </ModalShell>
+        </Modal>
       )}
 
       {editingPriority && (
-        <ModalShell title="Edit priority fee" onCancel={() => setEditingPriority(null)} onSave={savePriority}>
+        <Modal title="Edit priority fee" width="md" onClose={() => setEditingPriority(null)} footer={<ModalFooter onCancel={() => setEditingPriority(null)} onSave={savePriority} />}>
           <NumberField label="Fee" value={editingPriority.fee} onChange={(n) => setEditingPriority({ ...editingPriority, fee: n })} />
           <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={editingPriority.isEnabled}
-              onChange={(e) => setEditingPriority({ ...editingPriority, isEnabled: e.target.checked })}
-            />
+            <input type="checkbox" checked={editingPriority.isEnabled} onChange={(e) => setEditingPriority({ ...editingPriority, isEnabled: e.target.checked })} />
             Enabled
           </label>
-        </ModalShell>
+        </Modal>
       )}
 
       {editingSurge && (
-        <ModalShell title="Edit surge config" onCancel={() => setEditingSurge(null)} onSave={saveSurge}>
+        <Modal title="Edit surge config" width="md" onClose={() => setEditingSurge(null)} footer={<ModalFooter onCancel={() => setEditingSurge(null)} onSave={saveSurge} />}>
           <NumberField step={0.1} label="Min multiplier" value={editingSurge.minMultiplier} onChange={(n) => setEditingSurge({ ...editingSurge, minMultiplier: n })} />
           <NumberField step={0.1} label="Max multiplier" value={editingSurge.maxMultiplier} onChange={(n) => setEditingSurge({ ...editingSurge, maxMultiplier: n })} />
           <NumberField step={0.1} label="High demand ratio" value={editingSurge.highDemandRatio} onChange={(n) => setEditingSurge({ ...editingSurge, highDemandRatio: n })} />
@@ -509,60 +447,36 @@ export default function Pricing() {
           <NumberField step={0.05} label="Low acceptance bonus" value={editingSurge.lowAcceptanceBonus} onChange={(n) => setEditingSurge({ ...editingSurge, lowAcceptanceBonus: n })} />
           <NumberField label="Acceptance lookback (min)" value={editingSurge.acceptanceLookbackMinutes} onChange={(n) => setEditingSurge({ ...editingSurge, acceptanceLookbackMinutes: n })} />
           <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={editingSurge.isEnabled}
-              onChange={(e) => setEditingSurge({ ...editingSurge, isEnabled: e.target.checked })}
-            />
+            <input type="checkbox" checked={editingSurge.isEnabled} onChange={(e) => setEditingSurge({ ...editingSurge, isEnabled: e.target.checked })} />
             Enabled
           </label>
-        </ModalShell>
+        </Modal>
       )}
 
       {editingCommission && (
-        <ModalShell title="Edit commission rate" onCancel={() => setEditingCommission(null)} onSave={saveCommission}>
-          <NumberField
-            step={0.5}
-            label="Rate (%)"
-            value={editingCommission.ratePercent}
-            onChange={(n) => setEditingCommission({ ...editingCommission, ratePercent: n })}
-          />
-        </ModalShell>
+        <Modal title="Edit commission rate" width="md" onClose={() => setEditingCommission(null)} footer={<ModalFooter onCancel={() => setEditingCommission(null)} onSave={saveCommission} />}>
+          <NumberField step={0.5} label="Rate (%)" value={editingCommission.ratePercent} onChange={(n) => setEditingCommission({ ...editingCommission, ratePercent: n })} />
+        </Modal>
       )}
 
       {editingWaitingCharge && (
-        <ModalShell title="Edit waiting charge" onCancel={() => setEditingWaitingCharge(null)} onSave={saveWaitingCharge}>
-          <NumberField
-            label="Grace period (minutes)"
-            value={editingWaitingCharge.graceMinutes}
-            onChange={(n) => setEditingWaitingCharge({ ...editingWaitingCharge, graceMinutes: n })}
-          />
-          <NumberField
-            label="Rate per minute (₦)"
-            value={editingWaitingCharge.perMinuteRate}
-            onChange={(n) => setEditingWaitingCharge({ ...editingWaitingCharge, perMinuteRate: n })}
-          />
-        </ModalShell>
+        <Modal title="Edit waiting charge" width="md" onClose={() => setEditingWaitingCharge(null)} footer={<ModalFooter onCancel={() => setEditingWaitingCharge(null)} onSave={saveWaitingCharge} />}>
+          <NumberField label="Grace period (minutes)" value={editingWaitingCharge.graceMinutes} onChange={(n) => setEditingWaitingCharge({ ...editingWaitingCharge, graceMinutes: n })} />
+          <NumberField label="Rate per minute (₦)" value={editingWaitingCharge.perMinuteRate} onChange={(n) => setEditingWaitingCharge({ ...editingWaitingCharge, perMinuteRate: n })} />
+        </Modal>
       )}
 
       {editingCancellationFee && (
-        <ModalShell title="Edit cancellation fee" onCancel={() => setEditingCancellationFee(null)} onSave={saveCancellationFee}>
-          <NumberField
-            label="Free window (seconds)"
-            value={editingCancellationFee.freeWindowSeconds}
-            onChange={(n) => setEditingCancellationFee({ ...editingCancellationFee, freeWindowSeconds: n })}
-          />
-          <NumberField
-            label="Fee after driver accepts (₦)"
-            value={editingCancellationFee.afterAcceptFee}
-            onChange={(n) => setEditingCancellationFee({ ...editingCancellationFee, afterAcceptFee: n })}
-          />
-          <NumberField
-            label="Fee after driver arrives (₦)"
-            value={editingCancellationFee.afterArrivalFee}
-            onChange={(n) => setEditingCancellationFee({ ...editingCancellationFee, afterArrivalFee: n })}
-          />
-        </ModalShell>
+        <Modal
+          title="Edit cancellation fee"
+          width="md"
+          onClose={() => setEditingCancellationFee(null)}
+          footer={<ModalFooter onCancel={() => setEditingCancellationFee(null)} onSave={saveCancellationFee} />}
+        >
+          <NumberField label="Free window (seconds)" value={editingCancellationFee.freeWindowSeconds} onChange={(n) => setEditingCancellationFee({ ...editingCancellationFee, freeWindowSeconds: n })} />
+          <NumberField label="Fee after driver accepts (₦)" value={editingCancellationFee.afterAcceptFee} onChange={(n) => setEditingCancellationFee({ ...editingCancellationFee, afterAcceptFee: n })} />
+          <NumberField label="Fee after driver arrives (₦)" value={editingCancellationFee.afterArrivalFee} onChange={(n) => setEditingCancellationFee({ ...editingCancellationFee, afterArrivalFee: n })} />
+        </Modal>
       )}
     </div>
   );

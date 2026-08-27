@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Plus, Ticket } from 'lucide-react';
+import { Ticket } from 'lucide-react';
 import { trpcMutate } from '../lib/api';
 import { useTrpcQuery } from '../hooks/useTrpcQuery';
-import { Badge } from '../components/ui/Badge';
+import { StatusLabel } from '../components/ui/StatusLabel';
 import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
-import { TableSkeleton } from '../components/ui/Skeleton';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Table, type TableColumn } from '../components/ui/Table';
+import { Modal } from '../components/ui/Modal';
 
 interface Promotion {
   id: string;
@@ -75,188 +77,181 @@ export default function Promotions() {
     refetch();
   };
 
+  const columns: TableColumn<Promotion>[] = [
+    { key: 'code', header: 'Code', render: (p) => <span className="font-mono text-xs font-semibold text-slate-900">{p.code}</span> },
+    { key: 'description', header: 'Description', render: (p) => <span className="max-w-[220px] truncate text-slate-600">{p.description}</span> },
+    {
+      key: 'discount',
+      header: 'Discount',
+      align: 'right',
+      render: (p) => (
+        <span className="tnum text-slate-700">
+          {p.discountPercentage}%{p.maxDiscountNGN ? ` (max ₦${p.maxDiscountNGN.toLocaleString()})` : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'uses',
+      header: 'Uses',
+      align: 'right',
+      render: (p) => (
+        <button onClick={() => setUsageFor(p)} className="tnum text-slate-700 underline-offset-2 hover:underline">
+          {p.usedCount}{p.maxUses ? ` / ${p.maxUses}` : ''}
+        </button>
+      ),
+    },
+    { key: 'validUntil', header: 'Valid until', render: (p) => <span className="text-slate-500">{new Date(p.validUntil).toLocaleDateString()}</span> },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (p) => {
+        const expired = isExpired(p.validUntil);
+        return (
+          <StatusLabel tone={!p.isActive ? 'neutral' : expired ? 'warning' : 'success'}>
+            {!p.isActive ? 'inactive' : expired ? 'expired' : 'active'}
+          </StatusLabel>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      header: '',
+      render: (p) => (
+        <div className="flex gap-2">
+          <button
+            onClick={() =>
+              setEditing({
+                id: p.id,
+                code: p.code,
+                description: p.description,
+                discountPercentage: p.discountPercentage,
+                maxDiscountNGN: p.maxDiscountNGN ?? undefined,
+                maxUses: p.maxUses ?? undefined,
+                validUntil: p.validUntil.slice(0, 10),
+                isActive: p.isActive,
+              })
+            }
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Edit
+          </button>
+          <button onClick={() => toggleActive(p)} className="text-xs font-medium text-slate-500 hover:underline">
+            {p.isActive ? 'Deactivate' : 'Activate'}
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[26px] font-bold tracking-tight text-slate-900">Promotions</h1>
-          <p className="mt-1 text-sm text-slate-500">Promo codes are deactivated, never deleted — redemption history is kept.</p>
-        </div>
-        <Button
-          size="sm"
-          onClick={() =>
-            setEditing({ code: '', description: '', discountPercentage: 10, validUntil: '', isActive: true })
-          }
-        >
-          <Plus size={14} />
-          New code
-        </Button>
-      </div>
+      <PageHeader
+        title="Promotions"
+        description="Promo codes are deactivated, never deleted — redemption history is kept."
+        action={
+          <Button size="sm" onClick={() => setEditing({ code: '', description: '', discountPercentage: 10, validUntil: '', isActive: true })}>
+            New code
+          </Button>
+        }
+      />
 
       {error ? (
         <div className="rounded-md border border-danger/20 bg-danger-tint p-6 text-sm text-danger">{error}</div>
       ) : (
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Code</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Description</th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Discount</th>
-                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-400">Uses</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Valid until</th>
-                  <th className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Status</th>
-                  <th className="w-24" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <TableSkeleton rows={5} cols={7} />
-                ) : (data?.promotions ?? []).length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="p-0">
-                      <EmptyState title="No promo codes yet" description="Create one to offer riders a discount." />
-                    </td>
-                  </tr>
-                ) : (
-                  (data?.promotions ?? []).map((p) => {
-                    const expired = isExpired(p.validUntil);
-                    return (
-                      <tr key={p.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-900">{p.code}</td>
-                        <td className="max-w-[220px] truncate px-4 py-3 text-slate-600">{p.description}</td>
-                        <td className="tnum px-4 py-3 text-right text-slate-700">
-                          {p.discountPercentage}%{p.maxDiscountNGN ? ` (max ₦${p.maxDiscountNGN.toLocaleString()})` : ''}
-                        </td>
-                        <td className="tnum px-4 py-3 text-right text-slate-700">
-                          <button onClick={() => setUsageFor(p)} className="underline-offset-2 hover:underline">
-                            {p.usedCount}{p.maxUses ? ` / ${p.maxUses}` : ''}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500">{new Date(p.validUntil).toLocaleDateString()}</td>
-                        <td className="px-4 py-3">
-                          <Badge tone={!p.isActive ? 'neutral' : expired ? 'warning' : 'success'}>
-                            {!p.isActive ? 'inactive' : expired ? 'expired' : 'active'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() =>
-                                setEditing({
-                                  id: p.id,
-                                  code: p.code,
-                                  description: p.description,
-                                  discountPercentage: p.discountPercentage,
-                                  maxDiscountNGN: p.maxDiscountNGN ?? undefined,
-                                  maxUses: p.maxUses ?? undefined,
-                                  validUntil: p.validUntil.slice(0, 10),
-                                  isActive: p.isActive,
-                                })
-                              }
-                              className="text-xs font-medium text-primary hover:underline"
-                            >
-                              Edit
-                            </button>
-                            <button onClick={() => toggleActive(p)} className="text-xs font-medium text-slate-500 hover:underline">
-                              {p.isActive ? 'Deactivate' : 'Activate'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <Table
+          columns={columns}
+          rows={data?.promotions ?? []}
+          rowKey={(p) => p.id}
+          loading={loading}
+          emptyTitle="No promo codes yet"
+          emptyDescription="Create one to offer riders a discount."
+        />
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-md rounded-md bg-white p-6 shadow-lg">
-            <h3 className="mb-4 text-sm font-semibold text-slate-900">{editing.id ? 'Edit promo code' : 'New promo code'}</h3>
-            <div className="space-y-3">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-500">Code</span>
-                <input
-                  disabled={!!editing.id}
-                  value={editing.code}
-                  onChange={(e) => setEditing({ ...editing, code: e.target.value.toUpperCase() })}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-slate-50 disabled:text-slate-400"
-                />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-500">Description</span>
-                <input
-                  value={editing.description}
-                  onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Discount %</span>
-                  <input
-                    type="number"
-                    value={editing.discountPercentage}
-                    onChange={(e) => setEditing({ ...editing, discountPercentage: Number(e.target.value) })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Max discount (₦)</span>
-                  <input
-                    type="number"
-                    value={editing.maxDiscountNGN ?? ''}
-                    placeholder="Uncapped"
-                    onChange={(e) => setEditing({ ...editing, maxDiscountNGN: e.target.value ? Number(e.target.value) : undefined })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </label>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Max uses</span>
-                  <input
-                    type="number"
-                    value={editing.maxUses ?? ''}
-                    placeholder="Unlimited"
-                    onChange={(e) => setEditing({ ...editing, maxUses: e.target.value ? Number(e.target.value) : undefined })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-slate-500">Valid until</span>
-                  <input
-                    type="date"
-                    value={editing.validUntil}
-                    onChange={(e) => setEditing({ ...editing, validUntil: e.target.value })}
-                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </label>
-              </div>
-              <label className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={editing.isActive}
-                  onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })}
-                />
-                Active
-              </label>
-            </div>
-            <div className="mt-5 flex gap-2.5">
+        <Modal
+          title={editing.id ? 'Edit promo code' : 'New promo code'}
+          onClose={() => setEditing(null)}
+          width="md"
+          footer={
+            <>
               <Button variant="secondary" className="flex-1" onClick={() => setEditing(null)}>
                 Cancel
               </Button>
               <Button variant="primary" className="flex-1" onClick={save} disabled={!editing.code || !editing.description || !editing.validUntil}>
                 Save
               </Button>
-            </div>
+            </>
+          }
+        >
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Code</span>
+            <input
+              disabled={!!editing.id}
+              value={editing.code}
+              onChange={(e) => setEditing({ ...editing, code: e.target.value.toUpperCase() })}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm uppercase focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:bg-slate-50 disabled:text-slate-400"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-slate-500">Description</span>
+            <input
+              value={editing.description}
+              onChange={(e) => setEditing({ ...editing, description: e.target.value })}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Discount %</span>
+              <input
+                type="number"
+                value={editing.discountPercentage}
+                onChange={(e) => setEditing({ ...editing, discountPercentage: Number(e.target.value) })}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Max discount (₦)</span>
+              <input
+                type="number"
+                value={editing.maxDiscountNGN ?? ''}
+                placeholder="Uncapped"
+                onChange={(e) => setEditing({ ...editing, maxDiscountNGN: e.target.value ? Number(e.target.value) : undefined })}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </label>
           </div>
-        </div>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Max uses</span>
+              <input
+                type="number"
+                value={editing.maxUses ?? ''}
+                placeholder="Unlimited"
+                onChange={(e) => setEditing({ ...editing, maxUses: e.target.value ? Number(e.target.value) : undefined })}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-slate-500">Valid until</span>
+              <input
+                type="date"
+                value={editing.validUntil}
+                onChange={(e) => setEditing({ ...editing, validUntil: e.target.value })}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={editing.isActive}
+              onChange={(e) => setEditing({ ...editing, isActive: e.target.checked })}
+            />
+            Active
+          </label>
+        </Modal>
       )}
 
       {usageFor && <UsageDrawer promo={usageFor} onClose={() => setUsageFor(null)} />}
