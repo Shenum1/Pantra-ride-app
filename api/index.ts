@@ -1,15 +1,49 @@
-// Imported by an explicit relative path, not the bare 'expo-server/adapter/vercel'
-// specifier — this repo has two different expo-server versions installed (the
-// top-level one used by expo-router, and an unrelated newer one nested inside
-// @expo/cli for its own dev-server use). Vercel's function bundler was tracing
-// the bare specifier to the wrong nested copy, which doesn't export
-// createRequestHandler. A relative path pins exactly which file gets bundled.
-import { createRequestHandler } from '../node_modules/expo-server/build/mjs/vendor/vercel.js';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
+// TEMPORARY DIAGNOSTIC HANDLER — not the real app.
+// Reports what Vercel's runtime actually resolves the expo-server vercel
+// adapter to, since a static `import { createRequestHandler } from '...'`
+// crashes before any of our code can run (ESM linking happens before
+// execution). A dynamic import() lets us inspect it instead of guessing blind.
+export default async function handler(req: unknown, res: any) {
+  const report: Record<string, unknown> = { ok: true };
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  try {
+    const mod = await import('../node_modules/expo-server/build/mjs/vendor/vercel.js');
+    report.relativeImport = {
+      keys: Object.keys(mod),
+      hasCreateRequestHandler: typeof (mod as any).createRequestHandler,
+    };
+  } catch (e) {
+    report.relativeImportError = e instanceof Error ? e.message : String(e);
+  }
 
-export default createRequestHandler({
-  build: path.join(__dirname, '../dist/server'),
-});
+  try {
+    const mod = await import('expo-server/adapter/vercel');
+    report.bareSpecifierImport = {
+      keys: Object.keys(mod),
+      hasCreateRequestHandler: typeof (mod as any).createRequestHandler,
+    };
+  } catch (e) {
+    report.bareSpecifierImportError = e instanceof Error ? e.message : String(e);
+  }
+
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = await import('node:path');
+    const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    const filePath = path.join(__dirname, '../node_modules/expo-server/build/mjs/vendor/vercel.js');
+    const content = readFileSync(filePath, 'utf-8');
+    report.fileOnDisk = {
+      path: filePath,
+      length: content.length,
+      firstLine: content.split('\n')[0],
+      containsCreateRequestHandlerExport: content.includes('export function createRequestHandler') || content.includes('export const createRequestHandler'),
+    };
+  } catch (e) {
+    report.fileReadError = e instanceof Error ? e.message : String(e);
+  }
+
+  res.setHeader('content-type', 'application/json');
+  res.statusCode = 200;
+  res.end(JSON.stringify(report, null, 2));
+}
