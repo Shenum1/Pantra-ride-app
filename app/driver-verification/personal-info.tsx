@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -42,6 +42,14 @@ export default function PersonalInfoScreen() {
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [isStatePickerOpen, setIsStatePickerOpen] = useState(false);
   const [stateSearchQuery, setStateSearchQuery] = useState('');
+
+  // A Google-signup driver's email is already verified by Supabase at sign-in
+  // time (Google proved it) — sync once on mount so that's reflected immediately
+  // instead of requiring a pointless manual "I've Verified" tap.
+  useEffect(() => {
+    void syncAuthVerificationStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const phoneVerified = !!status?.phoneVerifiedAt;
   const emailVerified = !!status?.emailVerifiedAt;

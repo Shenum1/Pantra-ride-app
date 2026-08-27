@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useEffect, useState } from 'react';
 import { AuthService } from '@/lib/auth-service';
+import { GoogleAuthService } from '@/lib/google-auth-service';
 import { supabase } from '@/lib/supabase';
 import Toast from 'react-native-toast-message';
 import { DeviceSecurityService } from '@/lib/device-security-service';
@@ -26,9 +27,7 @@ export interface AuthState {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, phone: string, password: string, profileImage?: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  loginWithPhone: (phoneNumber: string) => Promise<void>;
-  verifyPhoneCode: (code: string) => Promise<void>;
+  loginWithGoogle: () => Promise<{ hasPhone: boolean }>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
   googlePromptAsync: (() => Promise<void>) | null;
@@ -41,7 +40,6 @@ const TEST_RIDER_PASSWORD = 'test123';
 export const [AuthProvider, useAuth] = createContextHook(() => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [pendingPhoneNumber, setPendingPhoneNumber] = useState<string | null>(null);
 
   useEffect(() => {
     loadStoredUser();
@@ -238,65 +236,32 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     await saveUser(updatedUser);
   };
 
-  const loginWithGoogle = async () => {
-    throw new Error('Google authentication is not yet configured. Please use email login instead.');
-  };
-
-  const loginWithPhone = async (phoneNumber: string) => {
+  const loginWithGoogle = async (): Promise<{ hasPhone: boolean }> => {
     setIsLoading(true);
     try {
-      // Normalise to E.164: strip leading 0, prepend +234 if no country code
-      const formatted = phoneNumber.startsWith('+')
-        ? phoneNumber
-        : `+234${phoneNumber.replace(/^0+/, '')}`;
-      const { error } = await supabase.auth.signInWithOtp({ phone: formatted });
-      if (error) throw new Error(error.message);
-      setPendingPhoneNumber(formatted);
-      Toast.show({ type: 'success', text1: 'Verification Code Sent', text2: 'Please check your SMS', position: 'top' });
-    } catch (error: any) {
-      Toast.show({ type: 'error', text1: 'Phone Login Failed', text2: error.message, position: 'top' });
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const verifyPhoneCode = async (code: string) => {
-    if (!pendingPhoneNumber) throw new Error('No pending phone verification');
-    setIsLoading(true);
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone: pendingPhoneNumber,
-        token: code,
-        type: 'sms',
-      });
-      if (error) throw new Error(error.message);
-      if (!data.user) throw new Error('Verification failed — no user returned');
-
       await AsyncStorage.removeItem('driver_auth_user');
-
-      // Ensure a public.users row exists for this phone account
-      let profile = await AuthService.getUserProfile(data.user.id);
-      if (!profile) {
-        await AuthService.createMissingUserProfile(data.user.id, data.user.phone ?? '', 'Phone User', 'rider');
-        profile = await AuthService.getUserProfile(data.user.id);
-      }
+      const result = await GoogleAuthService.signIn();
+      const profile = await AuthService.getUserProfile(result.userId);
 
       const userData: User = {
-        id: data.user.id,
-        name: profile?.displayName || 'Phone User',
-        email: profile?.email || '',
-        phone: pendingPhoneNumber,
+        id: result.userId,
+        name: profile?.displayName || result.fullName || result.email.split('@')[0] || 'User',
+        email: result.email,
+        phone: profile?.phoneNumber || '',
         rating: profile?.rating ?? null,
         totalRatings: profile?.totalRatings ?? 0,
-        authProvider: 'phone',
+        profileImage: profile?.photoURL || result.photoUrl || undefined,
+        dateOfBirth: profile?.dateOfBirth,
+        address: profile?.address,
+        authProvider: 'google',
       };
       await saveUser(userData);
-      setPendingPhoneNumber(null);
-      Toast.show({ type: 'success', text1: 'Verification Successful', text2: 'Welcome!', position: 'top' });
+      Toast.show({ type: 'success', text1: 'Welcome!', text2: `Signed in as ${userData.name}`, position: 'top' });
+      return { hasPhone: result.hasPhone };
     } catch (error: any) {
-      Toast.show({ type: 'error', text1: 'Verification Failed', text2: error.message, position: 'top' });
-      throw error;
+      const msg = error.message || 'Google sign-in failed. Please try again.';
+      Toast.show({ type: 'error', text1: 'Google Sign-In Failed', text2: msg, position: 'top' });
+      throw new Error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -304,7 +269,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   return {
     user, isLoading, isAuthenticated: !!user,
-    login, signup, loginWithGoogle, loginWithPhone, verifyPhoneCode,
+    login, signup, loginWithGoogle,
     logout, updateProfile, googlePromptAsync: null,
   };
 });

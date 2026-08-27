@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import createContextHook from '@nkzw/create-context-hook';
 import { DriverAuthService, DriverRow } from '@/lib/driver-auth-service';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
+import { GoogleAuthService } from '@/lib/google-auth-service';
 import { supabase } from '@/lib/supabase';
 import { StorageService } from '@/lib/storage-service';
 
@@ -69,6 +70,20 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     }
   }, []);
 
+  const loginWithGoogle = useCallback(async (): Promise<{ isNewDriver: boolean }> => {
+    setIsLoading(true);
+    try {
+      const result = await GoogleAuthService.signIn();
+      const existing = await DriverAuthService.getDriverByUserId(result.userId);
+      const d = existing ?? await DriverAuthService.createOrGetDriverForGoogleUser(result.userId, result.fullName ?? result.email.split('@')[0], result.email);
+      setDriver(d);
+      await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(d));
+      return { isNewDriver: !existing };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     await AsyncStorage.removeItem(DRIVER_STORAGE_KEY);
     setDriver(null);
@@ -123,9 +138,10 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     isAuthenticated: !!driver,
     login,
     signup,
+    loginWithGoogle,
     logout,
     updateProfile,
     updateProfileImage,
     toggleOnlineStatus,
-  }), [driver, isLoading, login, signup, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
+  }), [driver, isLoading, login, signup, loginWithGoogle, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
 });

@@ -39,7 +39,7 @@ export default function DriverSignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const { signup, isLoading } = useDriverAuth();
+  const { signup, loginWithGoogle, isLoading } = useDriverAuth();
   const { acceptTerms } = useTermsStore();
 
   const handleInputChange = (field: string, value: string) => {
@@ -76,6 +76,15 @@ export default function DriverSignupScreen() {
       router.replace('/driver-verification/personal-info' as any);
     } catch (error: any) {
       Alert.alert('Registration Failed', error?.message ?? 'Please try again');
+    }
+  };
+
+  const handleGoogleSignup = async () => {
+    try {
+      await loginWithGoogle();
+      router.replace('/driver-verification/personal-info' as any);
+    } catch (error: any) {
+      Alert.alert('Google Sign-In Failed', error?.message ?? 'Please try again.');
     }
   };
 
@@ -249,6 +258,23 @@ export default function DriverSignupScreen() {
                 style={styles.signupButton}
               />
 
+              <View style={styles.divider}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <Pressable
+                style={styles.googleButton}
+                onPress={handleGoogleSignup}
+                disabled={isLoading}
+              >
+                <View style={styles.googleIcon}>
+                  <Text style={styles.googleIconText}>G</Text>
+                </View>
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              </Pressable>
+
               <View style={styles.footer}>
                 <Text style={styles.footerText}>
                   Already have a driver account?{' '}
@@ -401,7 +427,51 @@ const styles = StyleSheet.create({
   },
   signupButton: {
     marginTop: 24,
-    marginBottom: 32,
+    marginBottom: 24,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  dividerText: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    paddingHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.light.white,
+    borderRadius: 12,
+    paddingVertical: 16,
+    marginBottom: 24,
+    gap: 12,
+  },
+  googleIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#4285F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleIconText: {
+    color: Colors.light.white,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  googleButtonText: {
+    color: Colors.light.black,
+    fontSize: 16,
+    fontWeight: '600',
   },
   footer: {
     alignItems: 'center',

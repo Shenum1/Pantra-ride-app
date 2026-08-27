@@ -102,6 +102,36 @@ export class DriverAuthService {
     return mapRowToDriver(driverRow);
   }
 
+  // Creates a public.drivers row for a driver who signed up via Google (no
+  // password-based signUpWithEmail call happened, so nothing has inserted this
+  // row yet). Mirrors signUpWithEmail's insert exactly, minus the auth-account
+  // creation step, which GoogleAuthService.signIn() already handled. phone is
+  // left null — the driver-verification wizard collects and OTP-verifies it,
+  // same as it does for an email-signup driver.
+  static async createOrGetDriverForGoogleUser(userId: string, name: string, email: string): Promise<DriverRow> {
+    const existing = await this.getDriverByUserId(userId);
+    if (existing) return existing;
+
+    await AuthService.updateUserProfile(userId, { role: 'driver' });
+
+    const { data: driverRow, error } = await supabase
+      .from('drivers')
+      .insert({
+        userId,
+        name,
+        email,
+        phone: null,
+        rating: null,
+        isOnline: false,
+        earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return mapRowToDriver(driverRow);
+  }
+
   static async getDriverByUserId(userId: string): Promise<DriverRow | null> {
     const { data, error } = await supabase
       .from('drivers')

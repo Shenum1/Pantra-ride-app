@@ -13,7 +13,7 @@ import {
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
-import { Eye, EyeOff, Mail } from 'lucide-react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAuth } from '@/hooks/useAuthStore';
 import Button from '@/components/Button';
@@ -25,7 +25,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, isLoading } = useAuth();
+  const { login, loginWithGoogle, isLoading } = useAuth();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -45,6 +45,15 @@ export default function LoginScreen() {
       router.replace('/(tabs)/home');
     } catch (error) {
       console.error('Login: Login failed:', error);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const { hasPhone } = await loginWithGoogle();
+      router.replace(hasPhone ? '/(tabs)/home' : '/collect-phone');
+    } catch (error) {
+      console.error('Login: Google sign-in failed:', error);
     }
   };
 
@@ -129,8 +138,7 @@ export default function LoginScreen() {
               style={styles.loginButton}
             />
 
-            {/* Google login temporarily disabled */}
-            {/* <View style={styles.divider}>
+            <View style={styles.divider}>
               <View style={styles.dividerLine} />
               <Text style={styles.dividerText}>OR</Text>
               <View style={styles.dividerLine} />
@@ -138,22 +146,13 @@ export default function LoginScreen() {
 
             <Pressable
               style={styles.googleButton}
-              onPress={() => loginWithGoogle()}
+              onPress={handleGoogleLogin}
               disabled={isLoading}
             >
               <View style={styles.googleIcon}>
                 <Text style={styles.googleIconText}>G</Text>
               </View>
               <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </Pressable> */}
-
-            <Pressable
-              style={styles.phoneButton}
-              onPress={() => router.push('/phone-login')}
-              disabled={isLoading}
-            >
-              <Mail size={20} color={Colors.light.primary} />
-              <Text style={styles.phoneButtonText}>Continue with Phone</Text>
             </Pressable>
 
             <View style={styles.footer}>
@@ -314,23 +313,6 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     color: Colors.light.black,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  phoneButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 12,
-    paddingVertical: 16,
-    marginBottom: 24,
-    gap: 12,
-  },
-  phoneButtonText: {
-    color: Colors.light.white,
     fontSize: 16,
     fontWeight: '600',
   },

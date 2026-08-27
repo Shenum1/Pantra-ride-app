@@ -16,7 +16,7 @@ import {
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
-import { Eye, EyeOff, Mail, CheckSquare, Square, Camera, User } from 'lucide-react-native';
+import { Eye, EyeOff, CheckSquare, Square, Camera, User } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAuth } from '@/hooks/useAuthStore';
@@ -37,7 +37,7 @@ export default function SignupScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [profileImage, setProfileImage] = useState('');
-  const { signup, isLoading } = useAuth();
+  const { signup, loginWithGoogle, isLoading } = useAuth();
   const { acceptTerms } = useTermsStore();
 
   const handlePickImage = async () => {
@@ -152,6 +152,15 @@ export default function SignupScreen() {
       router.replace('/');
     } catch (error) {
       console.error('Signup: Signup failed:', error);
+    }
+  };
+
+  const handleGoogleSignup = async () => {
+    try {
+      const { hasPhone } = await loginWithGoogle();
+      router.replace(hasPhone ? '/(tabs)/home' : '/collect-phone');
+    } catch (error) {
+      console.error('Signup: Google sign-in failed:', error);
     }
   };
 
@@ -341,8 +350,7 @@ export default function SignupScreen() {
               style={styles.signupButton}
             />
 
-            {/* Google signup temporarily disabled */}
-            {/* <View style={styles.divider}>
+            <View style={styles.divider}>
               <View style={styles.dividerLine} />
               <Text style={styles.dividerText}>OR</Text>
               <View style={styles.dividerLine} />
@@ -350,22 +358,13 @@ export default function SignupScreen() {
 
             <Pressable
               style={styles.googleButton}
-              onPress={() => loginWithGoogle()}
+              onPress={handleGoogleSignup}
               disabled={isLoading}
             >
               <View style={styles.googleIcon}>
                 <Text style={styles.googleIconText}>G</Text>
               </View>
               <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </Pressable> */}
-
-            <Pressable
-              style={styles.phoneButton}
-              onPress={() => router.push('/phone-login')}
-              disabled={isLoading}
-            >
-              <Mail size={20} color={Colors.light.primary} />
-              <Text style={styles.phoneButtonText}>Continue with Phone</Text>
             </Pressable>
 
             <View style={styles.footer}>
@@ -532,23 +531,6 @@ const styles = StyleSheet.create({
   },
   googleButtonText: {
     color: Colors.light.black,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  phoneButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 12,
-    paddingVertical: 16,
-    marginBottom: 24,
-    gap: 12,
-  },
-  phoneButtonText: {
-    color: Colors.light.white,
     fontSize: 16,
     fontWeight: '600',
   },
