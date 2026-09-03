@@ -280,7 +280,7 @@ export async function runProfileFormatCheck(db: SupabaseClient, driverId: string
 export async function recomputeDriverVerificationStatus(db: SupabaseClient, driverId: string): Promise<void> {
   const { data: driver, error: driverError } = await db
     .from('drivers')
-    .select('id, operatingState, vehicleCategory, verificationStatus, phoneVerifiedAt, emailVerifiedAt')
+    .select('id, operatingState, vehicleCategory, verificationStatus, emailVerifiedAt')
     .eq('id', driverId)
     .single();
 
@@ -320,12 +320,10 @@ export async function recomputeDriverVerificationStatus(db: SupabaseClient, driv
     }
   }
 
-  // "Complete" requires every required document type submitted AND phone + email
-  // verification done — a driver cannot enter the checking pipeline at all without
-  // both, per the required-data-points list (phone OTP, email verification).
+  // "Complete" requires every required document type submitted AND email
+  // verification done — a driver cannot enter the checking pipeline without it.
   const documentsComplete =
     requiredDocumentTypes.every((type) => submittedTypesWithLatestDoc.has(type)) &&
-    !!driver.phoneVerifiedAt &&
     !!driver.emailVerifiedAt;
   const submittedRequiredCount = requiredDocumentTypes.filter((type) =>
     submittedTypesWithLatestDoc.has(type)

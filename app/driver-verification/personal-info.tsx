@@ -24,21 +24,12 @@ import { NIGERIAN_STATES, LAUNCHED_STATES } from '@/constants/nigerian-states';
 import { validateFullLegalName, validateDateOfBirth } from '@/lib/nigerian-format-validators';
 import { useDriverVerificationWizard } from './_wizard-context';
 
-function formatE164(rawPhone: string): string {
-  return rawPhone.startsWith('+') ? rawPhone : `+234${rawPhone.replace(/^0+/, '')}`;
-}
-
 export default function PersonalInfoScreen() {
   const { colors } = useTheme();
   const { driver } = useDriverAuth();
   const { status, syncAuthVerificationStatus } = useDriverVerification();
   const { draft, updateDraft } = useDriverVerificationWizard();
 
-  const [phone, setPhone] = useState(driver?.phone ?? '');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [isStatePickerOpen, setIsStatePickerOpen] = useState(false);
   const [stateSearchQuery, setStateSearchQuery] = useState('');
@@ -51,7 +42,6 @@ export default function PersonalInfoScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const phoneVerified = !!status?.phoneVerifiedAt;
   const emailVerified = !!status?.emailVerifiedAt;
 
   const filteredStates = useMemo(() => {
@@ -63,43 +53,6 @@ export default function PersonalInfoScreen() {
   const closeStatePicker = () => {
     setIsStatePickerOpen(false);
     setStateSearchQuery('');
-  };
-
-  const handleSendOtp = async () => {
-    if (!phone.trim()) {
-      Alert.alert('Phone required', 'Enter your phone number first.');
-      return;
-    }
-    setIsSendingOtp(true);
-    try {
-      const { error } = await supabase.auth.updateUser({ phone: formatE164(phone) });
-      if (error) throw new Error(error.message);
-      setOtpSent(true);
-      Alert.alert('Code sent', 'Enter the verification code sent to your phone.');
-    } catch (error: any) {
-      Alert.alert('Could not send code', error?.message ?? 'Please try again.');
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (!otpCode.trim()) return;
-    setIsVerifyingOtp(true);
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        phone: formatE164(phone),
-        token: otpCode.trim(),
-        type: 'phone_change',
-      });
-      if (error) throw new Error(error.message);
-      await syncAuthVerificationStatus();
-      Alert.alert('Phone verified', 'Your phone number has been verified.');
-    } catch (error: any) {
-      Alert.alert('Verification failed', error?.message ?? 'Please try again.');
-    } finally {
-      setIsVerifyingOtp(false);
-    }
   };
 
   const handleResendEmail = async () => {
@@ -139,10 +92,6 @@ export default function PersonalInfoScreen() {
     }
     if (!draft.operatingState) {
       Alert.alert('Operating state required', 'Select the state you will operate in.');
-      return;
-    }
-    if (!phoneVerified) {
-      Alert.alert('Phone not verified', 'Verify your phone number before continuing.');
       return;
     }
     if (!emailVerified) {
@@ -262,54 +211,6 @@ export default function PersonalInfoScreen() {
 
         <View style={[styles.card, { backgroundColor: colors.card }]}>
           <View style={styles.verificationHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Phone Verification</Text>
-            {phoneVerified && <CheckCircle2 size={18} color={colors.success} />}
-          </View>
-          {phoneVerified ? (
-            <Text style={{ color: colors.success }}>Phone number verified.</Text>
-          ) : (
-            <>
-              <TextInput
-                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="e.g. 08012345678"
-                placeholderTextColor={colors.textSecondary}
-                keyboardType="phone-pad"
-              />
-              <Button
-                title={otpSent ? 'Resend Code' : 'Send Verification Code'}
-                onPress={handleSendOtp}
-                variant="outline"
-                loading={isSendingOtp}
-                disabled={isSendingOtp}
-                style={styles.smallButton}
-              />
-              {otpSent && (
-                <>
-                  <TextInput
-                    style={[styles.input, { color: colors.text, borderColor: colors.border, marginTop: 12 }]}
-                    value={otpCode}
-                    onChangeText={setOtpCode}
-                    placeholder="Enter 6-digit code"
-                    placeholderTextColor={colors.textSecondary}
-                    keyboardType="number-pad"
-                  />
-                  <Button
-                    title="Verify Phone"
-                    onPress={handleVerifyOtp}
-                    loading={isVerifyingOtp}
-                    disabled={isVerifyingOtp}
-                    style={styles.smallButton}
-                  />
-                </>
-              )}
-            </>
-          )}
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
-          <View style={styles.verificationHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Email Verification</Text>
             {emailVerified && <CheckCircle2 size={18} color={colors.success} />}
           </View>
@@ -352,7 +253,6 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
   helperText: { fontSize: 12, marginTop: -2, marginBottom: 6 },
   chipSubtext: { fontSize: 10, marginTop: 2 },
-  smallButton: { marginTop: 4 },
   row: { flexDirection: 'row', gap: 12 },
   halfButton: { flex: 1 },
   footer: { padding: 16, borderTopWidth: 1 },

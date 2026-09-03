@@ -100,8 +100,8 @@ export default function ForgotPasswordScreen() {
   };
 
   const handleVerifyCode = async () => {
-    if (code.trim().length !== 6) {
-      Toast.show({ type: 'error', text1: 'Invalid Code', text2: 'Enter the 6-digit code from your email', position: 'top' });
+    if (!code.trim()) {
+      Toast.show({ type: 'error', text1: 'Invalid Code', text2: 'Enter the verification code from your email', position: 'top' });
       return;
     }
     setIsSubmitting(true);
@@ -158,7 +158,7 @@ export default function ForgotPasswordScreen() {
 
   const stepSubtitle: Record<Step, string> = {
     request: 'Enter your account email to receive a reset code',
-    verify: 'Enter the 6-digit code sent to your email',
+    verify: 'Enter the verification code sent to your email',
     newPassword: 'Choose a new password',
   };
 
@@ -218,9 +218,9 @@ export default function ForgotPasswordScreen() {
                       style={styles.input}
                       value={code}
                       onChangeText={setCode}
-                      placeholder="Enter 6-digit code"
+                      placeholder="Enter verification code"
                       keyboardType="number-pad"
-                      maxLength={6}
+                      maxLength={12}
                       testID="reset-code-input"
                     />
                   </View>

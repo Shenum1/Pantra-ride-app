@@ -10,7 +10,7 @@ export default driverProcedure.query(async ({ ctx }) => {
   const { data: driver, error: driverError } = await db
     .from("drivers")
     .select(
-      "id, verificationStatus, verificationProgress, rejectionReason, operatingState, vehicleCategory, phoneVerifiedAt, emailVerifiedAt, fullLegalName, dateOfBirth, licenseNumber, licenseCategory, licenseIssueDate, licenseExpiryDate, vehiclePlateNumber, vehicleVin, vehicleEngineNumber"
+      "id, verificationStatus, verificationProgress, rejectionReason, operatingState, vehicleCategory, emailVerifiedAt, fullLegalName, dateOfBirth, licenseNumber, licenseCategory, licenseIssueDate, licenseExpiryDate, vehiclePlateNumber, vehicleVin, vehicleEngineNumber"
     )
     .eq("id", ctx.driverId)
     .single();
@@ -93,7 +93,6 @@ export default driverProcedure.query(async ({ ctx }) => {
     rejectionReason: driver.rejectionReason,
     operatingState: driver.operatingState,
     vehicleCategory: driver.vehicleCategory,
-    phoneVerifiedAt: driver.phoneVerifiedAt,
     emailVerifiedAt: driver.emailVerifiedAt,
     profile: {
       fullLegalName: driver.fullLegalName,

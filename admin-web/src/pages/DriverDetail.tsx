@@ -24,7 +24,6 @@ interface DriverDetailData {
     verificationProgress: number | null;
     verificationStatusUpdatedAt: string | null;
     rejectionReason: string | null;
-    phoneVerifiedAt: string | null;
     emailVerifiedAt: string | null;
     licenseNumber: string | null;
     licenseCategory: string | null;
@@ -162,7 +161,6 @@ export default function DriverDetail() {
           <Field label="Date of birth" value={driver.dateOfBirth} />
           <Field label="Operating state" value={driver.operatingState} />
           <Field label="Vehicle category" value={driver.vehicleCategory} />
-          <Field label="Phone verified" value={driver.phoneVerifiedAt ? new Date(driver.phoneVerifiedAt).toLocaleDateString() : 'Not verified'} />
           <Field label="Email verified" value={driver.emailVerifiedAt ? new Date(driver.emailVerifiedAt).toLocaleDateString() : 'Not verified'} />
           <Field label="Verification progress" value={`${Math.round(driver.verificationProgress ?? 0)}%`} />
         </div>
