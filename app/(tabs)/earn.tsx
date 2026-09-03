@@ -214,9 +214,14 @@ export default function EarnScreen() {
           )}
         </View>
 
-        {/* Watch an ad, earn points */}
-        {Platform.OS !== 'web' && (
-          <View style={styles.section}>
+        {/* Coin Dome — watch an ad, earn points */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Coins size={20} color={colors.primary} />
+            <Text style={styles.sectionTitle}>Coin Dome</Text>
+          </View>
+
+          {Platform.OS !== 'web' ? (
             <TouchableOpacity
               style={[styles.adRewardCard, { backgroundColor: colors.card }]}
               onPress={handleWatchAd}
@@ -238,8 +243,18 @@ export default function EarnScreen() {
                 <ExternalLink size={20} color={colors.primary} />
               </View>
             </TouchableOpacity>
-          </View>
-        )}
+          ) : (
+            <View style={[styles.adRewardCard, { backgroundColor: colors.card }]}>
+              <View style={styles.adRewardIconContainer}>
+                <Coins size={22} color={colors.textSecondary} />
+              </View>
+              <View style={styles.taskInfo}>
+                <Text style={styles.taskTitle}>Watch an ad, earn {AD_REWARD_POINTS} pts</Text>
+                <Text style={styles.taskDescription}>Available in the mobile app</Text>
+              </View>
+            </View>
+          )}
+        </View>
 
         {/* Completed Tasks */}
         {completedTasks.length > 0 && (
