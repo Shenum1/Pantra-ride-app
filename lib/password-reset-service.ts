@@ -2,11 +2,11 @@ import { createSupabaseAuthClient } from './supabase';
 import { UserRole } from './auth-service';
 
 // A completely isolated client: no persisted storage, no auto-refresh, and
-// never wired into onAuthStateChange anywhere. useAuthStore/useDriverAuthStore/
-// useAdminAuthStore all subscribe to the shared `supabase` client's auth state —
-// if the recovery session were established there, those stores could mistake an
-// in-progress password reset for a real login. This client's session lives only
-// for the duration of one reset attempt and is explicitly discarded at the end.
+// never wired into onAuthStateChange anywhere. useAuthStore/useDriverAuthStore
+// both subscribe to the shared `supabase` client's auth state — if the recovery
+// session were established there, those stores could mistake an in-progress
+// password reset for a real login. This client's session lives only for the
+// duration of one reset attempt and is explicitly discarded at the end.
 const recoveryClient = createSupabaseAuthClient({
   autoRefreshToken: false,
   persistSession: false,

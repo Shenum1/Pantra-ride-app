@@ -18,7 +18,6 @@ import { RatingsProvider } from "@/hooks/useRatingsStore";
 import { DriverStoreProvider } from "@/hooks/useDriverStore";
 import { DriverAuthProvider, useDriverAuth } from "@/hooks/useDriverAuthStore";
 import { DriverVerificationProvider } from "@/hooks/useDriverVerification";
-import { AdminAuthProvider } from "@/hooks/useAdminAuthStore";
 import { ThemeProvider } from "@/hooks/useThemeStore";
 import { WeatherProvider } from "@/hooks/useWeatherStore";
 import { WalletProvider } from "@/hooks/useWalletStore";
@@ -105,7 +104,6 @@ function RootLayoutNav() {
         <Stack.Screen name="wallet-add-bank" options={{ title: "Add Bank Account" }} />
         <Stack.Screen name="wallet-bank-accounts" options={{ title: "Bank Accounts" }} />
         <Stack.Screen name="backend-test" options={{ title: "Backend Test" }} />
-        <Stack.Screen name="admin" options={{ headerShown: false }} />
 
       </Stack>
       <Toast />
@@ -141,29 +139,27 @@ export default function RootLayout() {
                 <DriverAuthProvider>
                 <DriverVerificationProvider>
                 <PushTokenRegistrar />
-                <AdminAuthProvider>
-                  <PaymentProvider>
-                  <WalletProvider>
-                  <PromotionsProvider>
-                  <PointsProvider>
-                    <SavedLocationsProvider>
-                      <DriverStoreProvider>
-                        <LocationProvider>
-                          <WeatherProvider>
-                            <RatingsProvider>
-                              <RideProvider>
-                                <RootLayoutNav />
-                              </RideProvider>
-                            </RatingsProvider>
-                          </WeatherProvider>
-                        </LocationProvider>
-                      </DriverStoreProvider>
-                    </SavedLocationsProvider>
-                  </PointsProvider>
-                  </PromotionsProvider>
-                  </WalletProvider>
+                <PaymentProvider>
+                <WalletProvider>
+                <PromotionsProvider>
+                <PointsProvider>
+                  <SavedLocationsProvider>
+                    <DriverStoreProvider>
+                      <LocationProvider>
+                        <WeatherProvider>
+                          <RatingsProvider>
+                            <RideProvider>
+                              <RootLayoutNav />
+                            </RideProvider>
+                          </RatingsProvider>
+                        </WeatherProvider>
+                      </LocationProvider>
+                    </DriverStoreProvider>
+                  </SavedLocationsProvider>
+                </PointsProvider>
+                </PromotionsProvider>
+                </WalletProvider>
                 </PaymentProvider>
-                </AdminAuthProvider>
                 </DriverVerificationProvider>
                 </DriverAuthProvider>
                 </AuthProvider>
