@@ -32,6 +32,10 @@ import adminPricingWaitingChargeGetRoute from "./routes/admin/pricing/waiting-ch
 import adminPricingWaitingChargeUpdateRoute from "./routes/admin/pricing/waiting-charge/update/route";
 import adminPricingCancellationFeeGetRoute from "./routes/admin/pricing/cancellation-fee/get/route";
 import adminPricingCancellationFeeUpdateRoute from "./routes/admin/pricing/cancellation-fee/update/route";
+import adminVideoConfigListRoute from "./routes/admin/video-config/list/route";
+import adminVideoConfigCreateRoute from "./routes/admin/video-config/create/route";
+import adminVideoConfigUpdateRoute from "./routes/admin/video-config/update/route";
+import adminVideoConfigDeleteRoute from "./routes/admin/video-config/delete/route";
 import adminPromotionsListRoute from "./routes/admin/promotions/list/route";
 import adminPromotionsCreateRoute from "./routes/admin/promotions/create/route";
 import adminPromotionsUpdateRoute from "./routes/admin/promotions/update/route";
@@ -132,6 +136,12 @@ export const appRouter = createTRPCRouter({
       create: adminPromotionsCreateRoute,
       update: adminPromotionsUpdateRoute,
       usage: adminPromotionsUsageRoute,
+    }),
+    videoConfig: createTRPCRouter({
+      list: adminVideoConfigListRoute,
+      create: adminVideoConfigCreateRoute,
+      update: adminVideoConfigUpdateRoute,
+      delete: adminVideoConfigDeleteRoute,
     }),
     riders: createTRPCRouter({
       getDetail: adminRidersGetDetailRoute,

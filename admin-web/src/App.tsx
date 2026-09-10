@@ -13,6 +13,7 @@ import Payments from './pages/Payments';
 import Payouts from './pages/Payouts';
 import Pricing from './pages/Pricing';
 import Promotions from './pages/Promotions';
+import Content from './pages/Content';
 import Support from './pages/Support';
 import SupportTicketDetail from './pages/SupportTicketDetail';
 
@@ -57,6 +58,7 @@ export default function App() {
             <Route path="/payouts" element={<Payouts />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/promotions" element={<Promotions />} />
+            <Route path="/content" element={<Content />} />
             <Route path="/support" element={<Support />} />
             <Route path="/support/:id" element={<SupportTicketDetail />} />
           </Route>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { Link, router } from 'expo-router';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
+import { useVideoConfig } from '@/hooks/useVideoConfig';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 
@@ -55,19 +56,27 @@ export default function DriverLoginScreen() {
     }
   };
 
-  const player = useVideoPlayer(
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    (p) => { p.loop = true; p.muted = true; p.play(); }
-  );
+  const videoUri = useVideoConfig('driver_login');
+  const player = useVideoPlayer(videoUri, (p) => { p.loop = true; p.muted = true; p.play(); });
+  const [videoFailed, setVideoFailed] = useState(false);
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status }: any) => {
+      if (status === 'error') setVideoFailed(true);
+    });
+    return () => sub.remove();
+  }, [player]);
 
   return (
     <View style={styles.container}>
-      <VideoView
-        player={player}
-        style={styles.backgroundVideo}
-        contentFit="cover"
-        nativeControls={false}
-      />
+      {!videoFailed && (
+        <VideoView
+          player={player}
+          style={styles.backgroundVideo}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      )}
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Car, User } from 'lucide-react-native';
 import Colors from '@/constants/colors';
+import { useVideoConfig } from '@/hooks/useVideoConfig';
 
 const { width, height } = Dimensions.get('window');
 
@@ -23,19 +24,27 @@ export default function RoleSelectionScreen() {
     }
   };
 
-  const player = useVideoPlayer(
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    (p) => { p.loop = true; p.muted = true; p.play(); }
-  );
+  const videoUri = useVideoConfig('role_selection');
+  const player = useVideoPlayer(videoUri, (p) => { p.loop = true; p.muted = true; p.play(); });
+  const [videoFailed, setVideoFailed] = useState(false);
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status }: any) => {
+      if (status === 'error') setVideoFailed(true);
+    });
+    return () => sub.remove();
+  }, [player]);
 
   return (
     <View style={styles.container}>
-      <VideoView
-        player={player}
-        style={styles.backgroundVideo}
-        contentFit="cover"
-        nativeControls={false}
-      />
+      {!videoFailed && (
+        <VideoView
+          player={player}
+          style={styles.backgroundVideo}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      )}
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>

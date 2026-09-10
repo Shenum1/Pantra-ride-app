@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAuth } from '@/hooks/useAuthStore';
 import { useTermsStore } from '@/hooks/useTermsStore';
+import { useVideoConfig } from '@/hooks/useVideoConfig';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import { validatePassword, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
@@ -164,19 +165,27 @@ export default function SignupScreen() {
     }
   };
 
-  const player = useVideoPlayer(
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    (p) => { p.loop = true; p.muted = true; p.play(); }
-  );
+  const videoUri = useVideoConfig('rider_signup');
+  const player = useVideoPlayer(videoUri, (p) => { p.loop = true; p.muted = true; p.play(); });
+  const [videoFailed, setVideoFailed] = useState(false);
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status }: any) => {
+      if (status === 'error') setVideoFailed(true);
+    });
+    return () => sub.remove();
+  }, [player]);
 
   return (
     <View style={styles.container}>
-      <VideoView
-        player={player}
-        style={styles.backgroundVideo}
-        contentFit="cover"
-        nativeControls={false}
-      />
+      {!videoFailed && (
+        <VideoView
+          player={player}
+          style={styles.backgroundVideo}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      )}
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView

@@ -15,10 +15,10 @@ import { useTheme } from '@/hooks/useThemeStore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MapPinned, Sparkles } from 'lucide-react-native';
+import { MapPinned } from 'lucide-react-native';
+import { useVideoConfig } from '@/hooks/useVideoConfig';
 
 const SPLASH_MIN_DURATION_MS = 2600;
-const SPLASH_VIDEO_URI = 'https://videos.pexels.com/video-files/854118/854118-hd_1920_1080_25fps.mp4';
 
 export default function Index() {
   const { isAuthenticated: userAuthenticated, isLoading: userLoading, user } = useAuth();
@@ -26,8 +26,9 @@ export default function Index() {
   const { colors } = useTheme();
   const [isSplashReady, setIsSplashReady] = useState<boolean>(false);
   const [videoFailed, setVideoFailed] = useState<boolean>(false);
+  const splashVideoUri = useVideoConfig('splash');
 
-  const player = useVideoPlayer(SPLASH_VIDEO_URI, (p) => {
+  const player = useVideoPlayer(splashVideoUri, (p) => {
     p.loop = true;
     p.muted = true;
     p.play();
@@ -163,11 +164,6 @@ export default function Index() {
               },
             ]}
           >
-            <View style={styles.badge} testID="startup-splash-badge">
-              <Sparkles size={14} color="#EAF2FF" />
-              <Text style={styles.badgeText}>Premium city rides</Text>
-            </View>
-
             <View style={styles.brandBlock}>
               <View style={styles.logoWrap}>
                 <MapPinned size={26} color="#FFFFFF" />
@@ -228,23 +224,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 14,
     paddingBottom: 24,
-  },
-  badge: {
-    alignSelf: 'flex-start',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  badgeText: {
-    color: '#F8FAFC',
-    fontSize: 13,
-    fontWeight: '600',
   },
   brandBlock: {
     paddingTop: 16,

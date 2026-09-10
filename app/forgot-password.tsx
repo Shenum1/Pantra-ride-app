@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useVideoConfig } from '@/hooks/useVideoConfig';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import {
@@ -151,10 +152,16 @@ export default function ForgotPasswordScreen() {
     router.replace(backTarget);
   };
 
-  const player = useVideoPlayer(
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    (p) => { p.loop = true; p.muted = true; p.play(); }
-  );
+  const videoUri = useVideoConfig('forgot_password');
+  const player = useVideoPlayer(videoUri, (p) => { p.loop = true; p.muted = true; p.play(); });
+  const [videoFailed, setVideoFailed] = useState(false);
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status }: any) => {
+      if (status === 'error') setVideoFailed(true);
+    });
+    return () => sub.remove();
+  }, [player]);
 
   const stepSubtitle: Record<Step, string> = {
     request: 'Enter your account email to receive a reset code',
@@ -164,12 +171,14 @@ export default function ForgotPasswordScreen() {
 
   return (
     <View style={styles.container}>
-      <VideoView
-        player={player}
-        style={styles.backgroundVideo}
-        contentFit="cover"
-        nativeControls={false}
-      />
+      {!videoFailed && (
+        <VideoView
+          player={player}
+          style={styles.backgroundVideo}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      )}
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView

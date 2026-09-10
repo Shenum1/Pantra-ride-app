@@ -15,6 +15,7 @@ const NAV = [
   { to: '/payouts', label: 'Payouts' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/promotions', label: 'Promotions' },
+  { to: '/content', label: 'Content' },
 ];
 
 export default function Layout({ user, logout }: { user: AdminUser; logout: () => void }) {

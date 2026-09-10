@@ -31,15 +31,10 @@ import { router } from 'expo-router';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
 import { useDriverVerification } from '@/hooks/useDriverVerification';
+import { useVideoConfig } from '@/hooks/useVideoConfig';
 import { SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 const { width } = Dimensions.get('window');
-
-const DRIVING_VIDEOS = [
-  'https://videos.pexels.com/video-files/3044127/3044127-uhd_2560_1440_25fps.mp4',
-  'https://videos.pexels.com/video-files/2103099/2103099-uhd_2560_1440_30fps.mp4',
-  'https://videos.pexels.com/video-files/3571264/3571264-uhd_2560_1440_30fps.mp4',
-];
 
 const WEEKLY_GOAL_NGN = 1000;
 
@@ -86,13 +81,19 @@ export default function DriverDashboard() {
     }
     void toggleOnlineStatus();
   };
-  const player = useVideoPlayer(
-    DRIVING_VIDEOS[Math.floor(Math.random() * DRIVING_VIDEOS.length)],
-    (p) => { p.loop = true; p.muted = true; p.playbackRate = 0.7; p.play(); }
-  );
+  const videoUri = useVideoConfig('driver_dashboard');
+  const player = useVideoPlayer(videoUri, (p) => { p.loop = true; p.muted = true; p.playbackRate = 0.7; p.play(); });
+  const [videoFailed, setVideoFailed] = useState(false);
+
+  useEffect(() => {
+    const sub = player.addListener('statusChange', ({ status }: any) => {
+      if (status === 'error') setVideoFailed(true);
+    });
+    return () => sub.remove();
+  }, [player]);
 
   const [animatedValue] = useState<Animated.Value>(new Animated.Value(0));
-  
+
   const todayEarnings = stats?.todayEarnings || driverProfile?.earnings?.today || 0;
   const weeklyEarnings = stats?.weekEarnings || driverProfile?.earnings?.thisWeek || 0;
   const monthlyEarnings = stats?.monthEarnings || driverProfile?.earnings?.thisMonth || 0;
@@ -100,8 +101,6 @@ export default function DriverDashboard() {
   const completedTrips = stats?.totalRides || driverProfile?.totalRides || 0;
   const totalEarnings = stats?.totalEarnings || 0;
   const onlineHours = stats?.onlineHours || 0;
-
-  const [currentVideoIndex] = useState(() => Math.floor(Math.random() * DRIVING_VIDEOS.length));
 
   const motivationalQuotes = useMemo(() => [
     "Keep driving towards your goals!",
@@ -155,7 +154,7 @@ export default function DriverDashboard() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       {/* Video Background */}
-      {Platform.OS !== 'web' ? (
+      {videoFailed ? null : Platform.OS !== 'web' ? (
         <VideoView
           player={player}
           style={styles.videoBackground}
@@ -168,6 +167,7 @@ export default function DriverDashboard() {
           loop
           muted
           playsInline
+          onError={() => setVideoFailed(true)}
           style={{
             position: 'absolute',
             width: '100%',
@@ -175,7 +175,7 @@ export default function DriverDashboard() {
             objectFit: 'cover',
           }}
         >
-          <source src={DRIVING_VIDEOS[currentVideoIndex]} type="video/mp4" />
+          <source src={videoUri} type="video/mp4" />
         </video>
       )}
 
