@@ -199,7 +199,10 @@ describe('calculateDriverPayout', () => {
     const finalFare = breakdown.meteredSubtotal + breakdown.bookingFee + breakdown.serviceFee; // 2809
 
     const { commission, netAmount } = calculateDriverPayout(finalFare, breakdown.bookingFee, breakdown.serviceFee);
-    expect(commission).toBe(breakdown.meteredSubtotal * PLATFORM_COMMISSION_RATE); // commission on the metered portion only, not on the fee-inclusive total
+    // toBeCloseTo, not toBe: commission is now rounded to kobo precision
+    // (2dp) before this comparison, so it no longer bit-exactly matches the
+    // raw floating-point product (2709 * 0.1 === 270.90000000000003).
+    expect(commission).toBeCloseTo(breakdown.meteredSubtotal * PLATFORM_COMMISSION_RATE, 2); // commission on the metered portion only, not on the fee-inclusive total
     expect(netAmount).toBe(finalFare - commission); // driver gets everything else, including the full booking fee
   });
 
@@ -265,6 +268,28 @@ describe('calculateDriverPayout', () => {
     expect(commission).toBeCloseTo(3.3, 8);
     expect(netAmount).toBeCloseTo(29.7, 8);
     expect(commission + netAmount).toBeCloseTo(33, 8);
+  });
+
+  it('commission is always exactly representable to 2 decimal places — no floating-point artifacts persisted', () => {
+    // Includes the known-problematic inputs (33, 2709) that produce
+    // repeating-binary noise (e.g. 2709 * 0.1 === 270.90000000000003) under
+    // raw float math, plus a spread of other fare/fee combinations.
+    const cases: [number, number, number, number, number, number][] = [
+      [33, 0, 0, 0, 0, 0],
+      [2709, 0, 0, 0, 0, 0],
+      [2809, 100, 0, 0, 0, 0],
+      [7500, 100, 0, 500, 200, 500],
+      [1, 0, 0, 0, 0, 0],
+      [999.99, 0, 0, 0, 0, 0],
+      [123456, 100, 50, 25, 10, 5],
+    ];
+    for (const [fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee] of cases) {
+      const { commission } = calculateDriverPayout(fare, bookingFee, serviceFee, zoneFee, waitingCharge, priorityFee);
+      // Multiplying by 100 and checking for an integer is the standard way to
+      // assert "at most 2 decimal places" without floating-point equality
+      // traps (allow for a tiny epsilon from the multiplication itself).
+      expect(Math.abs(commission * 100 - Math.round(commission * 100))).toBeLessThan(1e-6);
+    }
   });
 });
 

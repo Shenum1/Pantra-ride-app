@@ -153,7 +153,14 @@ export function calculateDriverPayout(
   priorityFee = 0
 ): DriverPayout {
   const meteredFare = Math.max(fare - bookingFee - serviceFee - zoneFee - waitingCharge - priorityFee, 0);
-  const commission = meteredFare * PLATFORM_COMMISSION_RATE;
+  // Round the commission to kobo precision FIRST, then derive netAmount from
+  // that rounded value (never round netAmount independently) — this is what
+  // keeps commission + netAmount reconciling exactly to fare, matching the
+  // NUMERIC(12,2) columns these values are persisted into and the identical
+  // round-commission-first approach in rides_settle_trigger() (see
+  // supabase-schema-money-precision.sql).
+  const rawCommission = meteredFare * PLATFORM_COMMISSION_RATE;
+  const commission = Math.round(rawCommission * 100) / 100;
 
   return {
     meteredFare,

@@ -11,8 +11,14 @@ import adminDriverDocumentsRoute from "./routes/admin/driver-documents/route";
 import adminReviewDocumentRoute from "./routes/admin/review-document/route";
 import adminRidesRoute from "./routes/admin/rides/route";
 import ridesConfirmPaymentRoute from "./routes/rides/confirm-payment/route";
+import ridesCreateRoute from "./routes/rides/create/route";
+import driverBankAccountsListRoute from "./routes/driver/bank-accounts/list/route";
+import driverBankAccountsAddRoute from "./routes/driver/bank-accounts/add/route";
+import driverBankAccountsRemoveRoute from "./routes/driver/bank-accounts/remove/route";
+import driverPayoutsListRoute from "./routes/driver/payouts/list/route";
 import adminPayoutsListRoute from "./routes/admin/payouts/list/route";
 import adminPayoutsUpdateStatusRoute from "./routes/admin/payouts/update-status/route";
+import adminPayoutsRevealBankAccountRoute from "./routes/admin/payouts/reveal-bank-account/route";
 import adminDriverVerificationListRoute from "./routes/admin/driver-verification/list/route";
 import adminDriverVerificationGetDriverDetailRoute from "./routes/admin/driver-verification/get-driver-detail/route";
 import adminDriverVerificationDecideRoute from "./routes/admin/driver-verification/decide/route";
@@ -93,6 +99,7 @@ export const appRouter = createTRPCRouter({
     payouts: createTRPCRouter({
       list: adminPayoutsListRoute,
       updateStatus: adminPayoutsUpdateStatusRoute,
+      revealBankAccount: adminPayoutsRevealBankAccountRoute,
     }),
     driverVerification: createTRPCRouter({
       list: adminDriverVerificationListRoute,
@@ -165,7 +172,18 @@ export const appRouter = createTRPCRouter({
     reply: supportReplyRoute,
   }),
   rides: createTRPCRouter({
+    create: ridesCreateRoute,
     confirmPayment: ridesConfirmPaymentRoute,
+  }),
+  driver: createTRPCRouter({
+    bankAccounts: createTRPCRouter({
+      list: driverBankAccountsListRoute,
+      add: driverBankAccountsAddRoute,
+      remove: driverBankAccountsRemoveRoute,
+    }),
+    payouts: createTRPCRouter({
+      list: driverPayoutsListRoute,
+    }),
   }),
   driverVerification: createTRPCRouter({
     getStatus: driverVerificationGetStatusRoute,

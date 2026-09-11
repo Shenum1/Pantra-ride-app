@@ -37,7 +37,7 @@ export default adminProcedure
       bankAccountIds.length > 0
         ? db
             .from("driver_bank_accounts")
-            .select("id, bankName, accountNumber, accountName")
+            .select("id, bankName, accountNumberLast4, accountName")
             .in("id", bankAccountIds)
         : Promise.resolve({ data: [] }),
     ]);
@@ -48,7 +48,7 @@ export default adminProcedure
     const bankMap = new Map(
       (bankRes.data ?? []).map((b) => [
         b.id,
-        { bankName: b.bankName, accountNumber: b.accountNumber, accountName: b.accountName },
+        { bankName: b.bankName, accountNumberLast4: b.accountNumberLast4, accountName: b.accountName },
       ])
     );
 

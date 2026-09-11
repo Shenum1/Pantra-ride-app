@@ -44,7 +44,6 @@ export default function DriverAddBankScreen() {
     setIsSaving(true);
     try {
       await DriverWalletService.addBankAccount(
-        driver.id,
         bankName.trim(),
         accountNumber.trim(),
         accountName.trim(),

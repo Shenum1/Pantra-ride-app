@@ -656,58 +656,38 @@ export const [RideProvider, useRide] = createContextHook(() => {
     // the rider's map must not show a driver marker until a real one exists.
     const driverLocation = fallbackDriver?.location;
 
-    const rideData = {
-      userId: user.id,
-      pickupLocation: {
-        lat: pickupLocation.latitude,
-        lng: pickupLocation.longitude,
-        latitude: pickupLocation.latitude,
-        longitude: pickupLocation.longitude,
-        address: pickupAddress || 'Unknown pickup location',
-      },
-      dropoffLocation: {
-        lat: dropoffLocation.latitude,
-        lng: dropoffLocation.longitude,
-        latitude: dropoffLocation.latitude,
-        longitude: dropoffLocation.longitude,
-        address: dropoffAddress || 'Unknown dropoff location',
-      },
+    // Fare/fee/distance/duration are no longer sent by the client at all —
+    // rides.create derives every one of them server-side (Directions API or
+    // a haversine fallback for distance, DB-backed pricing/surge/traffic
+    // config for the fare) and is the only path that can insert a `rides`
+    // row (see supabase-schema-rides-server-authoritative-fare.sql, which
+    // drops the old client-facing INSERT policy). estimatedPrice/etc. below
+    // remain the pre-request UI estimate only — requestRide reads the
+    // authoritative numbers back from the server's response.
+    const created = await trpcClient.rides.create.mutate({
+      pickupLocation: { latitude: pickupLocation.latitude, longitude: pickupLocation.longitude },
+      dropoffLocation: { latitude: dropoffLocation.latitude, longitude: dropoffLocation.longitude },
       pickupAddress: pickupAddress || 'Unknown pickup location',
       dropoffAddress: dropoffAddress || 'Unknown dropoff location',
-      rideType: selectedRideType,
-      fare: estimatedPrice,
-      baseFare: baseEstimatedPrice,
-      minFare: minEstimatedPrice,
-      maxFare: maxEstimatedPrice,
-      bookingFee: estimatedBookingFee,
-      serviceFee: estimatedServiceFee,
-      zoneFee: estimatedZoneFee,
+      rideType: selectedRideType as 'standard' | 'comfort' | 'xl',
       isPriority,
-      priorityFee: estimatedPriorityFee,
-      distance: estimatedDistance,
-      duration: estimatedDuration,
-      status: 'pending',
-      trackingStage: 'searching',
-      statusText: 'Looking for a nearby driver',
-      driverLocation: driverLocation ?? null,
-      paymentMethod: paymentMethod?.id ?? 'cash',
-      promoCode: activePromo?.code ?? null,
       isShared: isSharedRide,
-      createdAt: new Date(),
       sharedWith: isSharedRide && sharedWith.length > 0 ? sharedWith : undefined,
-      scheduledTime: scheduledDate && scheduledDate > new Date() ? scheduledDate : undefined,
-      driverId: fallbackDriver?.id && isValidUuid(fallbackDriver.id) ? fallbackDriver.id : null,
-      passengerName: passengerName || null,
-      passengerPhone: passengerPhone || null,
-    };
+      paymentMethod: paymentMethod?.id ?? 'cash',
+      promoCode: activePromo?.code,
+      scheduledTime: scheduledDate && scheduledDate > new Date() ? scheduledDate.toISOString() : undefined,
+      passengerName: passengerName || undefined,
+      passengerPhone: passengerPhone || undefined,
+      zoneFee: estimatedZoneFee || undefined,
+    });
 
-    const rideId: string = await DatabaseService.create('rides', rideData);
+    const rideId: string = created.id;
 
     // Notify all online drivers via remote push so they receive the request
     // even if their app is backgrounded or the screen is locked.
     void trpcClient.notifications.notifyDrivers.mutate({
-      pickupAddress: rideData.pickupAddress,
-      fare: rideData.fare,
+      pickupAddress: created.pickupAddress,
+      fare: created.fare,
       rideId,
     }).catch((error) => {
       console.error('Failed to notify drivers of new ride:', error);
@@ -720,17 +700,17 @@ export const [RideProvider, useRide] = createContextHook(() => {
       pickupAddress,
       dropoffAddress,
       rideType: selectedRideType,
-      price: estimatedPrice,
-      basePrice: baseEstimatedPrice,
-      minPrice: minEstimatedPrice,
-      maxPrice: maxEstimatedPrice,
-      bookingFee: estimatedBookingFee,
-      serviceFee: estimatedServiceFee,
-      zoneFee: estimatedZoneFee,
+      price: created.fare,
+      basePrice: created.baseFare,
+      minPrice: created.minFare,
+      maxPrice: created.maxFare,
+      bookingFee: created.bookingFee,
+      serviceFee: created.serviceFee,
+      zoneFee: created.zoneFee,
       isPriority,
-      priorityFee: estimatedPriorityFee,
-      distance: estimatedDistance,
-      duration: estimatedDuration,
+      priorityFee: created.priorityFee,
+      distance: created.distance,
+      duration: created.duration,
       status: 'pending',
       trackingStage: 'searching',
       statusText: 'Looking for a nearby driver',
@@ -767,23 +747,14 @@ export const [RideProvider, useRide] = createContextHook(() => {
 
     return newRide;
   }, [
-    baseEstimatedPrice,
     dropoffAddress,
     dropoffLocation,
-    estimatedBookingFee,
-    estimatedServiceFee,
     estimatedZoneFee,
-    estimatedPriorityFee,
     isPriority,
-    estimatedDistance,
-    estimatedDuration,
-    estimatedPrice,
     getActivePromotion,
     getDefaultPaymentMethod,
     isSharedRide,
     markPromoAsUsed,
-    maxEstimatedPrice,
-    minEstimatedPrice,
     nearbyDrivers,
     pickupAddress,
     pickupLocation,

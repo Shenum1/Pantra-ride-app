@@ -19,7 +19,7 @@ interface PayoutRow {
   requestedAt: string;
   completedAt?: string;
   driver: { name: string; email: string } | null;
-  bankAccount: { bankName: string; accountNumber: string; accountName: string } | null;
+  bankAccount: { bankName: string; accountNumberLast4: string; accountName: string } | null;
 }
 
 interface PayoutsResponse {
@@ -41,6 +41,8 @@ export default function Payouts() {
   const [offset, setOffset] = useState(0);
   const [updating, setUpdating] = useState<string | null>(null);
   const [failModal, setFailModal] = useState<{ id: string } | null>(null);
+  const [revealed, setRevealed] = useState<Record<string, string>>({});
+  const [revealing, setRevealing] = useState<string | null>(null);
 
   const { data, loading, error, setData } = useTrpcQuery<PayoutsResponse>(
     'admin.payouts.list',
@@ -52,6 +54,18 @@ export default function Payouts() {
   const total = data?.total ?? 0;
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + LIMIT, total);
+
+  const revealAccountNumber = async (payoutId: string, bankAccountId: string) => {
+    setRevealing(payoutId);
+    try {
+      const result = await trpcMutate<{ accountNumber: string }>('admin.payouts.revealBankAccount', { bankAccountId });
+      setRevealed((prev) => ({ ...prev, [payoutId]: result.accountNumber }));
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setRevealing(null);
+    }
+  };
 
   const updateStatus = async (id: string, status: 'processing' | 'completed' | 'failed', failureReason?: string) => {
     setUpdating(id);
@@ -86,7 +100,19 @@ export default function Payouts() {
         p.bankAccount ? (
           <>
             <p className="text-slate-700">{p.bankAccount.bankName}</p>
-            <p className="text-xs text-slate-400">{p.bankAccount.accountNumber} · {p.bankAccount.accountName}</p>
+            <p className="text-xs text-slate-400">
+              {revealed[p.id] ? revealed[p.id] : `••••${p.bankAccount.accountNumberLast4}`} · {p.bankAccount.accountName}
+            </p>
+            {!revealed[p.id] && (
+              <button
+                type="button"
+                className="mt-0.5 text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                disabled={revealing === p.id}
+                onClick={() => revealAccountNumber(p.id, p.bankAccountId)}
+              >
+                {revealing === p.id ? 'Revealing…' : 'Reveal'}
+              </button>
+            )}
           </>
         ) : (
           <span className="italic text-slate-300">—</span>

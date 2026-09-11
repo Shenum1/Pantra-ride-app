@@ -70,8 +70,8 @@ export default function DriverWallet() {
     if (!driver?.id) return;
     try {
       const [accounts, payoutHistory] = await Promise.all([
-        DriverWalletService.getBankAccounts(driver.id),
-        DriverWalletService.getPayouts(driver.id),
+        DriverWalletService.getBankAccounts(),
+        DriverWalletService.getPayouts(),
       ]);
       setBankAccounts(accounts);
       setPayouts(payoutHistory);
@@ -471,7 +471,7 @@ export default function DriverWallet() {
                 <View style={styles.bankCardDetails}>
                   <Text style={[styles.bankCardName, { color: colors.text }]}>{account.bankName}</Text>
                   <Text style={[styles.bankCardNumber, { color: colors.textSecondary }]}>
-                    {account.accountName} • ••••{account.accountNumber.slice(-4)}
+                    {account.accountName} • ••••{account.accountNumberLast4}
                   </Text>
                 </View>
                 {account.isDefault && (
@@ -596,7 +596,7 @@ export default function DriverWallet() {
                     onPress={() => setSelectedBankId(account.id)}
                   >
                     <Text style={[styles.bankInfoAccount, { color: colors.text }]}>
-                      {account.bankName} • ••••{account.accountNumber.slice(-4)}
+                      {account.bankName} • ••••{account.accountNumberLast4}
                     </Text>
                     <Text style={[styles.bankInfoText, { color: colors.textSecondary }]}>{account.accountName}</Text>
                   </TouchableOpacity>
