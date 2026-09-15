@@ -50,6 +50,10 @@ import adminRidersGetDetailRoute from "./routes/admin/riders/get-detail/route";
 import adminRidersGetWalletTransactionsRoute from "./routes/admin/riders/get-wallet-transactions/route";
 import adminPaymentsTransactionsRoute from "./routes/admin/payments/transactions/route";
 import adminPaymentsTipsRoute from "./routes/admin/payments/tips/route";
+import adminPaymentsReconciliationRunRoute from "./routes/admin/payments/reconciliation/run/route";
+import adminPaymentsReconciliationCheckOneRoute from "./routes/admin/payments/reconciliation/checkOne/route";
+import adminPaymentsReconciliationListRoute from "./routes/admin/payments/reconciliation/list/route";
+import adminPaymentsReconciliationResolveRoute from "./routes/admin/payments/reconciliation/resolve/route";
 import adminSupportListRoute from "./routes/admin/support/list/route";
 import adminSupportGetDetailRoute from "./routes/admin/support/get-detail/route";
 import adminSupportReplyRoute from "./routes/admin/support/reply/route";
@@ -157,6 +161,12 @@ export const appRouter = createTRPCRouter({
     payments: createTRPCRouter({
       transactions: adminPaymentsTransactionsRoute,
       tips: adminPaymentsTipsRoute,
+      reconciliation: createTRPCRouter({
+        run: adminPaymentsReconciliationRunRoute,
+        checkOne: adminPaymentsReconciliationCheckOneRoute,
+        list: adminPaymentsReconciliationListRoute,
+        resolve: adminPaymentsReconciliationResolveRoute,
+      }),
     }),
     support: createTRPCRouter({
       list: adminSupportListRoute,

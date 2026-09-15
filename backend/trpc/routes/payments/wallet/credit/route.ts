@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { authedProcedure } from "../../../../create-context";
-import { verifyPaystackTransaction, verifyFlutterwaveTransaction } from "../../../../../lib/payment-providers";
+import { processVerifiedPayment } from "../../../../../lib/payment-processor";
 
-// The only path allowed to credit a wallet from a real payment.
-// add_wallet_transaction (database/schemas/supabase-schema-wallet.sql)
-// rejects add_money/refund/cashback/credit transactions from a plain
-// authenticated client — this route re-verifies the payment with the
-// provider server-side, uses the provider's CONFIRMED amount (never the
-// client's), and credits via the service-role client, which the RPC's
-// restriction exempts.
+// The client-facing recovery/immediate-UX-confirmation path. The webhook
+// routes (backend/hono.ts) are now the PRIMARY confirmation mechanism —
+// this route exists so a rider who successfully completes checkout and
+// returns to the app doesn't have to wait for webhook delivery to see their
+// balance update. Both paths converge on the exact same
+// processVerifiedPayment — there is no separate wallet-credit
+// implementation here.
 export default authedProcedure
   .input(
     z.object({
@@ -18,32 +18,15 @@ export default authedProcedure
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const verification =
-      input.gateway === "paystack"
-        ? await verifyPaystackTransaction(input.reference)
-        : await verifyFlutterwaveTransaction(input.reference);
-
-    if (!verification.success || verification.amount === null) {
-      return { status: false as const, message: verification.message || "Payment could not be verified." };
-    }
-
-    const { data, error } = await ctx.supabaseAdmin.rpc("add_wallet_transaction", {
-      p_user_id: ctx.userId,
-      p_type: "add_money",
-      p_amount: verification.amount,
-      p_description: "Added money to wallet",
-      p_status: "completed",
-      p_ride_id: null,
-      p_payment_method_id: input.paymentMethodId ?? input.gateway,
-      p_reference: input.reference,
-      p_metadata: null,
+    const result = await processVerifiedPayment({
+      supabaseAdmin: ctx.supabaseAdmin,
+      provider: input.gateway,
+      reference: input.reference,
+      sourceChannel: "client_verification",
+      callingUserId: ctx.userId,
+      paymentMethodId: input.paymentMethodId,
+      eventType: "client_verify",
     });
 
-    if (error) {
-      console.error("Wallet credit failed after verified payment:", error);
-      return { status: false as const, message: error.message };
-    }
-
-    const row = Array.isArray(data) ? data[0] : data;
-    return { status: true as const, message: "Wallet credited", amount: verification.amount, transaction: row };
+    return { status: result.status, message: result.message, transaction: result.transaction };
   });

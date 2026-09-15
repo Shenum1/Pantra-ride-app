@@ -3,11 +3,25 @@
 // payments.wallet.credit route call these — the verification logic (and its
 // correctness) lives in exactly one place, never duplicated per caller.
 
+import { randomUUID } from "crypto";
+
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY ?? "";
 const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY ?? "";
 
+// Normalized provider outcome, distinct from the coarse `success` boolean:
+// - 'successful': provider confirms the charge succeeded.
+// - 'failed': provider EXPLICITLY confirms the charge failed/was abandoned/
+//   reversed — a final, non-retryable outcome.
+// - 'pending': provider says the charge is still processing.
+// - 'unknown': provider status can't currently be determined (network error,
+//   malformed response, or a status value we don't recognize) — NOT the same
+//   as 'failed'. Callers must treat this as retryable, never as a permanent
+//   rejection (see backend/lib/payment-processor.ts).
+export type ProviderState = "successful" | "failed" | "pending" | "unknown";
+
 export interface VerifiedPayment {
   success: boolean;
+  providerState: ProviderState;
   // The amount the provider confirms was actually charged, in Naira — null
   // whenever success is false. Callers must use THIS amount, never a
   // client-supplied one, when crediting anything.
@@ -17,11 +31,37 @@ export interface VerifiedPayment {
   raw: any;
 }
 
+// Both providers use PANTRA-<uuid> as their reference/tx_ref going forward —
+// a single scheme instead of a provider-specific prefix, generated
+// server-side (never client-supplied) so a rider can never choose or predict
+// their own payment reference. Old FLW-/TXN- prefixed references from before
+// this change keep verifying fine (verifyFlutterwaveTransaction already
+// checks for a "PANTRA-" prefix — this is what finally exercises that
+// branch).
+export function generatePaymentReference(): string {
+  return `PANTRA-${randomUUID()}`;
+}
+
+function paystackProviderState(status: string | undefined): ProviderState {
+  if (status === "success") return "successful";
+  if (status === "failed" || status === "abandoned" || status === "reversed") return "failed";
+  if (status === "pending" || status === "queued" || status === "ongoing") return "pending";
+  return "unknown";
+}
+
+function flutterwaveProviderState(status: string | undefined): ProviderState {
+  if (status === "successful") return "successful";
+  if (status === "failed") return "failed";
+  if (status === "pending") return "pending";
+  return "unknown";
+}
+
 export async function verifyPaystackTransaction(reference: string): Promise<VerifiedPayment> {
   if (!PAYSTACK_SECRET_KEY) {
     console.warn("⚠️ PAYSTACK_SECRET_KEY is not configured on the server");
     return {
       success: false,
+      providerState: "unknown",
       amount: null,
       currency: null,
       message: "Paystack is not configured. Please add PAYSTACK_SECRET_KEY to the server environment.",
@@ -44,6 +84,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Veri
       console.error("Paystack verification failed:", result);
       return {
         success: false,
+        providerState: "unknown",
         amount: null,
         currency: null,
         message: result.message || "Failed to verify payment",
@@ -51,9 +92,11 @@ export async function verifyPaystackTransaction(reference: string): Promise<Veri
       };
     }
 
-    const success = result.data?.status === "success";
+    const providerState = paystackProviderState(result.data?.status);
+    const success = providerState === "successful";
     return {
       success,
+      providerState,
       // Paystack reports amount in kobo.
       amount: success ? Number(result.data?.amount ?? 0) / 100 : null,
       currency: result.data?.currency ?? null,
@@ -64,6 +107,7 @@ export async function verifyPaystackTransaction(reference: string): Promise<Veri
     console.error("Error verifying Paystack transaction:", error);
     return {
       success: false,
+      providerState: "unknown",
       amount: null,
       currency: null,
       message: "Network error while contacting Paystack.",
@@ -77,6 +121,7 @@ export async function verifyFlutterwaveTransaction(transactionIdOrReference: str
     console.warn("⚠️ FLUTTERWAVE_SECRET_KEY is not configured on the server");
     return {
       success: false,
+      providerState: "unknown",
       amount: null,
       currency: null,
       message: "Flutterwave is not configured. Please add FLUTTERWAVE_SECRET_KEY to the server environment.",
@@ -101,6 +146,7 @@ export async function verifyFlutterwaveTransaction(transactionIdOrReference: str
       console.error("Flutterwave verification failed:", result);
       return {
         success: false,
+        providerState: "unknown",
         amount: null,
         currency: null,
         message: result.message || "Failed to verify payment",
@@ -112,9 +158,11 @@ export async function verifyFlutterwaveTransaction(transactionIdOrReference: str
     // succeeded — it is returned even when the underlying charge failed.
     // `result.data.status` is the actual transaction outcome and is what
     // must gate whether this payment is treated as real.
-    const success = result.data?.status === "successful";
+    const providerState = flutterwaveProviderState(result.data?.status);
+    const success = providerState === "successful";
     return {
       success,
+      providerState,
       amount: success ? Number(result.data?.amount ?? 0) : null,
       currency: result.data?.currency ?? null,
       message: result.message ?? "",
@@ -124,6 +172,7 @@ export async function verifyFlutterwaveTransaction(transactionIdOrReference: str
     console.error("Error verifying Flutterwave transaction:", error);
     return {
       success: false,
+      providerState: "unknown",
       amount: null,
       currency: null,
       message: "Network error while contacting Flutterwave.",

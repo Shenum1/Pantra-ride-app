@@ -57,3 +57,9 @@ export const paymentStatusTone: Record<string, BadgeTone> = {
   cancelled: 'danger',
   refunded: 'neutral',
 };
+
+export const reconciliationStatusTone: Record<string, BadgeTone> = {
+  open: 'warning',
+  resolved: 'success',
+  ignored: 'neutral',
+};

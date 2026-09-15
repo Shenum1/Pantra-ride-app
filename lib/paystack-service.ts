@@ -25,10 +25,13 @@ export class PaystackService {
 
   static async initializeTransaction(data: PaystackPaymentData): Promise<PaystackResponse> {
     try {
+      // "reference" is no longer accepted here — the backend now always
+      // generates it server-side (Phase 2), so a rider can never choose or
+      // predict their own payment reference. data.reference (if the caller
+      // set it) is silently ignored.
       const result = await trpcClient.payments.paystack.initialize.mutate({
         amount: data.amount,
         email: data.email,
-        reference: data.reference,
         callback_url: data.callback_url,
         metadata: data.metadata,
       });

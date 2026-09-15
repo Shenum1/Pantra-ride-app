@@ -27,12 +27,14 @@ export class FlutterwaveService {
 
   static async initializePayment(data: FlutterwavePaymentData): Promise<FlutterwaveResponse> {
     try {
+      // "tx_ref" is no longer accepted here — the backend now always
+      // generates it server-side (Phase 2). data.tx_ref (if the caller set
+      // it) is silently ignored.
       const result = await trpcClient.payments.flutterwave.initialize.mutate({
         amount: data.amount,
         email: data.email,
         phone_number: data.phone_number,
         name: data.name,
-        tx_ref: data.tx_ref,
         redirect_url: data.redirect_url,
         meta: data.meta,
       });

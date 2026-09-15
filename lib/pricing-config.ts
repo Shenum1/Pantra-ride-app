@@ -142,3 +142,14 @@ export const PRIORITY_FEE_CONFIG = {
   fee: 500,
   isEnabled: true,
 } as const;
+
+// Wallet top-up bounds, enforced server-side in the Paystack/Flutterwave
+// initialize routes (never trust a client-supplied amount past these
+// limits). minAmount matches the pre-existing client-side check in
+// app/wallet-add-money.tsx; maxAmount is a fraud/fat-finger safety ceiling —
+// a reasonable default, not a revenue-affecting business rule, and easy to
+// retune later without a migration.
+export const WALLET_TOPUP_CONFIG = {
+  minAmount: 100,
+  maxAmount: 1_000_000,
+} as const;

@@ -148,9 +148,14 @@ export default function DriverEarnings() {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Earnings Summary */}
         <View style={styles.summaryCard}>
+          {/* stats.* (live-aggregated from settled rides + tips - payouts) is the
+              authoritative source — drivers.earnings is a legacy JSONB column that
+              is set to all-zeros once at profile creation and never updated again
+              by any code path, so reading it here previously showed a permanently
+              stuck ₦0.00 total regardless of actual earnings. */}
           <View style={styles.totalEarnings}>
             <Text style={styles.totalLabel}>Total Earnings</Text>
-            <Text style={styles.totalAmount}>₦{driverProfile.earnings.total.toFixed(2)}</Text>
+            <Text style={styles.totalAmount}>₦{(stats.totalEarnings ?? 0).toFixed(2)}</Text>
           </View>
 
           <View style={styles.earningsGrid}>
@@ -158,21 +163,21 @@ export default function DriverEarnings() {
               <View style={styles.earningsIcon}>
                 <Wallet size={20} color={Colors.light.success} />
               </View>
-              <Text style={styles.earningsValue}>₦{driverProfile.earnings.today.toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{(stats.todayEarnings ?? 0).toFixed(2)}</Text>
               <Text style={styles.earningsLabel}>Today</Text>
             </View>
             <View style={styles.earningsItem}>
               <View style={styles.earningsIcon}>
                 <Calendar size={20} color={Colors.light.primary} />
               </View>
-              <Text style={styles.earningsValue}>₦{driverProfile.earnings.thisWeek.toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{(stats.weekEarnings ?? 0).toFixed(2)}</Text>
               <Text style={styles.earningsLabel}>This Week</Text>
             </View>
             <View style={styles.earningsItem}>
               <View style={styles.earningsIcon}>
                 <TrendingUp size={20} color={Colors.light.secondary} />
               </View>
-              <Text style={styles.earningsValue}>₦{driverProfile.earnings.thisMonth.toFixed(2)}</Text>
+              <Text style={styles.earningsValue}>₦{(stats.monthEarnings ?? 0).toFixed(2)}</Text>
               <Text style={styles.earningsLabel}>This Month</Text>
             </View>
           </View>

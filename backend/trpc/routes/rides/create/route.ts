@@ -8,12 +8,19 @@ import { TIER_RATES, TierId, TierRatesTable, ZONE_FEES, SHARED_RIDE_DISCOUNT_MUL
 
 // The single write path for creating a ride. Financial/distance fields are
 // NEVER accepted from the client — every one of them is derived here from
-// trusted server-side inputs (Directions API / haversine fallback, DB-backed
-// pricing config, live driver/ride counts). See
+// trusted server-side inputs (the Google Directions API — no fallback; see
+// backend/lib/directions-service.ts — plus DB-backed pricing config and live
+// driver/ride counts). See
 // database/schemas/supabase-schema-rides-server-authoritative-fare.sql,
 // which drops the old client-facing "Rider can create rides" INSERT policy
 // so this route (running under the service-role client) is the only way a
 // row can land in `rides` at all.
+//
+// If getServerDirections can't establish a real road distance (Directions
+// unreachable/unconfigured), it throws rather than returning an estimate —
+// this route lets that propagate, so no ride is ever created from an
+// unverified distance. The rider sees a "please try again" alert (both
+// existing call sites already handle a thrown error from requestRide()).
 // Exported so tests can assert directly that the input schema has no
 // fare/fee/distance/duration field at all — see
 // testing/integration/trpc-router.test.ts.
@@ -180,6 +187,7 @@ export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ct
     rideType: input.rideType,
     status: "pending",
     paymentStatus: "unpaid",
+    fareSource: directions.fareSource,
     fare,
     baseFare: breakdown.base,
     minFare: tierRates[input.rideType as TierId].minFare,

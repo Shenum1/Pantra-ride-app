@@ -9,6 +9,7 @@ describe('rides.create — no financial field can be supplied by the client', ()
       'fare', 'baseFare', 'minFare', 'maxFare', 'bookingFee', 'serviceFee',
       'priorityFee', 'waitingCharge', 'cancellationFee', 'distance', 'duration',
       'platformCommissionRate', 'platformCommissionAmount', 'driverEarningsAmount',
+      'fareSource',
     ];
     for (const key of forbiddenKeys) {
       expect(Object.prototype.hasOwnProperty.call(shape, key)).toBe(false);
@@ -26,6 +27,34 @@ describe('rides.create — no financial field can be supplied by the client', ()
     });
     expect(parsed).not.toHaveProperty('fare');
     expect(parsed).not.toHaveProperty('platformCommissionAmount');
+  });
+
+  // Test C — the client cannot claim its own distance was Google-sourced.
+  // fareSource is entirely absent from the input schema (asserted above) and
+  // the route always derives it from directions.fareSource (the backend's
+  // own getServerDirections() call), never from `input` — so there is no
+  // code path by which a client-supplied value, even if one were accepted,
+  // could reach the inserted row.
+  it('strips an attacker-supplied fareSource claiming Google Directions was used', () => {
+    const parsed = rideCreateInputSchema.parse({
+      pickupLocation: { latitude: 9.05, longitude: 7.45 },
+      dropoffLocation: { latitude: 9.1, longitude: 7.5 },
+      pickupAddress: 'A',
+      dropoffAddress: 'B',
+      fareSource: 'google_directions',
+    });
+    expect(parsed).not.toHaveProperty('fareSource');
+  });
+
+  it('the route source derives fareSource from directions.fareSource, never from input', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'backend/trpc/routes/rides/create/route.ts'),
+      'utf8'
+    );
+    expect(source).toContain('fareSource: directions.fareSource');
+    expect(source).not.toMatch(/fareSource:\s*input\./);
   });
 });
 
@@ -49,6 +78,35 @@ describe('admin.payouts.list — never selects a full bank account number', () =
     // fine (no boundary between "accountNumber" and the suffix — both are
     // \w characters); a bare "accountNumber" field name is not.
     expect(source).not.toMatch(/\baccountNumber\b/);
+  });
+});
+
+describe('payments.{paystack,flutterwave}.initialize — require authentication (Phase 2)', () => {
+  it('paystack.initialize rejects an unauthenticated call rather than executing as publicProcedure', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(
+      caller.payments.paystack.initialize({ amount: 5000, email: 'rider@example.com' })
+    ).rejects.toThrow();
+  });
+
+  it('flutterwave.initialize rejects an unauthenticated call rather than executing as publicProcedure', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(
+      caller.payments.flutterwave.initialize({ amount: 5000, email: 'rider@example.com' })
+    ).rejects.toThrow();
+  });
+
+  it('neither initialize route accepts a client-supplied reference/tx_ref anymore', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const [paystackSource, flutterwaveSource] = await Promise.all([
+      fs.readFile(path.resolve(process.cwd(), 'backend/trpc/routes/payments/paystack/initialize/route.ts'), 'utf8'),
+      fs.readFile(path.resolve(process.cwd(), 'backend/trpc/routes/payments/flutterwave/initialize/route.ts'), 'utf8'),
+    ]);
+    expect(paystackSource).not.toMatch(/reference:\s*z\./);
+    expect(flutterwaveSource).not.toMatch(/tx_ref:\s*z\./);
+    expect(paystackSource).toContain('generatePaymentReference()');
+    expect(flutterwaveSource).toContain('generatePaymentReference()');
   });
 });
 
