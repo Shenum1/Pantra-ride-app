@@ -4,22 +4,41 @@ import { useTrpcQuery } from '../hooks/useTrpcQuery';
 import { StatusLabel } from '../components/ui/StatusLabel';
 import { Button } from '../components/ui/Button';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { Modal } from '../components/ui/Modal';
 import { PageHeader } from '../components/ui/PageHeader';
 import { FilterTabs } from '../components/ui/FilterTabs';
 import { Table, type TableColumn } from '../components/ui/Table';
 import { payoutStatusTone } from '../lib/status';
+
+type PayoutStatus = 'pending' | 'processing' | 'manual_review' | 'completed' | 'failed' | 'reversed';
+
+interface ManualAction {
+  id: string;
+  action: 'moved_to_manual_review' | 'manual_completed' | 'manual_failed' | 'retry_initiated';
+  adminUserId: string | null;
+  externalReference?: string | null;
+  notes?: string | null;
+  createdAt: string;
+}
 
 interface PayoutRow {
   id: string;
   driverId: string;
   amount: number;
   bankAccountId: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: PayoutStatus;
+  payoutMethod: 'automatic' | 'manual';
+  provider: 'paystack' | 'flutterwave' | null;
+  providerTransferReference: string | null;
+  providerTransferCode: string | null;
   failureReason?: string;
   requestedAt: string;
+  processingStartedAt?: string | null;
   completedAt?: string;
   driver: { name: string; email: string } | null;
   bankAccount: { bankName: string; accountNumberLast4: string; accountName: string } | null;
+  manualActions: ManualAction[];
+  hasOpenReconciliation: boolean;
 }
 
 interface PayoutsResponse {
@@ -31,20 +50,25 @@ const STATUS_OPTIONS = [
   { value: '', label: 'All' },
   { value: 'pending', label: 'Pending' },
   { value: 'processing', label: 'Processing' },
+  { value: 'manual_review', label: 'Manual review' },
   { value: 'completed', label: 'Completed' },
   { value: 'failed', label: 'Failed' },
+  { value: 'reversed', label: 'Reversed' },
 ];
 const LIMIT = 50;
 
 export default function Payouts() {
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [statusFilter, setStatusFilter] = useState('manual_review');
   const [offset, setOffset] = useState(0);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [failModal, setFailModal] = useState<{ id: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<Record<string, string>>({});
-  const [revealing, setRevealing] = useState<string | null>(null);
+  const [manualReviewModal, setManualReviewModal] = useState<{ id: string } | null>(null);
+  const [failModal, setFailModal] = useState<{ id: string } | null>(null);
+  const [completeModal, setCompleteModal] = useState<{ id: string } | null>(null);
+  const [completeForm, setCompleteForm] = useState({ externalReference: '', notes: '' });
+  const [checkResult, setCheckResult] = useState<Record<string, string>>({});
 
-  const { data, loading, error, setData } = useTrpcQuery<PayoutsResponse>(
+  const { data, loading, error, refetch } = useTrpcQuery<PayoutsResponse>(
     'admin.payouts.list',
     { status: statusFilter || undefined, limit: LIMIT, offset },
     [statusFilter, offset]
@@ -55,31 +79,61 @@ export default function Payouts() {
   const from = total === 0 ? 0 : offset + 1;
   const to = Math.min(offset + LIMIT, total);
 
-  const revealAccountNumber = async (payoutId: string, bankAccountId: string) => {
-    setRevealing(payoutId);
+  const runAction = async (id: string, fn: () => Promise<unknown>) => {
+    setBusy(id);
     try {
-      const result = await trpcMutate<{ accountNumber: string }>('admin.payouts.revealBankAccount', { bankAccountId });
-      setRevealed((prev) => ({ ...prev, [payoutId]: result.accountNumber }));
+      await fn();
+      await refetch();
     } catch (e) {
       alert((e as Error).message);
     } finally {
-      setRevealing(null);
+      setBusy(null);
     }
   };
 
-  const updateStatus = async (id: string, status: 'processing' | 'completed' | 'failed', failureReason?: string) => {
-    setUpdating(id);
-    try {
-      await trpcMutate('admin.payouts.updateStatus', { id, status, failureReason });
-      setData((prev) =>
-        prev ? { ...prev, payouts: prev.payouts.map((p) => (p.id === id ? { ...p, status, failureReason } : p)) } : prev
-      );
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setUpdating(null);
-      setFailModal(null);
-    }
+  const revealAccountNumber = (payoutId: string, bankAccountId: string) =>
+    runAction(payoutId, async () => {
+      const result = await trpcMutate<{ accountNumber: string }>('admin.payouts.revealBankAccount', { bankAccountId });
+      setRevealed((prev) => ({ ...prev, [payoutId]: result.accountNumber }));
+    });
+
+  const checkStatus = (payoutId: string) =>
+    runAction(payoutId, async () => {
+      const result = await trpcMutate<{ status: boolean; message: string }>('admin.payouts.reconciliation.checkOne', { payoutId });
+      setCheckResult((prev) => ({ ...prev, [payoutId]: result.message }));
+    });
+
+  const retry = (payoutId: string) => runAction(payoutId, () => trpcMutate('admin.payouts.retry', { payoutId }));
+
+  const submitManualReview = (reason?: string) => {
+    if (!manualReviewModal || !reason) return;
+    const id = manualReviewModal.id;
+    runAction(id, () => trpcMutate('admin.payouts.moveToManualReview', { payoutId: id, reason })).then(() =>
+      setManualReviewModal(null)
+    );
+  };
+
+  const submitFail = (reason?: string) => {
+    if (!failModal) return;
+    const id = failModal.id;
+    runAction(id, () => trpcMutate('admin.payouts.failManually', { payoutId: id, reason: reason || 'Marked failed by admin.' })).then(
+      () => setFailModal(null)
+    );
+  };
+
+  const submitComplete = () => {
+    if (!completeModal || !completeForm.externalReference.trim()) return;
+    const id = completeModal.id;
+    runAction(id, () =>
+      trpcMutate('admin.payouts.completeManually', {
+        payoutId: id,
+        externalReference: completeForm.externalReference.trim(),
+        notes: completeForm.notes.trim() || undefined,
+      })
+    ).then(() => {
+      setCompleteModal(null);
+      setCompleteForm({ externalReference: '', notes: '' });
+    });
   };
 
   const columns: TableColumn<PayoutRow>[] = [
@@ -107,10 +161,10 @@ export default function Payouts() {
               <button
                 type="button"
                 className="mt-0.5 text-xs font-medium text-primary hover:underline disabled:opacity-50"
-                disabled={revealing === p.id}
+                disabled={busy === p.id}
                 onClick={() => revealAccountNumber(p.id, p.bankAccountId)}
               >
-                {revealing === p.id ? 'Revealing…' : 'Reveal'}
+                Reveal
               </button>
             )}
           </>
@@ -118,14 +172,36 @@ export default function Payouts() {
           <span className="italic text-slate-300">—</span>
         ),
     },
-    { key: 'amount', header: 'Amount', align: 'right', render: (p) => <span className="tnum font-semibold text-slate-900">₦{p.amount.toLocaleString()}</span> },
+    {
+      key: 'amount',
+      header: 'Amount',
+      align: 'right',
+      render: (p) => <span className="tnum font-semibold text-slate-900">₦{p.amount.toLocaleString()}</span>,
+    },
+    {
+      key: 'method',
+      header: 'Method',
+      render: (p) => (
+        <>
+          <p className="text-slate-700 capitalize">{p.payoutMethod}</p>
+          {p.provider && <p className="text-xs text-slate-400 capitalize">{p.provider}</p>}
+          {p.providerTransferReference && (
+            <p className="text-[11px] text-slate-300" title={p.providerTransferReference}>
+              {p.providerTransferReference.slice(0, 18)}…
+            </p>
+          )}
+        </>
+      ),
+    },
     {
       key: 'status',
       header: 'Status',
       render: (p) => (
         <>
-          <StatusLabel tone={payoutStatusTone[p.status]}>{p.status}</StatusLabel>
+          <StatusLabel tone={payoutStatusTone[p.status]}>{p.status.replace('_', ' ')}</StatusLabel>
           {p.failureReason && <p className="mt-0.5 text-xs text-danger">{p.failureReason}</p>}
+          {p.hasOpenReconciliation && <p className="mt-0.5 text-xs font-medium text-warning">Open reconciliation</p>}
+          {checkResult[p.id] && <p className="mt-0.5 text-xs text-slate-400">{checkResult[p.id]}</p>}
         </>
       ),
     },
@@ -134,30 +210,56 @@ export default function Payouts() {
       key: 'action',
       header: 'Action',
       render: (p) => (
-        <>
-          {p.status === 'pending' && (
-            <Button variant="primary" size="sm" disabled={updating === p.id} onClick={() => updateStatus(p.id, 'processing')}>
-              Mark processing
+        <div className="flex flex-wrap gap-2">
+          {p.status === 'processing' && (
+            <>
+              <Button variant="secondary" size="sm" disabled={busy === p.id} onClick={() => checkStatus(p.id)}>
+                Check status
+              </Button>
+              <Button variant="warning" size="sm" disabled={busy === p.id} onClick={() => setManualReviewModal({ id: p.id })}>
+                Move to review
+              </Button>
+            </>
+          )}
+          {p.status === 'manual_review' && (
+            <>
+              <Button variant="success" size="sm" disabled={busy === p.id} onClick={() => setCompleteModal({ id: p.id })}>
+                Complete manually
+              </Button>
+              <Button variant="secondary" size="sm" disabled={busy === p.id} onClick={() => retry(p.id)}>
+                Retry automatic
+              </Button>
+              <Button variant="danger" size="sm" disabled={busy === p.id} onClick={() => setFailModal({ id: p.id })}>
+                Fail
+              </Button>
+            </>
+          )}
+          {p.status === 'failed' && (
+            <Button variant="secondary" size="sm" disabled={busy === p.id} onClick={() => retry(p.id)}>
+              Retry automatic
             </Button>
           )}
-          {p.status === 'processing' && (
-            <div className="flex gap-2">
-              <Button variant="success" size="sm" disabled={updating === p.id} onClick={() => updateStatus(p.id, 'completed')}>
-                Paid
-              </Button>
-              <Button variant="danger" size="sm" disabled={updating === p.id} onClick={() => setFailModal({ id: p.id })}>
-                Failed
-              </Button>
-            </div>
+          {p.manualActions.length > 0 && (
+            <details className="text-xs text-slate-400">
+              <summary className="cursor-pointer select-none">History</summary>
+              <ul className="mt-1 space-y-1">
+                {p.manualActions.map((a) => (
+                  <li key={a.id}>
+                    {a.action.replace(/_/g, ' ')} — {new Date(a.createdAt).toLocaleString()}
+                    {a.externalReference && <> · ref {a.externalReference}</>}
+                  </li>
+                ))}
+              </ul>
+            </details>
           )}
-        </>
+        </div>
       ),
     },
   ];
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Payouts" description="Driver withdrawal requests." />
+      <PageHeader title="Payouts" description="Driver withdrawal requests — automatic Paystack transfer by default, with a controlled, audited manual fallback." />
 
       <FilterTabs options={STATUS_OPTIONS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setOffset(0); }} />
 
@@ -176,17 +278,74 @@ export default function Payouts() {
         />
       )}
 
+      {manualReviewModal && (
+        <ConfirmModal
+          title="Move to manual review"
+          description="Pulls this payout out of the automatic path — an admin will need to complete or fail it by hand."
+          reasonLabel="Reason"
+          reasonPlaceholder="Why does this need manual handling?"
+          confirmLabel="Move to review"
+          confirmVariant="warning"
+          processing={busy === manualReviewModal.id}
+          onCancel={() => setManualReviewModal(null)}
+          onConfirm={submitManualReview}
+        />
+      )}
+
       {failModal && (
         <ConfirmModal
           title="Mark as failed"
+          description="Only available from manual review. Releases the reserved balance so the driver can request again."
           reasonLabel="Failure reason"
-          reasonPlaceholder="Enter failure reason (optional)"
+          reasonPlaceholder="Enter failure reason"
           confirmLabel="Confirm failed"
           confirmVariant="danger"
-          processing={updating === failModal.id}
+          processing={busy === failModal.id}
           onCancel={() => setFailModal(null)}
-          onConfirm={(reason) => updateStatus(failModal.id, 'failed', reason)}
+          onConfirm={submitFail}
         />
+      )}
+
+      {completeModal && (
+        <Modal
+          title="Complete payout manually"
+          description="Before completing, Pantra re-checks with Paystack to make sure an automatic transfer hasn't already succeeded — this is refused if it has."
+          onClose={() => setCompleteModal(null)}
+          footer={
+            <>
+              <Button variant="secondary" className="flex-1" onClick={() => setCompleteModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="success"
+                className="flex-1"
+                disabled={busy === completeModal.id || !completeForm.externalReference.trim()}
+                onClick={submitComplete}
+              >
+                Complete
+              </Button>
+            </>
+          }
+        >
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">External transfer reference (required)</label>
+            <input
+              value={completeForm.externalReference}
+              onChange={(e) => setCompleteForm((f) => ({ ...f, externalReference: e.target.value }))}
+              placeholder="Bank transfer reference / receipt number"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Notes</label>
+            <textarea
+              value={completeForm.notes}
+              onChange={(e) => setCompleteForm((f) => ({ ...f, notes: e.target.value }))}
+              rows={3}
+              className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+        </Modal>
       )}
     </div>
   );

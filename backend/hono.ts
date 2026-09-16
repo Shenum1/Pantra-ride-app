@@ -6,6 +6,7 @@ import { createContext } from "./trpc/create-context";
 import { supabaseAdmin } from "./lib/supabase-admin";
 import { verifyPaystackSignature, verifyFlutterwaveSignature } from "./lib/webhook-signatures";
 import { processVerifiedPayment } from "./lib/payment-processor";
+import { processPayoutWebhookEvent } from "./lib/payout-processor";
 import { checkPaymentEnvironmentConsistency } from "./lib/payment-env-check";
 
 checkPaymentEnvironmentConsistency();
@@ -60,19 +61,27 @@ app.get("/google-maps", async (c) => {
 });
 
 // Provider webhooks — the PRIMARY, asynchronous payment-confirmation path
-// (Phase 2). Plain Hono routes, not tRPC procedures: providers POST a
+// (Phase 2), and (for transfer.* events, Phase 3A) the primary payout
+// outcome path too. Plain Hono routes, not tRPC procedures: providers POST a
 // signed payload that doesn't speak tRPC's wire format, and Paystack's
 // signature check requires the exact raw request body (c.req.text()), which
 // a tRPC/JSON-body-parsing procedure would not preserve byte-for-byte.
 //
-// Neither handler wraps processVerifiedPayment in a try/catch: a genuine
+// Paystack sends every event type (charge.*, transfer.*, …) to the ONE
+// webhook URL configured in the dashboard — there is no separate URL to
+// register for transfers, so this handler dispatches by payload.event
+// rather than gaining a second route. The signature check is identical for
+// both event families (HMAC-SHA512 over the raw body, keyed with the same
+// PAYSTACK_SECRET_KEY), so it happens once before the dispatch.
+//
+// Neither branch wraps its processor call in a try/catch: a genuine
 // infrastructure failure (DB unavailable, unexpected exception) must
 // propagate to Hono's default error handling (a 5xx), which is what tells
 // the provider to retry delivery — the event must never be acknowledged
-// (200) before its outcome has been durably recorded, per Phase 2's design.
-// Every business-level outcome processVerifiedPayment can return
-// (mismatch, duplicate, provider-confirmed failure) IS a durable, recorded
-// write, so all of those correctly reach the 200 below.
+// (200) before its outcome has been durably recorded. Every business-level
+// outcome either processor can return (mismatch, duplicate, provider-
+// confirmed failure) IS a durable, recorded write, so all of those
+// correctly reach the 200 below.
 app.post("/webhooks/paystack", async (c) => {
   if (!supabaseAdmin) {
     return c.json({ error: "not configured" }, 500);
@@ -93,6 +102,13 @@ app.post("/webhooks/paystack", async (c) => {
     return c.json({ error: "malformed payload" }, 400);
   }
 
+  const eventType: string = payload?.event ?? "unknown";
+
+  if (typeof eventType === "string" && eventType.startsWith("transfer.")) {
+    await processPayoutWebhookEvent(supabaseAdmin, payload);
+    return c.json({ received: true });
+  }
+
   const reference = payload?.data?.reference;
   if (!reference || typeof reference !== "string") {
     return c.json({ error: "missing reference" }, 400);
@@ -104,7 +120,7 @@ app.post("/webhooks/paystack", async (c) => {
     reference,
     sourceChannel: "webhook",
     providerEventId: payload?.data?.id != null ? String(payload.data.id) : undefined,
-    eventType: payload?.event ?? "unknown",
+    eventType,
   });
 
   return c.json({ received: true });

@@ -11,8 +11,10 @@ export const rideStatusTone: Record<string, BadgeTone> = {
 export const payoutStatusTone: Record<string, BadgeTone> = {
   pending: 'pending',
   processing: 'pending',
+  manual_review: 'warning',
   completed: 'success',
   failed: 'danger',
+  reversed: 'danger',
 };
 
 export const documentStatusTone: Record<string, BadgeTone> = {

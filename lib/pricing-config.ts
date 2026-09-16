@@ -153,3 +153,11 @@ export const WALLET_TOPUP_CONFIG = {
   minAmount: 100,
   maxAmount: 1_000_000,
 } as const;
+
+// Driver payout bounds, enforced server-side in driver.payouts.request
+// (never trust a client-supplied amount past these limits). minAmount
+// matches the pre-existing client-side check in app/(driver-tabs)/wallet.tsx
+// — an existing business rule being enforced server-side too, not a new one.
+export const DRIVER_PAYOUT_CONFIG = {
+  minAmount: 100,
+} as const;

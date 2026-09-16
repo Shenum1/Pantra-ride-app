@@ -235,7 +235,7 @@ export default function DriverWallet() {
       Toast.show({
         type: 'success',
         text1: 'Withdrawal Requested',
-        text2: `₦${amount.toFixed(2)} request submitted — processed within 1-3 business days`,
+        text2: `₦${amount.toFixed(2)} request submitted — usually sent within minutes`,
         position: 'top',
         visibilityTime: 4000,
       });

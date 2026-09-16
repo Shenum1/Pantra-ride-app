@@ -110,6 +110,58 @@ describe('payments.{paystack,flutterwave}.initialize — require authentication 
   });
 });
 
+describe('driver.payouts.request — requires driver authentication (Phase 3A)', () => {
+  it('rejects an unauthenticated call rather than executing as publicProcedure', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(
+      caller.driver.payouts.request({ bankAccountId: '00000000-0000-0000-0000-000000000000', amount: 1000 })
+    ).rejects.toThrow();
+  });
+});
+
+describe('admin.payouts — no generic status-setter route exists (Phase 3A)', () => {
+  it('the old admin.payouts.updateStatus mutation has been removed entirely', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const routerSource = await fs.readFile(path.resolve(process.cwd(), 'backend/trpc/app-router.ts'), 'utf8');
+    expect(routerSource).not.toContain('updateStatus: adminPayoutsUpdateStatusRoute');
+    expect(routerSource).not.toContain('routes/admin/payouts/update-status/route');
+
+    let routeFileExists = true;
+    try {
+      await fs.access(path.resolve(process.cwd(), 'backend/trpc/routes/admin/payouts/update-status/route.ts'));
+    } catch {
+      routeFileExists = false;
+    }
+    expect(routeFileExists).toBe(false);
+  });
+
+  it('every remaining admin.payouts mutation requires admin authentication', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(
+      caller.admin.payouts.completeManually({ payoutId: '00000000-0000-0000-0000-000000000000', externalReference: 'ref-1' })
+    ).rejects.toThrow();
+    await expect(
+      caller.admin.payouts.failManually({ payoutId: '00000000-0000-0000-0000-000000000000', reason: 'test' })
+    ).rejects.toThrow();
+    await expect(caller.admin.payouts.retry({ payoutId: '00000000-0000-0000-0000-000000000000' })).rejects.toThrow();
+    await expect(
+      caller.admin.payouts.moveToManualReview({ payoutId: '00000000-0000-0000-0000-000000000000', reason: 'test' })
+    ).rejects.toThrow();
+  });
+
+  it('completeManually re-verifies with the provider before completing, and refuses if the payout is not in manual_review', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'backend/trpc/routes/admin/payouts/complete-manually/route.ts'),
+      'utf8'
+    );
+    expect(source).toContain('reconcileOnePayout');
+    expect(source).toMatch(/status\s*!==\s*["']manual_review["']/);
+  });
+});
+
 describe('appRouter integration', () => {
   it('responds from the example hi mutation', async () => {
     const caller = appRouter.createCaller({

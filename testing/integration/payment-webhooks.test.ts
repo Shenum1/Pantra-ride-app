@@ -13,6 +13,11 @@ vi.mock('@/backend/lib/payment-processor', () => ({
   processVerifiedPayment: (...args: unknown[]) => processVerifiedPaymentMock(...args),
 }));
 
+const processPayoutWebhookEventMock = vi.fn();
+vi.mock('@/backend/lib/payout-processor', () => ({
+  processPayoutWebhookEvent: (...args: unknown[]) => processPayoutWebhookEventMock(...args),
+}));
+
 process.env.PAYSTACK_SECRET_KEY = 'sk_test_shared_secret_for_webhook_tests';
 process.env.FLUTTERWAVE_WEBHOOK_SECRET_HASH = 'flw-configured-hash-for-webhook-tests';
 
@@ -22,6 +27,38 @@ describe('POST /webhooks/paystack', () => {
   beforeEach(() => {
     processVerifiedPaymentMock.mockReset();
     processVerifiedPaymentMock.mockResolvedValue({ status: true, message: 'ok' });
+    processPayoutWebhookEventMock.mockReset();
+    processPayoutWebhookEventMock.mockResolvedValue(undefined);
+  });
+
+  it('dispatches a transfer.* event to the payout processor, never the payment processor', async () => {
+    const body = JSON.stringify({ event: 'transfer.success', data: { reference: 'PANTRA-PAYOUT-abc', id: 42, amount: 500000 } });
+    const signature = createHmac('sha512', 'sk_test_shared_secret_for_webhook_tests').update(body, 'utf8').digest('hex');
+
+    const res = await app.request('/webhooks/paystack', {
+      method: 'POST',
+      headers: { 'x-paystack-signature': signature },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(processPayoutWebhookEventMock).toHaveBeenCalledTimes(1);
+    expect(processVerifiedPaymentMock).not.toHaveBeenCalled();
+  });
+
+  it('still dispatches a charge.* event to the payment processor, never the payout processor', async () => {
+    const body = JSON.stringify({ event: 'charge.success', data: { reference: 'PANTRA-charge-abc', id: 7 } });
+    const signature = createHmac('sha512', 'sk_test_shared_secret_for_webhook_tests').update(body, 'utf8').digest('hex');
+
+    const res = await app.request('/webhooks/paystack', {
+      method: 'POST',
+      headers: { 'x-paystack-signature': signature },
+      body,
+    });
+
+    expect(res.status).toBe(200);
+    expect(processVerifiedPaymentMock).toHaveBeenCalledTimes(1);
+    expect(processPayoutWebhookEventMock).not.toHaveBeenCalled();
   });
 
   it('rejects a forged signature with 401 and never invokes the processor', async () => {

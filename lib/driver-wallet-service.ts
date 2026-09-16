@@ -1,4 +1,3 @@
-import { supabase } from './supabase';
 import { trpcClient } from './trpc';
 
 export interface DriverBankAccount {
@@ -19,7 +18,7 @@ export interface DriverPayout {
   driverId: string;
   amount: number;
   bankAccountId: string | null;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'manual_review' | 'completed' | 'failed' | 'reversed';
   failureReason: string | null;
   requestedAt: string;
   completedAt: string | null;
@@ -52,22 +51,20 @@ export const DriverWalletService = {
     return trpcClient.driver.payouts.list.query();
   },
 
-  // driver_payouts itself keeps its own client-facing RLS
-  // (driver_payouts_select_own/driver_payouts_insert_own) — it never
-  // contained a raw account number, only a bankAccountId reference, so this
-  // insert is unaffected by the bank-account RLS revocation and stays a
-  // direct client call, same as before.
+  // Phase 3A: driver_payouts.insert is no longer directly client-writable
+  // (the RLS policy that allowed it was revoked — see
+  // supabase-schema-driver-payouts-automation.sql). Creating a payout now
+  // goes through this tRPC route, which validates balance/ownership
+  // server-side and immediately attempts an automatic Paystack transfer in
+  // the same request. `driverId` is accepted here only to keep this
+  // method's external signature unchanged for existing callers — the server
+  // resolves the actual driver identity from the authenticated session and
+  // ignores any client-supplied id.
   async requestWithdrawal(
-    driverId: string,
+    _driverId: string,
     amount: number,
     bankAccountId: string
   ): Promise<DriverPayout> {
-    const { data, error } = await supabase
-      .from('driver_payouts')
-      .insert({ driverId, amount, bankAccountId, status: 'pending' })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data as DriverPayout;
+    return trpcClient.driver.payouts.request.mutate({ amount, bankAccountId }) as unknown as Promise<DriverPayout>;
   },
 };

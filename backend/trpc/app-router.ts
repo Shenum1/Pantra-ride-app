@@ -16,9 +16,15 @@ import driverBankAccountsListRoute from "./routes/driver/bank-accounts/list/rout
 import driverBankAccountsAddRoute from "./routes/driver/bank-accounts/add/route";
 import driverBankAccountsRemoveRoute from "./routes/driver/bank-accounts/remove/route";
 import driverPayoutsListRoute from "./routes/driver/payouts/list/route";
+import driverPayoutsRequestRoute from "./routes/driver/payouts/request/route";
 import adminPayoutsListRoute from "./routes/admin/payouts/list/route";
-import adminPayoutsUpdateStatusRoute from "./routes/admin/payouts/update-status/route";
 import adminPayoutsRevealBankAccountRoute from "./routes/admin/payouts/reveal-bank-account/route";
+import adminPayoutsMoveToManualReviewRoute from "./routes/admin/payouts/move-to-manual-review/route";
+import adminPayoutsCompleteManuallyRoute from "./routes/admin/payouts/complete-manually/route";
+import adminPayoutsFailManuallyRoute from "./routes/admin/payouts/fail-manually/route";
+import adminPayoutsRetryRoute from "./routes/admin/payouts/retry/route";
+import adminPayoutsReconciliationRunRoute from "./routes/admin/payouts/reconciliation/run/route";
+import adminPayoutsReconciliationCheckOneRoute from "./routes/admin/payouts/reconciliation/check-one/route";
 import adminDriverVerificationListRoute from "./routes/admin/driver-verification/list/route";
 import adminDriverVerificationGetDriverDetailRoute from "./routes/admin/driver-verification/get-driver-detail/route";
 import adminDriverVerificationDecideRoute from "./routes/admin/driver-verification/decide/route";
@@ -102,8 +108,15 @@ export const appRouter = createTRPCRouter({
     rides: adminRidesRoute,
     payouts: createTRPCRouter({
       list: adminPayoutsListRoute,
-      updateStatus: adminPayoutsUpdateStatusRoute,
       revealBankAccount: adminPayoutsRevealBankAccountRoute,
+      moveToManualReview: adminPayoutsMoveToManualReviewRoute,
+      completeManually: adminPayoutsCompleteManuallyRoute,
+      failManually: adminPayoutsFailManuallyRoute,
+      retry: adminPayoutsRetryRoute,
+      reconciliation: createTRPCRouter({
+        run: adminPayoutsReconciliationRunRoute,
+        checkOne: adminPayoutsReconciliationCheckOneRoute,
+      }),
     }),
     driverVerification: createTRPCRouter({
       list: adminDriverVerificationListRoute,
@@ -193,6 +206,7 @@ export const appRouter = createTRPCRouter({
     }),
     payouts: createTRPCRouter({
       list: driverPayoutsListRoute,
+      request: driverPayoutsRequestRoute,
     }),
   }),
   driverVerification: createTRPCRouter({

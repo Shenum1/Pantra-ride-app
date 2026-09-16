@@ -106,7 +106,7 @@ export default function DriverAddBankScreen() {
 
           <View style={[styles.notice, { backgroundColor: colors.lightGray }]}>
             <Text style={[styles.noticeText, { color: colors.textSecondary }]}>
-              Withdrawal requests are processed manually within 1-3 business days. Ensure your account details are correct before submitting a withdrawal.
+              Withdrawals are usually sent automatically within minutes. Some may require manual review, which can take 1-3 business days. Ensure your account details are correct before submitting a withdrawal.
             </Text>
           </View>
         </ScrollView>
