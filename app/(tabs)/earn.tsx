@@ -113,7 +113,7 @@ export default function EarnScreen() {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={{ paddingTop: insets.top }} />
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <ShimmerGroup>
             <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
               <View style={styles.summaryHeader}>
@@ -166,7 +166,7 @@ export default function EarnScreen() {
 
       <View style={{ paddingTop: insets.top }} />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Points Summary */}
         <View style={[styles.summaryCard, { backgroundColor: colors.card }]}>
           <View style={styles.summaryHeader}>
@@ -314,6 +314,9 @@ const getStyles = (colors: any) => StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 110,
   },
   summaryCard: {
     margin: 16,

@@ -13,6 +13,7 @@ const NAV = [
   { to: '/support', label: 'Support' },
   { to: '/payments', label: 'Payments' },
   { to: '/payouts', label: 'Payouts' },
+  { to: '/refunds', label: 'Refunds' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/promotions', label: 'Promotions' },
   { to: '/content', label: 'Content' },

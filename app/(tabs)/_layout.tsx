@@ -4,31 +4,18 @@ import React from "react";
 import { StyleSheet, Platform } from "react-native";
 import { AuthGuard } from "@/components/AuthGuard";
 import { useTheme } from "@/hooks/useThemeStore";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function TabLayout() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  
+
   return (
     <AuthGuard>
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.gray,
-          tabBarStyle: [
-            styles.tabBar,
-            {
-              backgroundColor: colors.background,
-              borderTopColor: colors.border,
-              paddingBottom: Platform.OS === 'ios' ? insets.bottom : 8,
-              height: Platform.OS === 'ios' ? 84 + insets.bottom : 68,
-            }
-          ],
-          tabBarLabelStyle: [
-            styles.tabBarLabel,
-            { color: colors.textSecondary }
-          ],
+          tabBarInactiveTintColor: "#8E8E93",
+          tabBarShowLabel: false,
+          tabBarStyle: styles.tabBar,
           headerShown: false,
         }}
       >
@@ -74,19 +61,21 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    borderTopWidth: 1,
-    paddingTop: 8,
-    elevation: 8,
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: Platform.OS === 'ios' ? 30 : 20,
+    height: 64,
+    borderRadius: 32,
+    borderTopWidth: 0,
+    backgroundColor: '#1C1C1E',
+    elevation: 15,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: -2,
+      height: 8,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  tabBarLabel: {
-    fontSize: 11,
-    fontWeight: '500',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
   },
 });

@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import ForgotPassword from './pages/ForgotPassword';
+import UpdatePassword from './pages/UpdatePassword';
 import Overview from './pages/Overview';
 import Drivers from './pages/Drivers';
 import DriverDetail from './pages/DriverDetail';
@@ -11,6 +13,7 @@ import Verification from './pages/Verification';
 import Trips from './pages/Trips';
 import Payments from './pages/Payments';
 import Payouts from './pages/Payouts';
+import Refunds from './pages/Refunds';
 import Pricing from './pages/Pricing';
 import Promotions from './pages/Promotions';
 import Content from './pages/Content';
@@ -44,6 +47,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/update-password" element={<UpdatePassword />} />
 
         <Route element={<RequireAuth />}>
           <Route element={<AuthenticatedLayout />}>
@@ -56,6 +61,7 @@ export default function App() {
             <Route path="/verification" element={<Verification />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/payouts" element={<Payouts />} />
+            <Route path="/refunds" element={<Refunds />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/promotions" element={<Promotions />} />
             <Route path="/content" element={<Content />} />

@@ -51,7 +51,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: 110,
   },
   emptyContainer: {
     flex: 1,

@@ -30,9 +30,17 @@ export default function PersonalInfoScreen() {
   const { status, syncAuthVerificationStatus } = useDriverVerification();
   const { draft, updateDraft } = useDriverVerificationWizard();
 
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [isStatePickerOpen, setIsStatePickerOpen] = useState(false);
   const [stateSearchQuery, setStateSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   // A Google-signup driver's email is already verified by Supabase at sign-in
   // time (Google proved it) — sync once on mount so that's reflected immediately
@@ -56,22 +64,39 @@ export default function PersonalInfoScreen() {
   };
 
   const handleResendEmail = async () => {
-    if (!driver?.email) return;
+    if (!driver?.email || resendCooldown > 0) return;
     try {
       const { error } = await supabase.auth.resend({ type: 'signup', email: driver.email });
       if (error) throw new Error(error.message);
-      Alert.alert('Email sent', 'Check your inbox for the verification link.');
+      setResendCooldown(60);
+      Alert.alert('Code sent', 'Check your inbox for the verification code.');
     } catch (error: any) {
-      Alert.alert('Could not send email', error?.message ?? 'Please try again.');
+      Alert.alert('Could not send code', error?.message ?? 'Please try again.');
     }
   };
 
-  const handleRefreshEmailStatus = async () => {
-    setIsCheckingEmail(true);
+  const handleVerifyCode = async () => {
+    if (!driver?.email) return;
+    if (!verificationCode.trim()) {
+      Alert.alert('Enter code', 'Enter the verification code from your email.');
+      return;
+    }
+    setIsVerifyingCode(true);
     try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: driver.email.trim().toLowerCase(),
+        token: verificationCode.trim(),
+        type: 'signup',
+      });
+      if (error) throw new Error(error.message);
+      // Confirmation succeeded on Supabase's side — sync it onto
+      // drivers.emailVerifiedAt (server re-reads email_confirmed_at itself,
+      // never trusts this client call beyond triggering the re-check).
       await syncAuthVerificationStatus();
+    } catch (error: any) {
+      Alert.alert('Verification Failed', error?.message ?? 'Invalid or expired code.');
     } finally {
-      setIsCheckingEmail(false);
+      setIsVerifyingCode(false);
     }
   };
 
@@ -219,15 +244,31 @@ export default function PersonalInfoScreen() {
           ) : (
             <>
               <Text style={{ color: colors.textSecondary, marginBottom: 12 }}>
-                Check your inbox ({driver?.email}) for a verification link, then refresh below.
+                Enter the verification code sent to {driver?.email}.
               </Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border, marginBottom: 12 }]}
+                value={verificationCode}
+                onChangeText={setVerificationCode}
+                placeholder="Enter verification code"
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="number-pad"
+                maxLength={12}
+                testID="driver-email-verify-code-input"
+              />
               <View style={styles.row}>
-                <Button title="Resend Email" onPress={handleResendEmail} variant="outline" style={styles.halfButton} />
                 <Button
-                  title="I've Verified"
-                  onPress={handleRefreshEmailStatus}
-                  loading={isCheckingEmail}
-                  disabled={isCheckingEmail}
+                  title={resendCooldown > 0 ? `Resend (${resendCooldown}s)` : 'Resend Code'}
+                  onPress={handleResendEmail}
+                  variant="outline"
+                  disabled={resendCooldown > 0}
+                  style={styles.halfButton}
+                />
+                <Button
+                  title="Verify Code"
+                  onPress={handleVerifyCode}
+                  loading={isVerifyingCode}
+                  disabled={isVerifyingCode}
                   style={styles.halfButton}
                 />
               </View>

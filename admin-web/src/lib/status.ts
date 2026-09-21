@@ -65,3 +65,13 @@ export const reconciliationStatusTone: Record<string, BadgeTone> = {
   resolved: 'success',
   ignored: 'neutral',
 };
+
+export const refundStatusTone: Record<string, BadgeTone> = {
+  requested: 'pending',
+  processing: 'pending',
+  unknown: 'warning',
+  completed: 'success',
+  failed: 'danger',
+  cancelled: 'neutral',
+  reversed: 'danger',
+};

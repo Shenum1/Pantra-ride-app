@@ -143,7 +143,7 @@ export default function AccountScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 110 }}>
         <View style={[styles.profileSection, { backgroundColor: colors.background, paddingTop: insets.top + 20 }]}>
           <Pressable 
             style={styles.profileAvatarContainer}

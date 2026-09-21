@@ -1,15 +1,23 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { Button } from '../components/ui/Button';
+
+interface LoginLocationState {
+  success?: string;
+  error?: string;
+}
 
 export default function Login() {
   const { login, error: authError } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const redirectState = (location.state as LoginLocationState | null) ?? null;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(redirectState?.error ?? null);
+  const [notice] = useState<string | null>(redirectState?.success ?? null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,6 +37,10 @@ export default function Login() {
         </h1>
         <p className="mb-6 text-sm text-slate-500">Sign in to your admin account</p>
 
+        {notice && (
+          <p className="mb-4 rounded-md border border-success/20 bg-success-tint px-3 py-2 text-sm text-success">{notice}</p>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
@@ -43,7 +55,12 @@ export default function Login() {
           </div>
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-sm font-medium text-slate-700">Password</label>
+              <Link to="/forgot-password" className="text-sm font-medium text-primary hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <input
               type="password"
               required

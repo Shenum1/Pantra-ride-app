@@ -7,6 +7,7 @@ import { supabaseAdmin } from "./lib/supabase-admin";
 import { verifyPaystackSignature, verifyFlutterwaveSignature } from "./lib/webhook-signatures";
 import { processVerifiedPayment } from "./lib/payment-processor";
 import { processPayoutWebhookEvent } from "./lib/payout-processor";
+import { isFlutterwaveRefundWebhookShape, processFlutterwaveRefundCallback, processRefundWebhookEvent } from "./lib/refund-processor";
 import { checkPaymentEnvironmentConsistency } from "./lib/payment-env-check";
 
 checkPaymentEnvironmentConsistency();
@@ -109,6 +110,11 @@ app.post("/webhooks/paystack", async (c) => {
     return c.json({ received: true });
   }
 
+  if (typeof eventType === "string" && eventType.startsWith("refund.")) {
+    await processRefundWebhookEvent(supabaseAdmin, "paystack", payload);
+    return c.json({ received: true });
+  }
+
   const reference = payload?.data?.reference;
   if (!reference || typeof reference !== "string") {
     return c.json({ error: "missing reference" }, 400);
@@ -146,6 +152,22 @@ app.post("/webhooks/flutterwave", async (c) => {
     return c.json({ error: "malformed payload" }, 400);
   }
 
+  // Refund dispatch — verified live against Flutterwave's own docs
+  // (developer.flutterwave.com/docs/refunds and /docs/webhooks): the
+  // refund webhook payload is a FLAT object with NO "event" wrapper at all
+  // (unlike charge.completed/transfer.completed), so it can't be switched
+  // on the same way. isFlutterwaveRefundWebhookShape checks for the
+  // refund-specific identifying fields (flw_ref + amount_refunded/
+  // transaction id) instead of a substring match on an event name.
+  // `event === "refund.completed"` is also checked first, defensively, in
+  // case a specific account/API version does wrap it that way — never
+  // assumed to be the primary shape.
+  const rawEventType: string = typeof payload?.event === "string" ? payload.event : (payload?.event?.type ?? "");
+  if (rawEventType === "refund.completed" || isFlutterwaveRefundWebhookShape(payload)) {
+    await processRefundWebhookEvent(supabaseAdmin, "flutterwave", payload);
+    return c.json({ received: true });
+  }
+
   const reference = payload?.data?.tx_ref;
   if (!reference || typeof reference !== "string") {
     return c.json({ error: "missing reference" }, 400);
@@ -160,6 +182,39 @@ app.post("/webhooks/flutterwave", async (c) => {
     eventType: payload?.event?.type ?? payload?.event ?? "unknown",
   });
 
+  return c.json({ received: true });
+});
+
+// Flutterwave's callbackurl target (passed per-request when creating a
+// refund — see executeWalletTopupRefund in backend/lib/refund-processor.ts).
+// Distinct from the account-wide /webhooks/flutterwave endpoint above
+// because Flutterwave's refund webhook is OFF by default per-account and
+// requires contacting their support to enable it (confirmed live from their
+// docs), while callbackurl needs no such setup — making this the more
+// reliably-delivered notification path for refunds specifically.
+//
+// Whether Flutterwave signs callbackurl POSTs the same way as the main
+// webhook (verif-hash) is NOT confirmed in their documentation, so this
+// route does NOT check for one and does NOT trust the payload's own status
+// — it only extracts identifiers and triggers a live server-to-server
+// re-verification (processFlutterwaveRefundCallback -> reconcileOneRefund),
+// exactly the same processor the real webhook uses. An attacker who could
+// forge a POST here could, at worst, trigger an extra Flutterwave API call
+// for a refund id that must already exist in refund_intents — never a
+// state transition based on the forged body itself.
+app.post("/webhooks/flutterwave-refund-callback", async (c) => {
+  if (!supabaseAdmin) {
+    return c.json({ error: "not configured" }, 500);
+  }
+
+  let payload: any;
+  try {
+    payload = await c.req.json();
+  } catch {
+    return c.json({ error: "malformed payload" }, 400);
+  }
+
+  await processFlutterwaveRefundCallback(supabaseAdmin, payload);
   return c.json({ received: true });
 });
 

@@ -117,7 +117,8 @@ async function recordEvent(
 async function updateIntentStatus(
   supabaseAdmin: SupabaseClient,
   intentId: string,
-  status: string
+  status: string,
+  extra?: { providerTransactionId?: string | null }
 ): Promise<void> {
   // A no-op update (setting the same status the intent already has) is
   // harmless — the terminal-lock trigger only rejects a CHANGE away from
@@ -125,7 +126,7 @@ async function updateIntentStatus(
   // trigger already treats "same value" as not a change.
   const { error } = await supabaseAdmin
     .from("payment_intents")
-    .update({ status, updatedAt: new Date().toISOString() })
+    .update({ status, updatedAt: new Date().toISOString(), ...(extra?.providerTransactionId ? { providerTransactionId: extra.providerTransactionId } : {}) })
     .eq("id", intentId);
   if (error) {
     throw new Error(`Failed to update payment intent status: ${error.message}`);
@@ -338,7 +339,13 @@ export async function processVerifiedPayment(
     throw new Error(`Wallet credit failed after verified payment: ${rpcError.message}`);
   }
 
-  await updateIntentStatus(supabaseAdmin, intent.id, "successful");
+  // providerTransactionId was previously never populated (a dead column
+  // since Phase 2 — nothing read it either, until Phase 3B's Flutterwave
+  // refund path, which needs the PROVIDER's own transaction id rather than
+  // our shared reference). Purely additive: only written when the provider
+  // actually returns one, never overwrites an existing value.
+  const providerTransactionId = verification.raw?.data?.id != null ? String(verification.raw.data.id) : null;
+  await updateIntentStatus(supabaseAdmin, intent.id, "successful", { providerTransactionId });
   await recordEvent(supabaseAdmin, {
     paymentIntentId: intent.id, provider, reference, providerEventId, eventType, sourceChannel,
     providerState: verification.providerState, amount: verification.amount, currency: verification.currency,

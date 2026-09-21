@@ -25,6 +25,11 @@ import adminPayoutsFailManuallyRoute from "./routes/admin/payouts/fail-manually/
 import adminPayoutsRetryRoute from "./routes/admin/payouts/retry/route";
 import adminPayoutsReconciliationRunRoute from "./routes/admin/payouts/reconciliation/run/route";
 import adminPayoutsReconciliationCheckOneRoute from "./routes/admin/payouts/reconciliation/check-one/route";
+import adminRefundsEligibilityRoute from "./routes/admin/refunds/eligibility/route";
+import adminRefundsRequestRoute from "./routes/admin/refunds/request/route";
+import adminRefundsListRoute from "./routes/admin/refunds/list/route";
+import adminRefundsReconciliationRunRoute from "./routes/admin/refunds/reconciliation/run/route";
+import adminRefundsReconciliationCheckOneRoute from "./routes/admin/refunds/reconciliation/check-one/route";
 import adminDriverVerificationListRoute from "./routes/admin/driver-verification/list/route";
 import adminDriverVerificationGetDriverDetailRoute from "./routes/admin/driver-verification/get-driver-detail/route";
 import adminDriverVerificationDecideRoute from "./routes/admin/driver-verification/decide/route";
@@ -116,6 +121,15 @@ export const appRouter = createTRPCRouter({
       reconciliation: createTRPCRouter({
         run: adminPayoutsReconciliationRunRoute,
         checkOne: adminPayoutsReconciliationCheckOneRoute,
+      }),
+    }),
+    refunds: createTRPCRouter({
+      eligibility: adminRefundsEligibilityRoute,
+      request: adminRefundsRequestRoute,
+      list: adminRefundsListRoute,
+      reconciliation: createTRPCRouter({
+        run: adminRefundsReconciliationRunRoute,
+        checkOne: adminRefundsReconciliationCheckOneRoute,
       }),
     }),
     driverVerification: createTRPCRouter({

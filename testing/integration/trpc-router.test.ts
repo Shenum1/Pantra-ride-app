@@ -162,6 +162,35 @@ describe('admin.payouts — no generic status-setter route exists (Phase 3A)', (
   });
 });
 
+describe('admin.refunds — requires admin authentication, no client-side status control (Phase 3B)', () => {
+  it('every admin.refunds mutation and query rejects an unauthenticated caller', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(
+      caller.admin.refunds.request({
+        idempotencyKey: 'k1', originalPaymentType: 'ride_wallet_payment',
+        rideId: '00000000-0000-0000-0000-000000000000', amount: 100, reason: 'test',
+      })
+    ).rejects.toThrow();
+    await expect(
+      caller.admin.refunds.eligibility({ originalPaymentType: 'ride_wallet_payment', rideId: '00000000-0000-0000-0000-000000000000' })
+    ).rejects.toThrow();
+    await expect(caller.admin.refunds.list({ limit: 10, offset: 0 })).rejects.toThrow();
+    await expect(caller.admin.refunds.reconciliation.checkOne({ refundId: '00000000-0000-0000-0000-000000000000' })).rejects.toThrow();
+  });
+
+  it('the refund request route never accepts a client-supplied status, provider refund id, or refundable-amount override', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const source = await fs.readFile(path.resolve(process.cwd(), 'backend/trpc/routes/admin/refunds/request/route.ts'), 'utf8');
+    expect(source).not.toMatch(/status:\s*z\./);
+    expect(source).not.toMatch(/providerRefundId:\s*z\./);
+    expect(source).not.toMatch(/refundable:\s*z\./);
+    // The refundable amount is always re-derived server-side from
+    // payment_intents/wallet_transactions, never taken from the input.
+    expect(source).toContain('originalAmount');
+  });
+});
+
 describe('appRouter integration', () => {
   it('responds from the example hi mutation', async () => {
     const caller = appRouter.createCaller({
