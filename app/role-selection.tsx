@@ -9,7 +9,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import { Car, User } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useVideoConfig } from '@/hooks/useVideoConfig';
 
@@ -49,7 +48,7 @@ export default function RoleSelectionScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>Welcome to RideShare</Text>
+            <Text style={styles.title}>Welcome to Pantra</Text>
             <Text style={styles.subtitle}>Choose how you want to continue</Text>
           </View>
 
@@ -59,13 +58,7 @@ export default function RoleSelectionScreen() {
               onPress={() => handleRoleSelection('user')}
               testID="user-role-button"
             >
-              <View style={styles.roleIcon}>
-                <User size={48} color={Colors.light.primary} />
-              </View>
-              <Text style={styles.roleTitle}>I need a ride</Text>
-              <Text style={styles.roleDescription}>
-                Book rides, schedule trips, and get to your destination safely
-              </Text>
+              <Text style={styles.roleTitle}>Rider</Text>
             </Pressable>
 
             <Pressable
@@ -73,13 +66,7 @@ export default function RoleSelectionScreen() {
               onPress={() => handleRoleSelection('driver')}
               testID="driver-role-button"
             >
-              <View style={styles.roleIcon}>
-                <Car size={48} color={Colors.light.primary} />
-              </View>
-              <Text style={styles.roleTitle}>I want to drive</Text>
-              <Text style={styles.roleDescription}>
-                Earn money by driving passengers to their destinations
-              </Text>
+              <Text style={styles.roleTitle}>Driver</Text>
             </Pressable>
           </View>
 
@@ -123,11 +110,12 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    justifyContent: 'center',
+    paddingBottom: 24,
+    justifyContent: 'flex-start',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginTop: 64,
   },
   title: {
     fontSize: 32,
@@ -148,13 +136,17 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   roleContainer: {
+    flexDirection: 'row',
     gap: 20,
-    marginBottom: 48,
+    marginTop: 'auto',
+    marginBottom: 24,
   },
   roleCard: {
+    flex: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 16,
-    padding: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
@@ -165,27 +157,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-  roleIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Colors.light.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
   roleTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: Colors.light.text,
-    marginBottom: 8,
     textAlign: 'center',
-  },
-  roleDescription: {
-    fontSize: 14,
-    color: Colors.light.gray,
-    textAlign: 'center',
-    lineHeight: 20,
   },
   footer: {
     alignItems: 'center',
