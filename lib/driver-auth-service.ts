@@ -79,8 +79,12 @@ export class DriverAuthService {
       phone: data.phone,
     });
 
+    // Must be a session for THIS new account. signUp doesn't replace an existing
+    // session when confirmation is pending, so a leftover session from an earlier
+    // login (or a since-deleted test account) would still be here, and inserting under
+    // it fails RLS because auth.uid() is a different user than "userId".
     const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) return null;
+    if (sessionData.session?.user.id !== user.id) return null;
 
     return this.insertDriverRow(user.id, data.name, data.email, data.phone);
   }
