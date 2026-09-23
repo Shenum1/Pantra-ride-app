@@ -59,10 +59,23 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     email: string,
     phone: string,
     password: string
-  ) => {
+  ): Promise<{ needsEmailConfirmation: boolean }> => {
     setIsLoading(true);
     try {
       const d = await DriverAuthService.signUpWithEmail({ name, email, phone, password });
+      if (!d) return { needsEmailConfirmation: true };
+      setDriver(d);
+      await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(d));
+      return { needsEmailConfirmation: false };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const verifySignupCode = useCallback(async (email: string, code: string) => {
+    setIsLoading(true);
+    try {
+      const d = await DriverAuthService.verifySignupCode(email, code);
       setDriver(d);
       await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(d));
     } finally {
@@ -138,10 +151,11 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     isAuthenticated: !!driver,
     login,
     signup,
+    verifySignupCode,
     loginWithGoogle,
     logout,
     updateProfile,
     updateProfileImage,
     toggleOnlineStatus,
-  }), [driver, isLoading, login, signup, loginWithGoogle, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
+  }), [driver, isLoading, login, signup, verifySignupCode, loginWithGoogle, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
 });

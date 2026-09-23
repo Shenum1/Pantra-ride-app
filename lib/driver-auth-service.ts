@@ -68,16 +68,36 @@ export class DriverAuthService {
   // the "Allow driver insert" RLS policy in
   // database/schemas/supabase-schema-driver-verification-v2.sql rejects any insert
   // that tries to set them otherwise.
-  static async signUpWithEmail(data: DriverSignupData): Promise<DriverRow> {
-    const user = await AuthService.signUpWithEmail(data.email, data.password, data.name, 'driver');
+  //
+  // When the Supabase project requires email confirmation, signUp returns no session,
+  // so the drivers insert below would run unauthenticated and be rejected by RLS
+  // (auth.uid() = "userId"). In that case this returns null and the drivers row is
+  // created once the email is confirmed (verifySignupCode, or first sign-in), from the
+  // name/phone stashed in the auth user's metadata (see ensureDriverForAuthUser).
+  static async signUpWithEmail(data: DriverSignupData): Promise<DriverRow | null> {
+    const user = await AuthService.signUpWithEmail(data.email, data.password, data.name, 'driver', {
+      phone: data.phone,
+    });
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) return null;
+
+    return this.insertDriverRow(user.id, data.name, data.email, data.phone);
+  }
+
+  private static async insertDriverRow(
+    userId: string,
+    name: string,
+    email: string,
+    phone: string | null
+  ): Promise<DriverRow> {
     const { data: driverRow, error } = await supabase
       .from('drivers')
       .insert({
-        userId: user.id,
-        name: data.name,
-        email: data.email,
-        phone: data.phone,
+        userId,
+        name,
+        email,
+        phone,
         rating: null,
         isOnline: false,
         earnings: { today: 0, thisWeek: 0, thisMonth: 0, total: 0 },
@@ -89,17 +109,58 @@ export class DriverAuthService {
     return mapRowToDriver(driverRow);
   }
 
+  // Idempotent: returns the existing drivers row, or creates one for an account that
+  // registered as a driver (auth metadata role === 'driver') but has none yet. That is
+  // the normal state right after email confirmation, because signUp returned no session
+  // and the RLS-guarded insert couldn't run until now. Accounts that didn't register as
+  // drivers (riders, Google users) get null — nothing is created for them here.
+  static async ensureDriverForAuthUser(user: {
+    id: string;
+    email?: string | null;
+    user_metadata?: Record<string, any> | null;
+  }): Promise<DriverRow | null> {
+    const existing = await this.getDriverByUserId(user.id);
+    if (existing) return existing;
+    if (user.user_metadata?.role !== 'driver') return null;
+
+    const email = user.email ?? '';
+    try {
+      return await this.insertDriverRow(
+        user.id,
+        user.user_metadata?.displayName ?? email.split('@')[0],
+        email,
+        user.user_metadata?.phone ?? null
+      );
+    } catch (error) {
+      // Lost a race with a concurrent ensure (the auth listener and the caller both
+      // run right after sign-in) — the row exists now, so return it.
+      const created = await this.getDriverByUserId(user.id);
+      if (created) return created;
+      throw error;
+    }
+  }
+
   static async signInWithEmail(email: string, password: string): Promise<DriverRow> {
     const user = await AuthService.signInWithEmail(email, password);
+    const driver = await this.ensureDriverForAuthUser(user);
+    if (!driver) throw new Error('No driver profile found for this account.');
+    return driver;
+  }
 
-    const { data: driverRow, error } = await supabase
-      .from('drivers')
-      .select('*')
-      .eq('userId', user.id)
-      .single();
+  // Completes email-confirmation signup with the code Supabase emailed. A successful
+  // verifyOtp also signs the user in, so the drivers row can be created immediately.
+  static async verifySignupCode(email: string, code: string): Promise<DriverRow> {
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: code.trim(),
+      type: 'signup',
+    });
+    if (error) throw new Error(error.message);
+    if (!data.user) throw new Error('Verification succeeded but no account was returned.');
 
-    if (error || !driverRow) throw new Error('No driver profile found for this account.');
-    return mapRowToDriver(driverRow);
+    const driver = await this.ensureDriverForAuthUser(data.user);
+    if (!driver) throw new Error('Could not create your driver profile.');
+    return driver;
   }
 
   // Creates a public.drivers row for a driver who signed up via Google (no
@@ -151,7 +212,7 @@ export class DriverAuthService {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       try {
         if (session?.user) {
-          const driver = await this.getDriverByUserId(session.user.id);
+          const driver = await this.ensureDriverForAuthUser(session.user);
           callback(driver);
         } else {
           callback(null);

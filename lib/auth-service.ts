@@ -18,11 +18,17 @@ export interface UserProfile {
 }
 
 export class AuthService {
-  static async signUpWithEmail(email: string, password: string, displayName: string, role: UserRole = 'rider') {
+  static async signUpWithEmail(
+    email: string,
+    password: string,
+    displayName: string,
+    role: UserRole = 'rider',
+    extraMetadata: Record<string, string> = {}
+  ) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { displayName, role } },
+      options: { data: { displayName, role, ...extraMetadata } },
     });
 
     if (error) throw new Error(error.message);
