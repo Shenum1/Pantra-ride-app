@@ -44,6 +44,10 @@ export default function DriverDashboard() {
   const { isVerified, verificationStatus, status: verification } = useDriverVerification();
 
   const VERIFICATION_BANNER_COPY: Record<string, { title: string; body: string }> = {
+    PENDING: {
+      title: 'Finish your registration',
+      body: 'Add your driver and vehicle details to start earning.',
+    },
     DOCUMENTS_SUBMITTED: {
       title: 'Verification submitted',
       body: 'Your details and documents are in — we\'ll notify you once they\'ve been reviewed.',
@@ -221,7 +225,11 @@ export default function DriverDashboard() {
             <Text style={styles.verificationBannerTitle}>{verificationBanner.title}</Text>
             <Text style={styles.verificationBannerBody}>{verificationBanner.body}</Text>
             <Text style={styles.verificationBannerCta}>
-              {verificationStatus === 'REJECTED' ? 'Fix and resubmit →' : 'View status →'}
+              {verificationStatus === 'PENDING'
+                ? 'Continue registration →'
+                : verificationStatus === 'REJECTED'
+                  ? 'Fix and resubmit →'
+                  : 'View status →'}
             </Text>
           </TouchableOpacity>
         )}

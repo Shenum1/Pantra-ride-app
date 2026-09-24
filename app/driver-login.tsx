@@ -17,6 +17,7 @@ import { Eye, EyeOff, ArrowLeft } from 'lucide-react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useVideoConfig } from '@/hooks/useVideoConfig';
+import { trpc } from '@/lib/trpc';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 
@@ -26,7 +27,31 @@ export default function DriverLoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login, loginWithGoogle, isLoading } = useDriverAuth();
+  const { login, loginWithGoogle, isLoading: isAuthLoading } = useDriverAuth();
+  const utils = trpc.useUtils();
+  const [isRouting, setIsRouting] = useState(false);
+  const isLoading = isAuthLoading || isRouting;
+
+  // Decide where to go from the server's own answer instead of landing on the dashboard
+  // and waiting for its gate to bounce an unfinished driver back: a driver whose
+  // registration is still PENDING goes straight to the registration steps. If the status
+  // can't be fetched, fall back to the dashboard, whose gate still applies.
+  const routeAfterLogin = async () => {
+    setIsRouting(true);
+    try {
+      const status = await utils.driverVerification.getStatus.fetch();
+      router.replace(
+        status.verificationStatus === 'PENDING'
+          ? ('/driver-verification/credentials' as any)
+          : '/(driver-tabs)/dashboard'
+      );
+    } catch (error) {
+      console.warn('Driver login: could not read verification status, using the dashboard gate', error);
+      router.replace('/(driver-tabs)/dashboard');
+    } finally {
+      setIsRouting(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -37,9 +62,8 @@ export default function DriverLoginScreen() {
     try {
       console.log('Driver login attempt:', { email });
       await login(email, password);
-      console.log('Driver login successful, navigating to dashboard...');
-      // Navigate directly to driver dashboard
-      router.replace('/(driver-tabs)/dashboard');
+      console.log('Driver login successful, checking registration status...');
+      await routeAfterLogin();
     } catch (error: any) {
       console.error('Driver login failed:', error);
       Alert.alert('Login Failed', error?.message ?? 'Invalid email or password');
@@ -49,7 +73,11 @@ export default function DriverLoginScreen() {
   const handleGoogleLogin = async () => {
     try {
       const { isNewDriver } = await loginWithGoogle();
-      router.replace(isNewDriver ? '/driver-verification/credentials' as any : '/(driver-tabs)/dashboard');
+      if (isNewDriver) {
+        router.replace('/driver-verification/credentials' as any);
+      } else {
+        await routeAfterLogin();
+      }
     } catch (error: any) {
       console.error('Driver Google sign-in failed:', error);
       Alert.alert('Google Sign-In Failed', error?.message ?? 'Please try again.');

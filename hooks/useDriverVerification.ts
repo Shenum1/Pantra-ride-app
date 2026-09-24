@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import createContextHook from '@nkzw/create-context-hook';
 import { trpc } from '@/lib/trpc';
 import { useDriverAuth } from './useDriverAuthStore';
@@ -20,6 +20,18 @@ export const [DriverVerificationProvider, useDriverVerification] = createContext
 
   const utils = trpc.useUtils();
   const invalidate = () => void utils.driverVerification.getStatus.invalidate();
+
+  // The status query's key has no driver in it, so its cached answer would otherwise
+  // carry over when a different driver logs in within the same session (and show that
+  // other driver's status for up to staleTime). Drop it whenever the driver changes.
+  const lastDriverId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (lastDriverId.current !== undefined && lastDriverId.current !== driver?.id) {
+      void utils.driverVerification.getStatus.reset();
+    }
+    lastDriverId.current = driver?.id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driver?.id]);
 
   const submitProfileMutation = trpc.driverVerification.submitProfile.useMutation({
     onSuccess: invalidate,
