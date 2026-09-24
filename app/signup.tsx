@@ -25,10 +25,8 @@ import { useVideoConfig } from '@/hooks/useVideoConfig';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import { validatePassword, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
-import { supabase } from '@/lib/supabase';
 
 const { width, height } = Dimensions.get('window');
-const RESEND_COOLDOWN_SECONDS = 60;
 
 export default function SignupScreen() {
   const [name, setName] = useState('');
@@ -42,23 +40,6 @@ export default function SignupScreen() {
   const [profileImage, setProfileImage] = useState('');
   const { signup, loginWithGoogle, isLoading } = useAuth();
   const { acceptTerms } = useTermsStore();
-
-  // Inline step, not a separate screen: after signup succeeds, this same
-  // screen swaps its form content for a verification-code step. See
-  // components/EmailVerificationCard.tsx for the equivalent driver-side
-  // gate — both call supabase.auth.verifyOtp({ type: 'signup' }) directly,
-  // no isolated client needed here (unlike password reset) since this is the
-  // account owner completing their own signup.
-  const [step, setStep] = useState<'form' | 'verify'>('form');
-  const [verificationCode, setVerificationCode] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [resendCooldown]);
 
   const handlePickImage = async () => {
     try {
@@ -169,8 +150,7 @@ export default function SignupScreen() {
       await acceptTerms();
       await signup(name, email, phone, password, profileImage);
       console.log('Signup: Account created, awaiting email verification');
-      setStep('verify');
-      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      router.replace({ pathname: '/verify-email', params: { email: email.trim().toLowerCase() } });
       Toast.show({
         type: 'success',
         text1: 'Check your email',
@@ -180,59 +160,6 @@ export default function SignupScreen() {
       });
     } catch (error) {
       console.error('Signup: Signup failed:', error);
-    }
-  };
-
-  const handleVerifyCode = async () => {
-    if (!verificationCode.trim()) {
-      Toast.show({
-        type: 'error',
-        text1: 'Invalid Code',
-        text2: 'Enter the verification code from your email',
-        position: 'top',
-      });
-      return;
-    }
-    setIsVerifying(true);
-    try {
-      console.log('Signup: verifying email code');
-      const { error } = await supabase.auth.verifyOtp({
-        email: email.trim().toLowerCase(),
-        token: verificationCode.trim(),
-        type: 'signup',
-      });
-      if (error) throw new Error(error.message);
-      console.log('Signup: email verified, navigating to home');
-      router.replace('/');
-    } catch (error: any) {
-      console.error('Signup: code verification failed:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Verification Failed',
-        text2: error.message || 'Invalid or expired code',
-        position: 'top',
-      });
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleResendCode = async () => {
-    if (resendCooldown > 0) return;
-    try {
-      console.log('Signup: resending verification code');
-      const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase() });
-      if (error) throw new Error(error.message);
-      setResendCooldown(RESEND_COOLDOWN_SECONDS);
-      Toast.show({ type: 'success', text1: 'Code Resent', text2: 'Check your email again', position: 'top' });
-    } catch (error: any) {
-      console.error('Signup: resend failed:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Could Not Resend',
-        text2: error.message || 'Please try again',
-        position: 'top',
-      });
     }
   };
 
@@ -274,52 +201,11 @@ export default function SignupScreen() {
         >
           <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
-            <Text style={styles.title}>{step === 'verify' ? 'Verify Your Email' : 'Create Account'}</Text>
-            <Text style={styles.subtitle}>
-              {step === 'verify' ? 'Enter the code we sent to finish signing up' : 'Sign up to get started'}
-            </Text>
+            <Text style={styles.title}>Create Account</Text>
+            <Text style={styles.subtitle}>Sign up to get started</Text>
           </View>
 
           <View style={styles.form}>
-          {step === 'verify' ? (
-            <>
-              <Text style={styles.verifyText}>
-                We sent a verification code to {email}. Enter it below to finish creating your account.
-              </Text>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Verification Code</Text>
-                <TextInput
-                  style={styles.input}
-                  value={verificationCode}
-                  onChangeText={setVerificationCode}
-                  placeholder="Enter verification code"
-                  keyboardType="number-pad"
-                  maxLength={12}
-                  testID="signup-verify-code-input"
-                />
-              </View>
-
-              <Button
-                title={isVerifying ? '' : 'Verify & Continue'}
-                onPress={handleVerifyCode}
-                disabled={isVerifying}
-                loading={isVerifying}
-                style={styles.signupButton}
-                testID="signup-verify-code-button"
-              />
-
-              <Button
-                title={resendCooldown > 0 ? `Resend Code (${resendCooldown}s)` : 'Resend Code'}
-                onPress={handleResendCode}
-                disabled={resendCooldown > 0}
-                variant="secondary"
-                style={styles.resendButton}
-                testID="signup-resend-code-button"
-              />
-            </>
-          ) : (
-            <>
             <View style={styles.avatarSection}>
               <View style={styles.avatarContainer}>
                 {profileImage ? (
@@ -505,8 +391,6 @@ export default function SignupScreen() {
                 </Link>
               </Text>
             </View>
-            </>
-          )}
           </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -621,18 +505,6 @@ const styles = StyleSheet.create({
   signupButton: {
     marginTop: 8,
     marginBottom: 24,
-  },
-  resendButton: {
-    marginBottom: 16,
-  },
-  verifyText: {
-    fontSize: 14,
-    lineHeight: 20,
-    color: 'rgba(255, 255, 255, 0.8)',
-    marginBottom: 20,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
   divider: {
     flexDirection: 'row',

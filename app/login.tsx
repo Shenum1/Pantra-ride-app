@@ -44,8 +44,16 @@ export default function LoginScreen() {
       await login(email, password);
       console.log('Login: Login successful, navigating to home');
       router.replace('/(tabs)/home');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login: Login failed:', error);
+      // Account exists but its email was never confirmed — send them to the code box
+      // (and auto-send a fresh code) instead of leaving them stuck on a toast.
+      if (/not confirmed/i.test(error?.message ?? '')) {
+        router.push({
+          pathname: '/verify-email',
+          params: { email: email.trim().toLowerCase(), resend: '1' },
+        });
+      }
     }
   };
 
