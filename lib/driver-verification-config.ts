@@ -14,41 +14,77 @@ export type RequiredDocumentType =
   | 'drivers_license_front'
   | 'drivers_license_back'
   | 'driver_selfie'
+  | 'national_id'
   | 'vehicle_registration'
   | 'proof_of_ownership'
   | 'insurance'
-  | 'roadworthiness';
+  | 'roadworthiness'
+  | 'vehicle_exterior'
+  | 'vehicle_interior_front'
+  | 'vehicle_interior_rear';
 
+// Every type the API and DB accept. drivers_license_back, proof_of_ownership and
+// insurance are still valid (old rows, and they can be re-required later) but are no
+// longer part of the registration checklist.
 export const ALL_DOCUMENT_TYPES: RequiredDocumentType[] = [
   'drivers_license_front',
   'drivers_license_back',
   'driver_selfie',
+  'national_id',
   'vehicle_registration',
   'proof_of_ownership',
   'insurance',
   'roadworthiness',
+  'vehicle_exterior',
+  'vehicle_interior_front',
+  'vehicle_interior_rear',
 ];
 
-// Baseline checklist applied to every seeded state/category as a fallback. This is a
+// Registration steps, in the order the wizard shows them. The screens render these
+// fixed lists; the required-document list resolved below is what the server uses to
+// decide a driver has submitted everything.
+export const CREDENTIAL_DOCUMENT_TYPES: RequiredDocumentType[] = [
+  'driver_selfie',
+  'drivers_license_front',
+  'national_id',
+];
+
+export const VEHICLE_DOCUMENT_TYPES: RequiredDocumentType[] = [
+  'vehicle_exterior',
+  'vehicle_registration',
+  'roadworthiness',
+  'vehicle_interior_front',
+  'vehicle_interior_rear',
+];
+
+export const DOCUMENT_TYPE_LABELS: Record<RequiredDocumentType, string> = {
+  driver_selfie: 'Profile photo',
+  drivers_license_front: "Driver's license",
+  drivers_license_back: "Driver's license (back)",
+  national_id: 'Government ID (NIN)',
+  vehicle_exterior: 'Vehicle exterior with visible plate number',
+  vehicle_registration: 'Vehicle license certificate',
+  roadworthiness: 'Roadworthiness certificate',
+  vehicle_interior_front: 'Interior: front seats and dashboard',
+  vehicle_interior_rear: 'Interior: back seats',
+  proof_of_ownership: 'Proof of ownership',
+  insurance: 'Insurance certificate',
+};
+
+// Checklist applied to every state and category as a fallback. This is a
 // PLACEHOLDER, not a researched national requirement — mirrors the seed data in
-// supabase-schema-driver-verification-v2.sql. Real per-state variance should live in
+// supabase-schema-driver-registration-v3.sql. Real per-state variance should live in
 // the `driver_verification_requirements` table, not here.
 const BASELINE_REQUIRED_DOCUMENTS: RequiredDocumentType[] = [
-  'drivers_license_front',
-  'drivers_license_back',
-  'driver_selfie',
-  'vehicle_registration',
-  'insurance',
-  'proof_of_ownership',
+  ...CREDENTIAL_DOCUMENT_TYPES,
+  ...VEHICLE_DOCUMENT_TYPES,
 ];
 
-// Covers all 36 states + FCT (constants/nigerian-states.ts). Lagos and Abuja (FCT)
-// carry the illustrative roadworthiness example (see the matching seed in
-// supabase-schema-driver-verification-v2.sql); every other state uses the baseline
-// checklist until a real per-state regulatory pass replaces this placeholder.
+// Covers all 36 states + FCT (constants/nigerian-states.ts); every state uses the
+// baseline checklist until a real per-state regulatory pass replaces this placeholder.
 export const DEFAULT_VERIFICATION_REQUIREMENTS: Record<string, RequiredDocumentType[]> = {
   Abia: BASELINE_REQUIRED_DOCUMENTS,
-  'Abuja (FCT)': [...BASELINE_REQUIRED_DOCUMENTS, 'roadworthiness'],
+  'Abuja (FCT)': BASELINE_REQUIRED_DOCUMENTS,
   Adamawa: BASELINE_REQUIRED_DOCUMENTS,
   'Akwa Ibom': BASELINE_REQUIRED_DOCUMENTS,
   Anambra: BASELINE_REQUIRED_DOCUMENTS,
@@ -71,7 +107,7 @@ export const DEFAULT_VERIFICATION_REQUIREMENTS: Record<string, RequiredDocumentT
   Kebbi: BASELINE_REQUIRED_DOCUMENTS,
   Kogi: BASELINE_REQUIRED_DOCUMENTS,
   Kwara: BASELINE_REQUIRED_DOCUMENTS,
-  Lagos: [...BASELINE_REQUIRED_DOCUMENTS, 'roadworthiness'],
+  Lagos: BASELINE_REQUIRED_DOCUMENTS,
   Nasarawa: BASELINE_REQUIRED_DOCUMENTS,
   Niger: BASELINE_REQUIRED_DOCUMENTS,
   Ogun: BASELINE_REQUIRED_DOCUMENTS,

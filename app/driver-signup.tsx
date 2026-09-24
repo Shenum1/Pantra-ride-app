@@ -102,7 +102,7 @@ export default function DriverSignupScreen() {
         });
         return;
       }
-      router.replace('/driver-verification/personal-info' as any);
+      router.replace('/driver-verification/credentials' as any);
     } catch (error: any) {
       Toast.show({ type: 'error', text1: 'Registration Failed', text2: error?.message ?? 'Please try again', position: 'top', visibilityTime: 5000 });
     }
@@ -115,7 +115,7 @@ export default function DriverSignupScreen() {
     }
     try {
       await verifySignupCode(formData.email, verificationCode);
-      router.replace('/driver-verification/personal-info' as any);
+      router.replace('/driver-verification/credentials' as any);
     } catch (error: any) {
       Toast.show({ type: 'error', text1: 'Verification Failed', text2: error?.message || 'Invalid or expired code', position: 'top', visibilityTime: 5000 });
     }
@@ -136,7 +136,7 @@ export default function DriverSignupScreen() {
   const handleGoogleSignup = async () => {
     try {
       await loginWithGoogle();
-      router.replace('/driver-verification/personal-info' as any);
+      router.replace('/driver-verification/credentials' as any);
     } catch (error: any) {
       Toast.show({ type: 'error', text1: 'Google Sign-In Failed', text2: error?.message ?? 'Please try again.', position: 'top', visibilityTime: 5000 });
     }

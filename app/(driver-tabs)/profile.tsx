@@ -289,7 +289,7 @@ export default function DriverProfile() {
             icon={<FileCheck size={20} color={colors.primary} />}
             title="Document Verification"
             subtitle={driver?.isVerified ? 'Verified' : 'Complete your driver verification'}
-            onPress={() => router.push('/driver-verification/personal-info' as any)}
+            onPress={() => router.push('/driver-verification/credentials' as any)}
           />
 
           <SettingsItem

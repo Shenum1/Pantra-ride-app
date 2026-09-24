@@ -218,18 +218,29 @@ export function validateFullLegalName(value: string): FormatValidationResult {
   return ok();
 }
 
+// Every field is optional: registration saves the profile in two steps (state, then
+// vehicle details), so only the fields actually supplied are validated. The legacy
+// license/VIN/engine/name/DOB fields are no longer collected at registration but keep
+// their validators, so anything that does supply them is still checked.
 export interface DriverProfileFormatInput {
-  fullLegalName: string;
-  dateOfBirth: Date;
-  operatingState: string;
-  licenseNumber: string;
-  licenseIssueDate: Date;
-  licenseExpiryDate: Date;
-  vehiclePlateNumber: string;
-  vehicleYear: number;
-  vehicleVin: string;
-  vehicleEngineNumber: string;
+  fullLegalName?: string;
+  dateOfBirth?: Date;
+  operatingState?: string;
+  licenseNumber?: string;
+  licenseIssueDate?: Date;
+  licenseExpiryDate?: Date;
+  vehiclePlateNumber?: string;
+  vehicleYear?: number;
+  vehicleVin?: string;
+  vehicleEngineNumber?: string;
+  vehicleMake?: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
   today?: Date;
+}
+
+function requireText(label: string, value: string): FormatValidationResult {
+  return value.trim() ? ok() : fail(`${label} is required.`);
 }
 
 /**
@@ -244,17 +255,28 @@ export function validateDriverProfileFormat(
   const today = input.today ?? new Date();
   const fieldErrors: Record<string, string[]> = {};
 
-  const checks: [string, FormatValidationResult][] = [
-    ['fullLegalName', validateFullLegalName(input.fullLegalName)],
-    ['dateOfBirth', validateDateOfBirth(input.dateOfBirth, today)],
-    ['operatingState', input.operatingState?.trim() ? ok() : fail('Operating state is required.')],
-    ['licenseNumber', validateDriverLicenseNumber(input.licenseNumber)],
-    ['licenseDates', validateLicenseDates(input.licenseIssueDate, input.licenseExpiryDate, today)],
-    ['vehiclePlateNumber', validatePlateNumber(input.vehiclePlateNumber)],
-    ['vehicleYear', validateVehicleYear(input.vehicleYear, today.getFullYear())],
-    ['vehicleVin', validateVIN(input.vehicleVin)],
-    ['vehicleEngineNumber', validateEngineNumber(input.vehicleEngineNumber)],
-  ];
+  const checks: [string, FormatValidationResult][] = [];
+  const add = (field: string, result: FormatValidationResult | null) => {
+    if (result) checks.push([field, result]);
+  };
+
+  add('fullLegalName', input.fullLegalName !== undefined ? validateFullLegalName(input.fullLegalName) : null);
+  add('dateOfBirth', input.dateOfBirth !== undefined ? validateDateOfBirth(input.dateOfBirth, today) : null);
+  add('operatingState', input.operatingState !== undefined ? requireText('Operating state', input.operatingState) : null);
+  add('licenseNumber', input.licenseNumber !== undefined ? validateDriverLicenseNumber(input.licenseNumber) : null);
+  add(
+    'licenseDates',
+    input.licenseIssueDate !== undefined && input.licenseExpiryDate !== undefined
+      ? validateLicenseDates(input.licenseIssueDate, input.licenseExpiryDate, today)
+      : null
+  );
+  add('vehiclePlateNumber', input.vehiclePlateNumber !== undefined ? validatePlateNumber(input.vehiclePlateNumber) : null);
+  add('vehicleYear', input.vehicleYear !== undefined ? validateVehicleYear(input.vehicleYear, today.getFullYear()) : null);
+  add('vehicleVin', input.vehicleVin !== undefined ? validateVIN(input.vehicleVin) : null);
+  add('vehicleEngineNumber', input.vehicleEngineNumber !== undefined ? validateEngineNumber(input.vehicleEngineNumber) : null);
+  add('vehicleMake', input.vehicleMake !== undefined ? requireText('Vehicle make', input.vehicleMake) : null);
+  add('vehicleModel', input.vehicleModel !== undefined ? requireText('Vehicle model', input.vehicleModel) : null);
+  add('vehicleColor', input.vehicleColor !== undefined ? requireText('Vehicle color', input.vehicleColor) : null);
 
   for (const [field, result] of checks) {
     if (!result.valid) {

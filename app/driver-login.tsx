@@ -49,7 +49,7 @@ export default function DriverLoginScreen() {
   const handleGoogleLogin = async () => {
     try {
       const { isNewDriver } = await loginWithGoogle();
-      router.replace(isNewDriver ? '/driver-verification/personal-info' as any : '/(driver-tabs)/dashboard');
+      router.replace(isNewDriver ? '/driver-verification/credentials' as any : '/(driver-tabs)/dashboard');
     } catch (error: any) {
       console.error('Driver Google sign-in failed:', error);
       Alert.alert('Google Sign-In Failed', error?.message ?? 'Please try again.');

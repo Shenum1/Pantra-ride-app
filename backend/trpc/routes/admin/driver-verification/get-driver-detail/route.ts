@@ -12,7 +12,7 @@ export default adminProcedure
     const { data: driver, error: driverError } = await db
       .from("drivers")
       .select(
-        "id, name, email, phone, fullLegalName, dateOfBirth, operatingState, vehicleCategory, verificationStatus, verificationProgress, verificationStatusUpdatedAt, rejectionReason, emailVerifiedAt, licenseNumber, licenseCategory, licenseIssueDate, licenseExpiryDate, vehiclePlateNumber, vehicleVin, vehicleEngineNumber, vehicle"
+        "id, name, email, phone, operatingState, vehicleCategory, verificationStatus, verificationProgress, verificationStatusUpdatedAt, rejectionReason, emailVerifiedAt, vehiclePlateNumber, profileImage, vehicle"
       )
       .eq("id", input.driverId)
       .single();

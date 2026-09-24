@@ -21,7 +21,7 @@ export const DriverVerificationGate: React.FC<{ children: React.ReactNode }> = (
 
   useEffect(() => {
     if (needsWizard) {
-      router.replace('/driver-verification/personal-info' as any);
+      router.replace('/driver-verification/credentials' as any);
     }
   }, [needsWizard]);
 

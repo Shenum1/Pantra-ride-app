@@ -39,6 +39,10 @@ const DOCUMENT_META: Record<RequiredDocumentType, { title: string; description: 
   proof_of_ownership: { title: 'Proof of Ownership', description: 'Vehicle ownership documentation', icon: Car },
   insurance: { title: 'Vehicle Insurance', description: 'Proof of valid vehicle insurance', icon: ShieldCheck },
   roadworthiness: { title: 'Roadworthiness Certificate', description: 'Recent roadworthiness inspection report', icon: ClipboardCheck },
+  national_id: { title: 'Government ID (NIN)', description: 'Your NIN slip or National ID card', icon: FileText },
+  vehicle_exterior: { title: 'Vehicle Exterior', description: 'The vehicle with its plate number clearly visible', icon: Car },
+  vehicle_interior_front: { title: 'Interior: Front', description: 'Front seats and dashboard', icon: Car },
+  vehicle_interior_rear: { title: 'Interior: Back', description: 'Back seats', icon: Car },
 };
 
 const STATUS_BANNER: Record<string, { label: string; color: string; description: string }> = {
@@ -157,7 +161,7 @@ export default function DriverDocumentsScreen() {
           </Text>
           <TouchableOpacity
             style={styles.startButton}
-            onPress={() => router.push('/driver-verification/personal-info' as any)}
+            onPress={() => router.push('/driver-verification/credentials' as any)}
           >
             <Text style={styles.startButtonText}>Start Verification</Text>
           </TouchableOpacity>

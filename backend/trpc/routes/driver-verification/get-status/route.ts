@@ -10,7 +10,7 @@ export default driverProcedure.query(async ({ ctx }) => {
   const { data: driver, error: driverError } = await db
     .from("drivers")
     .select(
-      "id, verificationStatus, verificationProgress, rejectionReason, operatingState, vehicleCategory, emailVerifiedAt, fullLegalName, dateOfBirth, licenseNumber, licenseCategory, licenseIssueDate, licenseExpiryDate, vehiclePlateNumber, vehicleVin, vehicleEngineNumber"
+      "id, verificationStatus, verificationProgress, rejectionReason, operatingState, vehicleCategory, emailVerifiedAt, vehiclePlateNumber, vehicle"
     )
     .eq("id", ctx.driverId)
     .single();
@@ -95,16 +95,20 @@ export default driverProcedure.query(async ({ ctx }) => {
     vehicleCategory: driver.vehicleCategory,
     emailVerifiedAt: driver.emailVerifiedAt,
     profile: {
-      fullLegalName: driver.fullLegalName,
-      dateOfBirth: driver.dateOfBirth,
-      licenseNumber: driver.licenseNumber,
-      licenseCategory: driver.licenseCategory,
-      licenseIssueDate: driver.licenseIssueDate,
-      licenseExpiryDate: driver.licenseExpiryDate,
       vehiclePlateNumber: driver.vehiclePlateNumber,
-      vehicleVin: driver.vehicleVin,
-      vehicleEngineNumber: driver.vehicleEngineNumber,
+      vehicleMake: (driver.vehicle as Record<string, any> | null)?.make ?? null,
+      vehicleModel: (driver.vehicle as Record<string, any> | null)?.model ?? null,
+      vehicleYear: (driver.vehicle as Record<string, any> | null)?.year ?? null,
+      vehicleColor: (driver.vehicle as Record<string, any> | null)?.color ?? null,
     },
+    // Latest submission per document type, regardless of whether a state and vehicle
+    // category have been chosen yet (requiredDocuments below is empty until both are).
+    // The registration wizard uses this to show which slots are already captured.
+    submittedDocuments: Array.from(latestDocumentByType.values()).map((doc) => ({
+      type: doc.type,
+      status: doc.status,
+      rejectionReason: doc.rejectionReason,
+    })),
     requiredDocuments: requiredDocumentDetails,
   };
 });

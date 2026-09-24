@@ -19,7 +19,7 @@ import Colors from '@/constants/colors';
 // Shown once, right after a Google sign-in/sign-up that has no phone number on
 // file yet — email/password signup already collects phone inline, but a Google
 // sign-in is a single tap with no form. Reuses the exact OTP pattern already
-// proven in app/driver-verification/personal-info.tsx (updateUser + verifyOtp
+// proven in app/driver-verification (updateUser + verifyOtp
 // type:'phone_change') rather than the old rider phone-*login* flow, since this
 // attaches/verifies a phone number on the already-authenticated Google identity
 // instead of creating a separate one.

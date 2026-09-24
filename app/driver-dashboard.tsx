@@ -38,7 +38,7 @@ export default function DriverDashboard() {
         'Complete driver verification before going online.',
         [
           { text: 'Later', style: 'cancel' },
-          { text: 'View Status', onPress: () => router.push('/driver-verification/personal-info' as any) },
+          { text: 'View Status', onPress: () => router.push('/driver-verification/credentials' as any) },
         ]
       );
       return;

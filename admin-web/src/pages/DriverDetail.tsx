@@ -9,6 +9,7 @@ import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Field } from '../components/ui/Field';
 import { Table, type TableColumn } from '../components/ui/Table';
 import { driverVerificationStatusTone, documentStatusTone } from '../lib/status';
+import { docLabel } from '../lib/documentLabels';
 
 interface DriverDetailData {
   driver: {
@@ -16,8 +17,6 @@ interface DriverDetailData {
     name: string | null;
     email: string | null;
     phone: string | null;
-    fullLegalName: string | null;
-    dateOfBirth: string | null;
     operatingState: string | null;
     vehicleCategory: string | null;
     verificationStatus: string;
@@ -25,13 +24,15 @@ interface DriverDetailData {
     verificationStatusUpdatedAt: string | null;
     rejectionReason: string | null;
     emailVerifiedAt: string | null;
-    licenseNumber: string | null;
-    licenseCategory: string | null;
-    licenseIssueDate: string | null;
-    licenseExpiryDate: string | null;
     vehiclePlateNumber: string | null;
-    vehicleVin: string | null;
-    vehicleEngineNumber: string | null;
+    profileImage: string | null;
+    vehicle: {
+      make?: string;
+      model?: string;
+      year?: number;
+      color?: string;
+      licensePlate?: string;
+    } | null;
   };
   requiredDocuments: string[];
   documents: {
@@ -119,7 +120,7 @@ export default function DriverDetail() {
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-[26px] font-bold tracking-tight text-slate-900">
-              {driver.fullLegalName || driver.name || 'Unnamed driver'}
+              {driver.name || 'Unnamed driver'}
             </h1>
             <StatusLabel tone={driverVerificationStatusTone[driver.verificationStatus] ?? 'neutral'}>
               {driver.verificationStatus.replace(/_/g, ' ').toLowerCase()}
@@ -158,7 +159,6 @@ export default function DriverDetail() {
       <section>
         <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Profile</h2>
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-md border border-slate-200 bg-white p-5 md:grid-cols-3">
-          <Field label="Date of birth" value={driver.dateOfBirth} />
           <Field label="Operating state" value={driver.operatingState} />
           <Field label="Vehicle category" value={driver.vehicleCategory} />
           <Field label="Email verified" value={driver.emailVerifiedAt ? new Date(driver.emailVerifiedAt).toLocaleDateString() : 'Not verified'} />
@@ -167,14 +167,13 @@ export default function DriverDetail() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">License &amp; vehicle</h2>
+        <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-slate-400">Vehicle (as entered by the driver)</h2>
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 rounded-md border border-slate-200 bg-white p-5 md:grid-cols-3">
-          <Field label="License number" value={driver.licenseNumber} />
-          <Field label="License category" value={driver.licenseCategory} />
-          <Field label="License expiry" value={driver.licenseExpiryDate ? new Date(driver.licenseExpiryDate).toLocaleDateString() : null} />
           <Field label="Plate number" value={driver.vehiclePlateNumber} />
-          <Field label="VIN" value={driver.vehicleVin} />
-          <Field label="Engine number" value={driver.vehicleEngineNumber} />
+          <Field label="Make" value={driver.vehicle?.make ?? null} />
+          <Field label="Model" value={driver.vehicle?.model ?? null} />
+          <Field label="Year" value={driver.vehicle?.year != null ? String(driver.vehicle.year) : null} />
+          <Field label="Color" value={driver.vehicle?.color ?? null} />
         </div>
       </section>
 
@@ -188,13 +187,20 @@ export default function DriverDetail() {
               const doc = documentsByType.get(type);
               return (
                 <div key={type} className="flex items-center justify-between rounded-md border border-slate-200 bg-white p-4">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800 capitalize">{type.replace(/_/g, ' ')}</p>
-                    {doc ? (
-                      <p className="mt-0.5 text-xs text-slate-400">Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}</p>
-                    ) : (
-                      <p className="mt-0.5 text-xs text-slate-400">Not submitted</p>
+                  <div className="flex items-center gap-3">
+                    {doc?.signedUrl && (
+                      <a href={doc.signedUrl} target="_blank" rel="noreferrer">
+                        <img src={doc.signedUrl} alt={docLabel(type)} className="h-12 w-12 rounded object-cover" />
+                      </a>
                     )}
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{docLabel(type)}</p>
+                      {doc ? (
+                        <p className="mt-0.5 text-xs text-slate-400">Uploaded {new Date(doc.uploadedAt).toLocaleDateString()}</p>
+                      ) : (
+                        <p className="mt-0.5 text-xs text-slate-400">Not submitted</p>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {doc ? <StatusLabel tone={documentStatusTone[doc.status]}>{doc.status}</StatusLabel> : <StatusLabel tone="neutral">missing</StatusLabel>}

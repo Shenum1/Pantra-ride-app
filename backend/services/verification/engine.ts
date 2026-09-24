@@ -218,6 +218,25 @@ export async function runDocumentChecks(db: SupabaseClient, documentId: string):
   }
 }
 
+/** True once every typed field registration collects has been saved. */
+export function isDriverProfileComplete(driver: {
+  operatingState?: string | null;
+  vehicleCategory?: string | null;
+  vehiclePlateNumber?: string | null;
+  vehicle?: unknown;
+}): boolean {
+  const vehicle = (driver.vehicle ?? {}) as Record<string, unknown>;
+  return (
+    !!driver.operatingState &&
+    !!driver.vehicleCategory &&
+    !!driver.vehiclePlateNumber &&
+    !!vehicle.make &&
+    !!vehicle.model &&
+    !!vehicle.year &&
+    !!vehicle.color
+  );
+}
+
 /**
  * Runs the profile-level format check against the driver's already-persisted
  * profile fields. In practice submitProfile rejects invalid input before writing
@@ -229,7 +248,7 @@ export async function runDocumentChecks(db: SupabaseClient, documentId: string):
 export async function runProfileFormatCheck(db: SupabaseClient, driverId: string): Promise<void> {
   const { data: driver, error } = await db
     .from('drivers')
-    .select('fullLegalName, dateOfBirth, operatingState, licenseNumber, licenseIssueDate, licenseExpiryDate, vehiclePlateNumber, vehicle, vehicleVin, vehicleEngineNumber')
+    .select('operatingState, vehicleCategory, vehiclePlateNumber, vehicle')
     .eq('id', driverId)
     .single();
 
@@ -237,22 +256,16 @@ export async function runProfileFormatCheck(db: SupabaseClient, driverId: string
     throw new Error(`runProfileFormatCheck: driver ${driverId} not found (${error?.message ?? 'no row'})`);
   }
 
-  const hasAllRequiredFields =
-    !!driver.fullLegalName &&
-    !!driver.dateOfBirth &&
-    !!driver.operatingState &&
-    !!driver.licenseNumber &&
-    !!driver.licenseIssueDate &&
-    !!driver.licenseExpiryDate &&
-    !!driver.vehiclePlateNumber &&
-    !!driver.vehicleVin &&
-    !!driver.vehicleEngineNumber;
+  // The profile is saved in two steps (state, then vehicle details), so a partial
+  // profile is expected mid-registration — record nothing until it is complete.
+  // recomputeDriverVerificationStatus keeps the driver PENDING until then.
+  if (!isDriverProfileComplete(driver)) return;
 
   // submitProfile already runs validateDriverProfileFormat() and rejects invalid
-  // input with BAD_REQUEST before ever writing these columns — so by the time a row
-  // exists here, its fields are known-valid. This check verifies presence (a driver
-  // who never submitted a profile at all) rather than re-deriving format validity.
-  const status: FormatCheckStatus = hasAllRequiredFields ? 'pass' : 'fail';
+  // input with BAD_REQUEST before ever writing these columns — so by the time the
+  // profile is complete, its fields are known-valid. This check records that in the
+  // audit trail rather than re-deriving format validity.
+  const status: FormatCheckStatus = 'pass';
 
   await db.from('driver_document_verification_checks').insert({
     documentId: null,
@@ -266,7 +279,6 @@ export async function runProfileFormatCheck(db: SupabaseClient, driverId: string
     driverId,
     actorType: 'system',
     eventType: 'FORMAT_CHECK_RUN',
-    reason: status === 'fail' ? 'Driver profile is missing required fields.' : undefined,
   });
 }
 
@@ -280,7 +292,7 @@ export async function runProfileFormatCheck(db: SupabaseClient, driverId: string
 export async function recomputeDriverVerificationStatus(db: SupabaseClient, driverId: string): Promise<void> {
   const { data: driver, error: driverError } = await db
     .from('drivers')
-    .select('id, operatingState, vehicleCategory, verificationStatus, emailVerifiedAt')
+    .select('id, operatingState, vehicleCategory, vehiclePlateNumber, vehicle, verificationStatus, emailVerifiedAt')
     .eq('id', driverId)
     .single();
 
@@ -320,10 +332,13 @@ export async function recomputeDriverVerificationStatus(db: SupabaseClient, driv
     }
   }
 
-  // "Complete" requires every required document type submitted AND email
-  // verification done — a driver cannot enter the checking pipeline without it.
+  // "Complete" requires every required document type submitted, the typed profile
+  // fields saved, AND email verification done — a driver cannot enter the checking
+  // pipeline without all three (photos upload as they are taken, so they can arrive
+  // before the vehicle details are saved).
   const documentsComplete =
     requiredDocumentTypes.every((type) => submittedTypesWithLatestDoc.has(type)) &&
+    isDriverProfileComplete(driver) &&
     !!driver.emailVerifiedAt;
   const submittedRequiredCount = requiredDocumentTypes.filter((type) =>
     submittedTypesWithLatestDoc.has(type)

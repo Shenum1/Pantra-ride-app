@@ -244,4 +244,31 @@ describe('validateDriverProfileFormat — composed field-level validation', () =
     expect(result.valid).toBe(false);
     expect(result.fieldErrors.operatingState).toBeDefined();
   });
+
+  it('validates only the fields supplied (registration saves the profile in steps)', () => {
+    expect(validateDriverProfileFormat({ operatingState: 'Lagos' }).valid).toBe(true);
+    expect(validateDriverProfileFormat({}).valid).toBe(true);
+
+    const result = validateDriverProfileFormat({ vehiclePlateNumber: '123' });
+    expect(result.valid).toBe(false);
+    expect(Object.keys(result.fieldErrors)).toEqual(['vehiclePlateNumber']);
+  });
+
+  it('accepts the vehicle-step fields and rejects blank make, model or color', () => {
+    const vehicleStep = {
+      vehiclePlateNumber: 'ABC-123-DE',
+      vehicleYear: 2020,
+      vehicleMake: 'Toyota',
+      vehicleModel: 'Corolla',
+      vehicleColor: 'Silver',
+      today: new Date('2026-06-15T00:00:00Z'),
+    };
+    expect(validateDriverProfileFormat(vehicleStep).valid).toBe(true);
+
+    const result = validateDriverProfileFormat({ ...vehicleStep, vehicleMake: ' ', vehicleColor: '' });
+    expect(result.valid).toBe(false);
+    expect(result.fieldErrors.vehicleMake).toBeDefined();
+    expect(result.fieldErrors.vehicleColor).toBeDefined();
+    expect(result.fieldErrors.vehicleModel).toBeUndefined();
+  });
 });

@@ -11,6 +11,7 @@ import { CardSkeleton } from '../components/ui/Skeleton';
 import { PageHeader } from '../components/ui/PageHeader';
 import { FilterTabs } from '../components/ui/FilterTabs';
 import { documentStatusTone, driverVerificationStatusTone } from '../lib/status';
+import { DOC_LABELS } from '../lib/documentLabels';
 
 interface DriverDoc {
   id: string;
@@ -48,20 +49,6 @@ interface DriverVerificationRow {
 interface DriversResponse {
   drivers: DriverVerificationRow[];
 }
-
-const DOC_LABELS: Record<string, string> = {
-  license: "Driver's License",
-  insurance: 'Vehicle Insurance',
-  registration: 'Vehicle Registration',
-  background_check: 'Background Check',
-  vehicle_inspection: 'Vehicle Inspection',
-  drivers_license_front: "Driver's License (front)",
-  drivers_license_back: "Driver's License (back)",
-  driver_selfie: 'Selfie',
-  vehicle_registration: 'Vehicle Registration',
-  proof_of_ownership: 'Proof of Ownership',
-  roadworthiness: 'Roadworthiness Certificate',
-};
 
 const DRIVER_FILTER_OPTIONS: { value: DriverStatusFilter; label: string }[] = [
   { value: 'MANUAL_REVIEW', label: 'Manual review' },

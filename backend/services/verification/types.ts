@@ -5,10 +5,14 @@ export type DriverDocumentType =
   | 'drivers_license_front'
   | 'drivers_license_back'
   | 'driver_selfie'
+  | 'national_id'
   | 'vehicle_registration'
   | 'proof_of_ownership'
   | 'insurance'
-  | 'roadworthiness';
+  | 'roadworthiness'
+  | 'vehicle_exterior'
+  | 'vehicle_interior_front'
+  | 'vehicle_interior_rear';
 
 export interface OcrExtractionResult {
   status: 'ok' | 'not_configured' | 'error';

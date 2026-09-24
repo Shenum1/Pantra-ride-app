@@ -74,7 +74,7 @@ export default function DriverDashboard() {
         verificationBanner?.body ?? 'Complete your driver verification before going online.',
         [
           { text: 'Later', style: 'cancel' },
-          { text: 'View Status', onPress: () => router.push('/driver-verification/personal-info' as any) },
+          { text: 'View Status', onPress: () => router.push('/driver-verification/credentials' as any) },
         ]
       );
       return;
@@ -214,7 +214,7 @@ export default function DriverDashboard() {
         {verificationBanner && (
           <TouchableOpacity
             style={styles.verificationBanner}
-            onPress={() => router.push('/driver-verification/personal-info' as any)}
+            onPress={() => router.push('/driver-verification/credentials' as any)}
             activeOpacity={0.85}
             testID="driver-verification-banner"
           >

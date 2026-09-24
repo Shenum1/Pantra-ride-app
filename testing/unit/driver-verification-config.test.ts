@@ -11,15 +11,32 @@ describe('resolveRequiredDocuments — fallback-only (no live rows)', () => {
     expect(result).toEqual(DEFAULT_VERIFICATION_REQUIREMENTS.Lagos);
   });
 
-  it('includes roadworthiness for Lagos but not for a state without that override', () => {
-    expect(resolveRequiredDocuments('Lagos', 'standard')).toContain('roadworthiness');
-    expect(resolveRequiredDocuments('Rivers', 'standard')).not.toContain('roadworthiness');
+  it('requires the same 8 registration documents in every state', () => {
+    const expected = [
+      'driver_selfie',
+      'drivers_license_front',
+      'national_id',
+      'vehicle_exterior',
+      'vehicle_registration',
+      'roadworthiness',
+      'vehicle_interior_front',
+      'vehicle_interior_rear',
+    ];
+    expect(resolveRequiredDocuments('Lagos', 'standard')).toEqual(expected);
+    expect(resolveRequiredDocuments('Rivers', 'xl')).toEqual(expected);
+  });
+
+  it('no longer requires the license back, insurance or proof of ownership', () => {
+    const result = resolveRequiredDocuments('Lagos', 'standard');
+    expect(result).not.toContain('drivers_license_back');
+    expect(result).not.toContain('insurance');
+    expect(result).not.toContain('proof_of_ownership');
   });
 
   it('falls back to the baseline checklist for an unknown/unseeded state', () => {
     const result = resolveRequiredDocuments('Unknown State', 'standard');
     expect(result).toEqual(DEFAULT_VERIFICATION_REQUIREMENTS.Rivers); // same baseline shape
-    expect(result).not.toContain('roadworthiness');
+    expect(result).toContain('roadworthiness');
   });
 
   it('returns the same fallback when liveRows is explicitly empty', () => {

@@ -6,10 +6,9 @@ export default function DriverVerificationLayout() {
   return (
     <DriverVerificationWizardProvider>
       <Stack screenOptions={{ headerShown: true }}>
-        <Stack.Screen name="personal-info" options={{ title: 'Personal Information' }} />
-        <Stack.Screen name="license-info" options={{ title: "Driver's License" }} />
-        <Stack.Screen name="vehicle-info" options={{ title: 'Vehicle Information' }} />
-        <Stack.Screen name="review-submit" options={{ title: 'Review & Submit' }} />
+        <Stack.Screen name="credentials" options={{ title: 'Step 2 of 3 · Driver Credentials' }} />
+        <Stack.Screen name="vehicle" options={{ title: 'Step 3 of 3 · Vehicle Information' }} />
+        <Stack.Screen name="review-submit" options={{ title: 'Review' }} />
       </Stack>
     </DriverVerificationWizardProvider>
   );

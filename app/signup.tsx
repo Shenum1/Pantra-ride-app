@@ -45,7 +45,7 @@ export default function SignupScreen() {
 
   // Inline step, not a separate screen: after signup succeeds, this same
   // screen swaps its form content for a verification-code step. See
-  // app/driver-verification/personal-info.tsx for the equivalent driver-side
+  // components/EmailVerificationCard.tsx for the equivalent driver-side
   // gate — both call supabase.auth.verifyOtp({ type: 'signup' }) directly,
   // no isolated client needed here (unlike password reset) since this is the
   // account owner completing their own signup.
