@@ -5,6 +5,7 @@ import MapView, { Camera, Marker, Polyline, PROVIDER_GOOGLE, Region } from 'reac
 import * as ExpoLocation from 'expo-location';
 
 import Colors from '@/constants/colors';
+import { MAP_MARKER_COLORS, MINIMAL_LIGHT_MAP_STYLE } from '@/constants/map-style';
 import { NIGERIA_DEFAULT_REGION } from '@/constants/nigeria-region';
 import { Skeleton } from '@/components/skeletons';
 import { useLocation } from '@/hooks/useLocationStore';
@@ -510,6 +511,7 @@ const Map: React.FC<MapProps> = ({
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={styles.map}
+            customMapStyle={MINIMAL_LIGHT_MAP_STYLE}
             initialRegion={resolvedInitialRegion as Region}
             showsUserLocation={Boolean(userLocation)}
             showsMyLocationButton={false}
@@ -534,7 +536,24 @@ const Map: React.FC<MapProps> = ({
                 coordinate={{ latitude: marker.location.latitude, longitude: marker.location.longitude }}
                 title={marker.title}
                 description={marker.description}
-              />
+                anchor={{ x: 0.5, y: 0.5 }}
+              >
+                {marker.type === 'driver' ? (
+                  <View style={styles.driverMarkerContainer}>
+                    <View style={[styles.driverMarker, styles.liveDriverMarker]}>
+                      <Car size={16} color={Colors.light.white} />
+                    </View>
+                  </View>
+                ) : marker.type === 'dropoff' ? (
+                  <View style={styles.dropoffMarker}>
+                    <MapPin size={12} color={Colors.light.white} />
+                  </View>
+                ) : (
+                  <View style={styles.pickupMarker}>
+                    <MapPin size={12} color={Colors.light.white} />
+                  </View>
+                )}
+              </Marker>
             ))}
           </MapView>
         ) : shouldRenderStaticMap ? (
@@ -819,7 +838,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.primary,
+    backgroundColor: MAP_MARKER_COLORS.pickup,
   },
   dropoffMarker: {
     width: 20,
@@ -827,7 +846,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.secondary,
+    backgroundColor: MAP_MARKER_COLORS.dropoff,
   },
   compassButton: {
     position: 'absolute',

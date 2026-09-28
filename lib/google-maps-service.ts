@@ -1,6 +1,7 @@
 import { Location } from '@/types';
 import { Platform } from 'react-native';
 import { NIGERIA_DEFAULT_COORDS } from '@/constants/nigeria-region';
+import { MAP_MARKER_COLORS, MINIMAL_LIGHT_MAP_STYLE, staticMapStyleParams, toStaticMapHex } from '@/constants/map-style';
 
 function buildGoogleMapsProxyUrl(url: string): string {
   const googleUrl = new URL(url);
@@ -243,12 +244,13 @@ export class GoogleMapsService {
     const height = Math.min(params.height ?? 900, 1200);
     const markerParams = encodeStaticMarkers((params.markers ?? []).map((marker) => ({
       location: marker.location,
-      color: marker.type === 'dropoff' ? 'red' : marker.type === 'driver' ? 'black' : 'blue',
+      color: toStaticMapHex(marker.type === 'dropoff' ? MAP_MARKER_COLORS.dropoff : marker.type === 'driver' ? MAP_MARKER_COLORS.driver : MAP_MARKER_COLORS.pickup),
       label: marker.type === 'dropoff' ? 'D' : marker.type === 'pickup' ? 'P' : undefined,
     })));
     const path = params.routePolyline ? `&path=enc:${encodeURIComponent(params.routePolyline)}` : '';
+    const styleParams = staticMapStyleParams(MINIMAL_LIGHT_MAP_STYLE);
 
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${params.center.latitude},${params.center.longitude}&zoom=${params.zoom ?? 14}&size=${width}x${height}&scale=2&maptype=roadmap${markerParams}${path}&key=${GOOGLE_MAPS_API_KEY}`;
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${params.center.latitude},${params.center.longitude}&zoom=${params.zoom ?? 14}&size=${width}x${height}&scale=2&maptype=roadmap${styleParams}${markerParams}${path}&key=${GOOGLE_MAPS_API_KEY}`;
   }
 
   static async testApiKey(): Promise<DiagnosticResult> {
