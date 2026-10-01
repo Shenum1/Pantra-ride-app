@@ -79,6 +79,7 @@ import driverVerificationSubmitProfileRoute from "./routes/driver-verification/s
 import driverVerificationSubmitDocumentRoute from "./routes/driver-verification/submit-document/route";
 import driverVerificationSyncAuthStatusRoute from "./routes/driver-verification/sync-auth-verification-status/route";
 import driverVerificationCheckExpiryRoute from "./routes/driver-verification/check-expiry/route";
+import driverVerificationBecomeDriverRoute from "./routes/driver-verification/become-driver/route";
 import claimAdRewardRoute from "./routes/rewards/claim-ad-reward/route";
 import getAdRewardStatusRoute from "./routes/rewards/get-ad-reward-status/route";
 import tipsCreateRoute from "./routes/payments/tips/create/route";
@@ -229,6 +230,7 @@ export const appRouter = createTRPCRouter({
     submitDocument: driverVerificationSubmitDocumentRoute,
     syncAuthVerificationStatus: driverVerificationSyncAuthStatusRoute,
     checkExpiry: driverVerificationCheckExpiryRoute,
+    becomeDriver: driverVerificationBecomeDriverRoute,
   }),
   notifications: createTRPCRouter({
     notifyDrivers: notifyDriversRoute,

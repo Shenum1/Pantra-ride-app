@@ -16,19 +16,25 @@ export default authedProcedure
     if (ticket.filedByUserId !== ctx.userId) throw new Error("Not authorized to reply to this ticket.");
     if (ticket.status === "closed") throw new Error("This ticket is closed.");
 
-    await db.from("support_ticket_messages").insert({
+    // See the matching note in create-ticket/route.ts — the messages/events tables
+    // use 'user', not 'rider'.
+    const senderType = ticket.filedByRole === "driver" ? "driver" : "user";
+
+    const { error: messageError } = await db.from("support_ticket_messages").insert({
       ticketId: input.ticketId,
-      senderType: ticket.filedByRole,
+      senderType,
       senderId: ctx.userId,
       text: input.text,
     });
+    if (messageError) throw new Error(messageError.message);
 
-    await db.from("support_ticket_events").insert({
+    const { error: eventError } = await db.from("support_ticket_events").insert({
       ticketId: input.ticketId,
-      actorType: ticket.filedByRole,
+      actorType: senderType,
       actorId: ctx.userId,
       eventType: "MESSAGE_SENT",
     });
+    if (eventError) throw new Error(eventError.message);
 
     await db.from("support_tickets").update({ updatedAt: new Date().toISOString() }).eq("id", input.ticketId);
 

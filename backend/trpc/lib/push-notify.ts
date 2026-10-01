@@ -69,3 +69,42 @@ export async function notifyDriverOfTip(
     { type: 'tip_received', rideId, amount }
   );
 }
+
+// Fires on an admin's explicit VERIFIED/REJECTED decision (see
+// backend/trpc/routes/admin/driver-verification/decide/route.ts). Covers both
+// a fresh driver signup and a rider who upgraded via
+// driver-verification/become-driver — both converge on the same drivers row
+// and the same decide endpoint, so this one call site is enough for either.
+export async function notifyDriverOfVerificationDecision(
+  supabaseAdmin: SupabaseClient,
+  driverId: string,
+  decision: 'VERIFIED' | 'REJECTED',
+  reason?: string | null
+): Promise<void> {
+  const { data: driver } = await supabaseAdmin
+    .from('drivers')
+    .select('pushToken')
+    .eq('id', driverId)
+    .single();
+
+  const pushToken = driver?.pushToken as string | null | undefined;
+  if (!pushToken) return;
+
+  if (decision === 'VERIFIED') {
+    await batchSendPush(
+      [pushToken],
+      "You're verified! 🎉",
+      'Your account has been approved — you can now go online and start accepting rides.',
+      { type: 'driver_verification_decided', decision }
+    );
+  } else {
+    await batchSendPush(
+      [pushToken],
+      'Verification update',
+      reason
+        ? `Your verification was not approved: ${reason}`
+        : 'Your verification was not approved. Please check your documents and resubmit.',
+      { type: 'driver_verification_decided', decision, reason: reason ?? null }
+    );
+  }
+}

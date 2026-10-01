@@ -18,6 +18,7 @@ import {
   Plus,
   CheckCircle,
   Star,
+  Target,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
@@ -42,44 +43,10 @@ const GOAL_TYPE_CONFIG: Record<GoalType, { icon: (color: string) => React.ReactN
   rating: { icon: (color) => <TrendingUp size={24} color={color} />, color: '#9C27B0', unit: '' },
 };
 
-const DEFAULT_GOALS: GoalDefinition[] = [
-  {
-    id: 'weekly-earnings',
-    title: 'Weekly Earnings',
-    description: 'Earn ₦1,000 this week',
-    type: 'earnings',
-    target: 1000,
-    deadline: 'This week',
-    unit: '₦',
-  },
-  {
-    id: 'total-trips',
-    title: 'Trip Milestone',
-    description: 'Complete 200 trips',
-    type: 'trips',
-    target: 200,
-    deadline: 'Ongoing',
-    unit: '',
-  },
-  {
-    id: 'online-hours',
-    title: 'Online Hours',
-    description: 'Spend 8 hours online',
-    type: 'hours',
-    target: 8,
-    deadline: 'Ongoing',
-    unit: 'h',
-  },
-  {
-    id: 'rating-goal',
-    title: 'Rating Goal',
-    description: 'Maintain 4.9+ rating',
-    type: 'rating',
-    target: 4.9,
-    deadline: 'Ongoing',
-    unit: '',
-  },
-];
+// No seeded goals — every driver starts with a blank slate and adds their own via
+// "Add Goal" below. There is no backend-driven goals feature yet, so these live only
+// in this screen's state for the current session.
+const DEFAULT_GOALS: GoalDefinition[] = [];
 
 export default function DriverGoals() {
   const { stats } = useDriverStore();
@@ -306,9 +273,19 @@ export default function DriverGoals() {
       >
         {showAddGoal && <AddGoalForm />}
 
-        {goals.map((goal) => (
-          <GoalCard key={goal.id} goal={goal} />
-        ))}
+        {goals.length === 0 && !showAddGoal ? (
+          <View style={styles.emptyState}>
+            <Target size={48} color={Colors.light.lightGray} />
+            <Text style={styles.emptyStateText}>No goals yet</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Tap the + above to set your first goal
+            </Text>
+          </View>
+        ) : (
+          goals.map((goal) => (
+            <GoalCard key={goal.id} goal={goal} />
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -527,5 +504,22 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: Colors.light.white,
     fontWeight: '600',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
   },
 });

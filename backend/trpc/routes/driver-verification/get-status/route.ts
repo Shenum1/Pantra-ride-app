@@ -17,6 +17,17 @@ export default driverProcedure.query(async ({ ctx }) => {
 
   if (driverError || !driver) throw new Error("Driver profile not found.");
 
+  // Distinguishes an existing rider who also registered as a driver (users.role is
+  // left at 'rider' — see database/schemas/supabase-schema-user-roles.sql) from a
+  // fresh driver-only signup (users.role === 'driver'), so the client can decide
+  // where "Finish" should land them: back in the rider app to wait for review, vs
+  // straight into the driver dashboard, which is all a fresh driver signup has.
+  const { data: userRow } = await db
+    .from("users")
+    .select("role")
+    .eq("uid", ctx.driverUserId)
+    .single();
+
   let requiredDocuments: string[] = [];
   if (driver.operatingState && driver.vehicleCategory) {
     const { data: requirementRows } = await db
@@ -88,6 +99,7 @@ export default driverProcedure.query(async ({ ctx }) => {
   });
 
   return {
+    primaryRole: userRow?.role ?? null,
     verificationStatus: driver.verificationStatus,
     verificationProgress: driver.verificationProgress,
     rejectionReason: driver.rejectionReason,

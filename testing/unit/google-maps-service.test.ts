@@ -25,7 +25,7 @@ describe('GoogleMapsService', () => {
     expect(url).toContain('maps.googleapis.com/maps/api/staticmap');
     expect(url).toContain('center=9.0765,7.3986');
     expect(url).toContain('size=500x400');
-    expect(url).toContain('markers=color:0x14B8A6|label:P|9.08,7.4');
+    expect(url).toContain('markers=color:blue|label:P|9.08,7.4');
     expect(url).toContain('key=unit-test-key');
   });
 

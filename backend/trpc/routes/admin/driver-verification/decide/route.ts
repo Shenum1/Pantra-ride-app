@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { adminProcedure } from "../../../../create-context";
+import { notifyDriverOfVerificationDecision } from "../../../../lib/push-notify";
 
 // The only path (besides the disabled-by-default auto-approve path in
 // backend/services/verification/engine.ts) that can move a driver to VERIFIED.
@@ -46,6 +47,14 @@ export default adminProcedure
       toStatus: input.decision,
       reason: input.reason ?? null,
     });
+
+    // Fire-and-forget: a failed push must never fail the decision itself —
+    // the DB update and audit log above are already committed by this point.
+    if (input.decision === "VERIFIED" || input.decision === "REJECTED") {
+      void notifyDriverOfVerificationDecision(db, input.driverId, input.decision, input.reason).catch(
+        (e: unknown) => console.error("Driver verification push notification failed:", e)
+      );
+    }
 
     return { success: true, verificationStatus: input.decision };
   });

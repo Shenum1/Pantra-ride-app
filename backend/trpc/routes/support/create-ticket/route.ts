@@ -30,6 +30,12 @@ export default authedProcedure
       driverId = driver?.id ?? null;
     }
 
+    // support_ticket_messages.senderType / support_ticket_events.actorType only
+    // accept 'user' | 'driver' | 'admin' — users.role says 'rider', not 'user' —
+    // so this maps between the two rather than passing profile.role straight
+    // through, which would violate the check constraint for every rider ticket.
+    const senderType = profile.role === "driver" ? "driver" : "user";
+
     const { data: ticket, error: ticketError } = await db
       .from("support_tickets")
       .insert({
@@ -46,20 +52,22 @@ export default authedProcedure
 
     if (ticketError || !ticket) throw new Error(ticketError?.message ?? "Could not create ticket.");
 
-    await db.from("support_ticket_messages").insert({
+    const { error: messageError } = await db.from("support_ticket_messages").insert({
       ticketId: ticket.id,
-      senderType: profile.role,
+      senderType,
       senderId: ctx.userId,
       text: input.message,
     });
+    if (messageError) throw new Error(messageError.message);
 
-    await db.from("support_ticket_events").insert({
+    const { error: eventError } = await db.from("support_ticket_events").insert({
       ticketId: ticket.id,
-      actorType: profile.role,
+      actorType: senderType,
       actorId: ctx.userId,
       eventType: "CREATED",
       toStatus: "open",
     });
+    if (eventError) throw new Error(eventError.message);
 
     return { ticketId: ticket.id };
   });

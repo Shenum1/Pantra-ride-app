@@ -1,7 +1,8 @@
 import { Tabs } from "expo-router";
 import { Home, MapPin, Wallet, User } from "lucide-react-native";
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, Platform } from "react-native";
+import { BlurView } from "expo-blur";
 import { AuthGuard } from "@/components/AuthGuard";
 import { DriverVerificationGate } from "@/components/DriverVerificationGate";
 import { useTheme } from "@/hooks/useThemeStore";
@@ -15,78 +16,45 @@ export default function DriverTabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarBackground: () => (
-          <View style={[
-            styles.tabBarBackground,
-            { backgroundColor: isDark ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)' }
-          ]} />
-        ),
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.gray,
-        tabBarLabelStyle: styles.tabBarLabel,
-        tabBarItemStyle: styles.tabBarItem,
+        tabBarShowLabel: false,
+        tabBarStyle: styles.tabBar,
+        tabBarBackground: () => (
+          <BlurView
+            intensity={65}
+            tint={isDark ? "dark" : "light"}
+            style={styles.tabBarBackground}
+          />
+        ),
       }}
     >
       <Tabs.Screen
         name="dashboard"
         options={{
           title: "Home",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && {
-              ...styles.focusedIconContainer,
-              backgroundColor: colors.primaryLight,
-              shadowColor: colors.primary,
-            }]}>
-              <Home size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-            </View>
-          ),
+          tabBarIcon: ({ color }) => <Home size={20} color={color} />,
         }}
       />
       <Tabs.Screen
         name="trips"
         options={{
           title: "Trips",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && {
-              ...styles.focusedIconContainer,
-              backgroundColor: colors.primaryLight,
-              shadowColor: colors.primary,
-            }]}>
-              <MapPin size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-            </View>
-          ),
+          tabBarIcon: ({ color }) => <MapPin size={20} color={color} />,
         }}
       />
       <Tabs.Screen
         name="wallet"
         options={{
           title: "Wallet",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && {
-              ...styles.focusedIconContainer,
-              backgroundColor: colors.primaryLight,
-              shadowColor: colors.primary,
-            }]}>
-              <Wallet size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-            </View>
-          ),
+          tabBarIcon: ({ color }) => <Wallet size={20} color={color} />,
         }}
       />
-
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.iconContainer, focused && {
-              ...styles.focusedIconContainer,
-              backgroundColor: colors.primaryLight,
-              shadowColor: colors.primary,
-            }]}>
-              <User size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-            </View>
-          ),
+          tabBarIcon: ({ color }) => <User size={20} color={color} />,
         }}
       />
     </Tabs>
@@ -98,50 +66,28 @@ export default function DriverTabLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
-    height: 65,
-    borderRadius: 32,
-    paddingBottom: 8,
-    paddingTop: 8,
+    left: '50%',
+    width: 280,
+    marginLeft: -140,
+    bottom: Platform.OS === 'ios' ? 30 : 20,
+    height: 56,
+    borderRadius: 28,
     borderTopWidth: 0,
+    backgroundColor: 'transparent',
+    paddingTop: 6,
+    paddingBottom: 6,
     elevation: 15,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 8,
     },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
   },
   tabBarBackground: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 32,
-  },
-  tabBarLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: -2,
-  },
-  tabBarItem: {
-    paddingVertical: 8,
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 0,
-  },
-  focusedIconContainer: {
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 8,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
 });

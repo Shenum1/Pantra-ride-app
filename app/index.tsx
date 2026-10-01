@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { router } from 'expo-router';
 import { useAuth } from '@/hooks/useAuthStore';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
+import { useDriverVerification } from '@/hooks/useDriverVerification';
 import {
   View,
   Text,
@@ -23,6 +24,11 @@ const SPLASH_MIN_DURATION_MS = 2600;
 export default function Index() {
   const { isAuthenticated: userAuthenticated, isLoading: userLoading, user } = useAuth();
   const { isAuthenticated: driverAuthenticated, isLoading: driverLoading } = useDriverAuth();
+  // Only relevant/queried when driverAuthenticated — distinguishes an existing rider
+  // who also registered as a driver (should default back into the rider app while
+  // pending, not the driver dashboard) from a fresh driver-only signup (should land
+  // in their dashboard as always). See backend/trpc/routes/driver-verification/get-status.
+  const { status: driverStatus, isLoading: driverStatusLoading } = useDriverVerification();
   const { colors } = useTheme();
   const [isSplashReady, setIsSplashReady] = useState<boolean>(false);
   const [videoFailed, setVideoFailed] = useState<boolean>(false);
@@ -118,13 +124,23 @@ export default function Index() {
       return;
     }
 
+    // Only wait on the extra role lookup when it's actually relevant (an
+    // authenticated driver session) — every other cold start is unaffected.
+    if (driverAuthenticated && driverStatusLoading) {
+      console.log('Index: Waiting to resolve primary role for driver session');
+      return;
+    }
+
     const timer = setTimeout(() => {
-      if (driverAuthenticated) {
+      const isPrimarilyRider = driverAuthenticated && driverStatus?.primaryRole === 'rider';
+      if (driverAuthenticated && !isPrimarilyRider) {
         console.log('Index: Driver authenticated, navigating to driver dashboard');
         router.replace('/(driver-tabs)/dashboard');
       } else if (userAuthenticated) {
         console.log('Index: User authenticated, navigating to home');
         router.replace('/(tabs)/home');
+      } else if (driverAuthenticated) {
+        router.replace('/(driver-tabs)/dashboard');
       } else {
         console.log('Index: No authentication, navigating to role selection');
         router.replace('/role-selection');
@@ -132,7 +148,7 @@ export default function Index() {
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [driverAuthenticated, driverLoading, isSplashReady, user, userAuthenticated, userLoading, videoFailed]);
+  }, [driverAuthenticated, driverLoading, driverStatus?.primaryRole, driverStatusLoading, isSplashReady, user, userAuthenticated, userLoading, videoFailed]);
 
   const translateY = floatAnim.interpolate({
     inputRange: [0, 1],

@@ -43,7 +43,6 @@ interface Place {
   image: string;
   address: string;
   openHours?: string;
-  priceRange?: string;
   description: string;
   location?: Location;
 }
@@ -98,11 +97,6 @@ function formatPlaceType(types: string[]): string {
   return specific.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-function formatPriceRange(priceLevel?: number): string | undefined {
-  if (typeof priceLevel !== 'number' || priceLevel <= 0) return undefined;
-  return '₦'.repeat(priceLevel);
-}
-
 function mapToPlace(result: NearbyPlaceResult, categoryId: string, userLocation: Location): Place {
   const photoUrl = result.photoReference ? GoogleMapsService.getPlacePhotoUrl(result.photoReference) : null;
 
@@ -115,7 +109,6 @@ function mapToPlace(result: NearbyPlaceResult, categoryId: string, userLocation:
     image: photoUrl ?? CATEGORY_FALLBACK_IMAGE[categoryId] ?? DEFAULT_FALLBACK_IMAGE,
     address: result.address,
     openHours: result.isOpenNow === undefined ? undefined : (result.isOpenNow ? 'Open now' : 'Closed now'),
-    priceRange: formatPriceRange(result.priceLevel),
     description: formatPlaceType(result.types),
     location: result.location,
   };
@@ -262,12 +255,6 @@ export default function DiscoverScreen() {
                 {item.openHours}
               </Text>
             </View>
-          )}
-          
-          {item.priceRange && (
-            <Text style={[styles.priceRange, { color: colors.primary }]}>
-              {item.priceRange}
-            </Text>
           )}
         </View>
         
@@ -620,10 +607,6 @@ const styles = StyleSheet.create({
   openHours: {
     fontSize: 12,
     marginLeft: 4,
-  },
-  priceRange: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   description: {
     fontSize: 14,

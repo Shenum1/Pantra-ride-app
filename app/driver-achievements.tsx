@@ -8,16 +8,12 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import {
-  Star,
-  Award,
   Trophy,
-  Target,
   ArrowLeft,
   CheckCircle,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
-import { useDriverStore } from '@/hooks/useDriverStore';
 
 interface Achievement {
   id: string;
@@ -31,52 +27,10 @@ interface Achievement {
 }
 
 export default function DriverAchievements() {
-  const { stats } = useDriverStore();
-  const totalRides = stats?.totalRides ?? 0;
-  const averageRating = stats?.averageRating ?? null;
-
-  const achievements: Achievement[] = useMemo(() => [
-    {
-      id: 'first-ride',
-      title: 'First Ride',
-      description: 'Complete your first ride',
-      icon: <Star size={24} color="#FFD700" />,
-      earned: totalRides >= 1,
-      progress: Math.min(totalRides, 1),
-      total: 1,
-      color: '#FFD700',
-    },
-    {
-      id: 'century-club',
-      title: 'Century Club',
-      description: 'Complete 100 rides',
-      icon: <Trophy size={24} color="#FF9800" />,
-      earned: totalRides >= 100,
-      progress: Math.min(totalRides, 100),
-      total: 100,
-      color: '#FF9800',
-    },
-    {
-      id: 'perfect-rating',
-      title: 'Highly Rated',
-      description: 'Maintain a 4.9+ rating across 50 rides',
-      icon: <Award size={24} color="#4CAF50" />,
-      earned: totalRides >= 50 && (averageRating ?? 0) >= 4.9,
-      progress: Math.min(totalRides, 50),
-      total: 50,
-      color: '#4CAF50',
-    },
-    {
-      id: 'thousand-club',
-      title: 'Thousand Club',
-      description: 'Complete 1000 rides',
-      icon: <Target size={24} color="#FF5722" />,
-      earned: totalRides >= 1000,
-      progress: Math.min(totalRides, 1000),
-      total: 1000,
-      color: '#FF5722',
-    },
-  ], [totalRides, averageRating]);
+  // No achievements feature exists yet — there is no backend-driven definition of what
+  // a driver can earn, so this screen shows an honest empty state rather than a fixed
+  // set of badges that would look the same for every driver regardless of activity.
+  const achievements: Achievement[] = useMemo(() => [], []);
 
   const AchievementCard = ({ achievement }: { achievement: Achievement }) => (
     <View style={[
@@ -172,9 +126,19 @@ export default function DriverAchievements() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {achievements.map((achievement) => (
-          <AchievementCard key={achievement.id} achievement={achievement} />
-        ))}
+        {achievements.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Trophy size={48} color={Colors.light.lightGray} />
+            <Text style={styles.emptyStateText}>No achievements yet</Text>
+            <Text style={styles.emptyStateSubtext}>
+              Achievements you earn will show up here
+            </Text>
+          </View>
+        ) : (
+          achievements.map((achievement) => (
+            <AchievementCard key={achievement.id} achievement={achievement} />
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -305,6 +269,23 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 12,
+    color: Colors.light.textSecondary,
+    textAlign: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
     color: Colors.light.textSecondary,
     textAlign: 'center',
   },

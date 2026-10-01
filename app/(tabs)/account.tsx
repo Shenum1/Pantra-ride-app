@@ -1,9 +1,9 @@
-import { 
-  ChevronRight, 
-  CreditCard, 
-  HelpCircle, 
-  Star, 
-  User, 
+import {
+  ChevronRight,
+  CreditCard,
+  HelpCircle,
+  Star,
+  User,
   Home,
   Briefcase,
   Plus,
@@ -23,8 +23,9 @@ import {
   ShieldCheck,
   Camera,
   Wallet,
+  Car,
 } from "lucide-react-native";
-import React from "react";
+import React, { useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -33,10 +34,14 @@ import {
   View,
   Alert,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/useAuthStore";
+import { useDriverAuth } from "@/hooks/useDriverAuthStore";
+import { useDriverVerification } from "@/hooks/useDriverVerification";
+import { CREDENTIAL_DOCUMENT_TYPES, VEHICLE_DOCUMENT_TYPES } from "@/lib/driver-verification-config";
 import { useTheme } from "@/hooks/useThemeStore";
 
 interface MenuItemProps {
@@ -80,9 +85,80 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, title, subtitle, onPress, tit
 
 export default function AccountScreen() {
   const { user, logout } = useAuth();
+  const { driver, becomeDriver } = useDriverAuth();
+  const { verificationStatus, status: driverVerificationDetail } = useDriverVerification();
   const { colors, themeMode, changeTheme } = useTheme();
   const insets = useSafeAreaInsets();
-  
+  const [isStartingDriverSignup, setIsStartingDriverSignup] = useState(false);
+
+  // Judged from what's actually been submitted, using the exact same check
+  // app/driver-verification/review-submit.tsx uses to decide "ready" — every
+  // credential/vehicle document type present and not rejected, plus a verified
+  // email. Deliberately NOT status.requiredDocuments: that list only populates
+  // once operatingState/vehicleCategory resolve, and can be empty for reasons
+  // unrelated to whether the rider actually finished submitting, which would
+  // leave this stuck as "not processing" forever.
+  const submittedTypes = new Set(
+    (driverVerificationDetail?.submittedDocuments ?? [])
+      .filter((doc) => doc.status !== 'rejected')
+      .map((doc) => doc.type)
+  );
+  const allDocumentsSubmitted = [...CREDENTIAL_DOCUMENT_TYPES, ...VEHICLE_DOCUMENT_TYPES]
+    .every((type) => submittedTypes.has(type));
+  const emailVerified = !!driverVerificationDetail?.emailVerifiedAt;
+  const isProcessing = !!driver
+    && verificationStatus !== 'VERIFIED'
+    && allDocumentsSubmitted
+    && emailVerified;
+
+  const handleDriverEntry = async () => {
+    if (isStartingDriverSignup) return;
+    if (verificationStatus === 'VERIFIED') {
+      router.replace('/(driver-tabs)/dashboard');
+      return;
+    }
+    if (isProcessing) {
+      Alert.alert(
+        'Verification in Progress',
+        'Your documents are being reviewed. We will notify you once a decision is made.'
+      );
+      return;
+    }
+    // Runs even when a `drivers` row already exists (resuming an in-progress
+    // application) — becomeDriver is idempotent, and this is what actually
+    // guarantees the 'driver' user_roles grant is in place before the wizard's
+    // driverProcedure-gated routes (document upload, etc.) get called. Without
+    // this, a driver row created by an earlier attempt whose role grant didn't
+    // go through would keep failing with "This account does not have a driver
+    // profile" on every subsequent visit, with no way to self-heal.
+    setIsStartingDriverSignup(true);
+    try {
+      await becomeDriver();
+      router.push('/driver-verification/credentials');
+    } catch (error) {
+      console.error('Account: become driver failed:', error);
+      Alert.alert('Error', 'Could not start driver registration. Please try again.');
+    } finally {
+      setIsStartingDriverSignup(false);
+    }
+  };
+
+  const driverMenuTitle = !driver
+    ? 'Become a Driver'
+    : verificationStatus === 'VERIFIED'
+      ? 'Switch to Driver Mode'
+      : isProcessing
+        ? 'Verification in Progress'
+        : 'Continue Driver Application';
+
+  const driverMenuSubtitle = !driver
+    ? 'Earn extra income with Pantra'
+    : verificationStatus === 'VERIFIED'
+      ? 'Go online and start earning'
+      : isProcessing
+        ? 'Your documents are being reviewed'
+        : 'Finish your driver verification';
+
   const getThemeIcon = () => {
     switch (themeMode) {
       case 'light': return <Sun size={20} color={colors.text} />;
@@ -182,6 +258,12 @@ export default function AccountScreen() {
             title="My Wallet"
             subtitle="Manage your balance and transactions"
             onPress={() => router.push('/wallet' as any)}
+          />
+          <MenuItem
+            icon={isStartingDriverSignup ? <ActivityIndicator size="small" color={colors.text} /> : <Car size={20} color={colors.text} />}
+            title={driverMenuTitle}
+            subtitle={driverMenuSubtitle}
+            onPress={handleDriverEntry}
           />
           <MenuItem
             icon={<CreditCard size={20} color={colors.text} />}

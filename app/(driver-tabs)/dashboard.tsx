@@ -19,8 +19,6 @@ import {
   Clock,
   Wallet,
   MapPin,
-  Award,
-  Target,
   Navigation,
   ChevronRight,
   Calendar,
@@ -35,8 +33,6 @@ import { useVideoConfig } from '@/hooks/useVideoConfig';
 import { SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 const { width } = Dimensions.get('window');
-
-const WEEKLY_GOAL_NGN = 1000;
 
 export default function DriverDashboard() {
   const { driver } = useDriverAuth();
@@ -67,6 +63,27 @@ export default function DriverDashboard() {
   };
   const verificationBanner = !isVerified ? VERIFICATION_BANNER_COPY[verificationStatus] : undefined;
 
+  // A driver who has already submitted everything and is just waiting on a decision
+  // (DOCUMENTS_SUBMITTED/VERIFYING/MANUAL_REVIEW) has nothing left to fill in — sending
+  // them back into the registration steps would look like they need to redo it. Only
+  // PENDING (never finished registering) and REJECTED (needs to fix something) actually
+  // have a next step in the wizard; everything else is just an informational popup.
+  const isUnderReview =
+    verificationStatus === 'DOCUMENTS_SUBMITTED' ||
+    verificationStatus === 'VERIFYING' ||
+    verificationStatus === 'MANUAL_REVIEW';
+
+  const handleViewVerificationStatus = () => {
+    if (isUnderReview) {
+      Alert.alert(
+        verificationBanner?.title ?? 'Verification pending',
+        verificationBanner?.body ?? 'Your credentials are still under review. We\'ll notify you once a decision is made.'
+      );
+      return;
+    }
+    router.push('/driver-verification/credentials' as any);
+  };
+
   // Server-side triggers (see database/schemas/supabase-schema-driver-verification-v2.sql,
   // enforce_driver_verified_before_online) are the actual security boundary — this is
   // purely a UX shortcut so an unverified driver sees why the toggle won't work
@@ -78,7 +95,7 @@ export default function DriverDashboard() {
         verificationBanner?.body ?? 'Complete your driver verification before going online.',
         [
           { text: 'Later', style: 'cancel' },
-          { text: 'View Status', onPress: () => router.push('/driver-verification/credentials' as any) },
+          { text: 'View Status', onPress: handleViewVerificationStatus },
         ]
       );
       return;
@@ -218,7 +235,7 @@ export default function DriverDashboard() {
         {verificationBanner && (
           <TouchableOpacity
             style={styles.verificationBanner}
-            onPress={() => router.push('/driver-verification/credentials' as any)}
+            onPress={handleViewVerificationStatus}
             activeOpacity={0.85}
             testID="driver-verification-banner"
           >
@@ -348,72 +365,6 @@ export default function DriverDashboard() {
           </View>
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActionsSection}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-          <View style={styles.quickActionsGrid}>
-            <TouchableOpacity 
-              style={styles.quickActionCard}
-              onPress={() => router.push('/driver-trip-history')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.2)' }]}>
-                <Clock size={22} color="#3B82F6" strokeWidth={2.5} />
-              </View>
-              <Text style={styles.quickActionTitle}>Trip History</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickActionCard}
-              onPress={() => router.push('/driver-earnings')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(16, 185, 129, 0.2)' }]}>
-                <Wallet size={22} color="#10B981" strokeWidth={2.5} />
-              </View>
-              <Text style={styles.quickActionTitle}>Earnings</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickActionCard}
-              onPress={() => router.push('/driver-achievements')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
-                <Award size={22} color="#F59E0B" strokeWidth={2.5} />
-              </View>
-              <Text style={styles.quickActionTitle}>Achievements</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.quickActionCard}
-              onPress={() => router.push('/driver-goals')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.quickActionIconBg, { backgroundColor: 'rgba(139, 92, 246, 0.2)' }]}>
-                <Target size={22} color="#8B5CF6" strokeWidth={2.5} />
-              </View>
-              <Text style={styles.quickActionTitle}>Goals</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Weekly Goal Progress */}
-        <View style={styles.goalSection}>
-          <Text style={styles.sectionTitle}>Weekly Goal Progress</Text>
-          <View style={styles.goalCard}>
-            <View style={styles.goalHeader}>
-              <Text style={styles.goalTitle}>₦{WEEKLY_GOAL_NGN.toLocaleString()} Weekly Target</Text>
-              <Text style={styles.goalPercentage}>{Math.round((weeklyEarnings / WEEKLY_GOAL_NGN) * 100)}%</Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${Math.min((weeklyEarnings / WEEKLY_GOAL_NGN) * 100, 100)}%` }]} />
-            </View>
-            <Text style={styles.goalSubtext}>
-              {weeklyEarnings >= WEEKLY_GOAL_NGN ? 'Goal completed!' : `₦${(WEEKLY_GOAL_NGN - weeklyEarnings).toFixed(2)} to go`}
-            </Text>
-          </View>
-        </View>
           </ShimmerGroup>
       </ScrollView>
     </SafeAreaView>
@@ -550,70 +501,6 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     color: '#FFFFFF',
   },
-  quickActionsSection: {
-    marginTop: 30,
-  },
-  quickActionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    justifyContent: 'space-between',
-  },
-  quickActionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-    color: '#FFFFFF',
-  },
-  goalSection: {
-    marginTop: 20,
-  },
-  goalCard: {
-    marginHorizontal: 20,
-    padding: 24,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-  },
-  goalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  goalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  goalPercentage: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#4CAF50',
-  },
-  progressBar: {
-    height: 10,
-    borderRadius: 5,
-    marginBottom: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 5,
-    backgroundColor: '#4CAF50',
-  },
-  goalSubtext: {
-    fontSize: 14,
-    textAlign: 'center',
-    color: 'rgba(255,255,255,0.8)',
-    fontWeight: '500',
-  },
   greetingSection: {
     flex: 1,
   },
@@ -733,23 +620,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: 'rgba(255,255,255,0.7)',
-  },
-  quickActionCard: {
-    width: (width - 56) / 2,
-    padding: 18,
-    borderRadius: 16,
-    alignItems: 'center',
-    marginBottom: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  quickActionIconBg: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
   },
 });

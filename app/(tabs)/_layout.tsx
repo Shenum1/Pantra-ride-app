@@ -15,9 +15,7 @@ export default function TabLayout() {
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
-          tabBarShowLabel: true,
-          tabBarLabelPosition: "below-icon",
-          tabBarLabelStyle: styles.tabBarLabel,
+          tabBarShowLabel: false,
           tabBarStyle: styles.tabBar,
           tabBarBackground: () => (
             <BlurView
@@ -94,10 +92,5 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: 28,
     overflow: 'hidden',
-  },
-  tabBarLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 2,
   },
 });

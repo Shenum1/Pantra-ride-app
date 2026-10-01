@@ -78,10 +78,10 @@ export default function DriverAddBankScreen() {
               style={[styles.input, { color: colors.text, borderColor: colors.border }]}
               value={accountNumber}
               onChangeText={setAccountNumber}
-              placeholder="10-digit NUBAN account number"
-              placeholderTextColor={colors.textSecondary}
               keyboardType="number-pad"
               maxLength={10}
+              autoCorrect={false}
+              spellCheck={false}
             />
 
             <Text style={[styles.label, { color: colors.text }]}>Account Holder Name</Text>

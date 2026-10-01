@@ -92,6 +92,8 @@ function RootLayoutNav() {
         <Stack.Screen name="privacy" options={{ title: "Privacy" }} />
         <Stack.Screen name="expense-rides" options={{ title: "Expense Rides" }} />
         <Stack.Screen name="support" options={{ title: "Support" }} />
+        <Stack.Screen name="my-tickets" options={{ title: "My Reports" }} />
+        <Stack.Screen name="ticket-detail" options={{ title: "Report Details" }} />
         <Stack.Screen name="about" options={{ title: "About" }} />
         <Stack.Screen name="language" options={{ title: "Language" }} />
         <Stack.Screen name="communication-preferences" options={{ title: "Communication" }} />

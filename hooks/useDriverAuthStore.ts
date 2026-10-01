@@ -97,6 +97,23 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     }
   }, []);
 
+  // Starts driver registration for the currently-authenticated account (normally a
+  // rider, from the rider Account tab) without a second login — see
+  // lib/driver-auth-service.ts's becomeDriverForCurrentUser. Populates `driver`
+  // immediately so the caller can navigate straight into the verification wizard,
+  // rather than waiting for the next unrelated auth-state-change event to pick it up.
+  const becomeDriver = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const d = await DriverAuthService.becomeDriverForCurrentUser();
+      setDriver(d);
+      await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(d));
+      return d;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     await AsyncStorage.removeItem(DRIVER_STORAGE_KEY);
     setDriver(null);
@@ -153,9 +170,10 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     signup,
     verifySignupCode,
     loginWithGoogle,
+    becomeDriver,
     logout,
     updateProfile,
     updateProfileImage,
     toggleOnlineStatus,
-  }), [driver, isLoading, login, signup, verifySignupCode, loginWithGoogle, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
+  }), [driver, isLoading, login, signup, verifySignupCode, loginWithGoogle, becomeDriver, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
 });

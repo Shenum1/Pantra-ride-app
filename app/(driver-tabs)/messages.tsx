@@ -12,7 +12,6 @@ import {
   MessageCircle,
   Phone,
   Search,
-  Headphones,
   AlertCircle,
 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useThemeStore';
@@ -203,12 +202,6 @@ export default function DriverMessages() {
           </View>
         )}
       </ScrollView>
-
-      {/* Support Button */}
-      <TouchableOpacity style={[styles.supportButton, { backgroundColor: colors.primary }]}>
-        <Headphones size={20} color={colors.white} />
-        <Text style={[styles.supportButtonText, { color: colors.white }]}>Contact Support</Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -376,19 +369,5 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     textAlign: 'center',
-  },
-  supportButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 20,
-    marginBottom: 100,
-    paddingVertical: 16,
-    borderRadius: 12,
-  },
-  supportButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
   },
 });

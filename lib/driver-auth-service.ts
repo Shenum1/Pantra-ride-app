@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { AuthService } from './auth-service';
+import { trpcClient } from './trpc';
 
 export interface DriverSignupData {
   name: string;
@@ -195,6 +196,24 @@ export class DriverAuthService {
 
     if (error) throw new Error(error.message);
     return mapRowToDriver(driverRow);
+  }
+
+  // Lets an already-authenticated account (normally a rider, from the rider Account
+  // tab) start driver registration without a second account or a new login — grants
+  // the 'driver' role and creates the drivers row server-side (see
+  // backend/trpc/routes/driver-verification/become-driver/route.ts), then returns the
+  // resulting row the same way signUpWithEmail/verifySignupCode do, so callers can
+  // treat it identically.
+  static async becomeDriverForCurrentUser(): Promise<DriverRow> {
+    await trpcClient.driverVerification.becomeDriver.mutate();
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user.id;
+    if (!userId) throw new Error('No active session.');
+
+    const driver = await this.getDriverByUserId(userId);
+    if (!driver) throw new Error('Driver profile was not created. Please try again.');
+    return driver;
   }
 
   static async getDriverByUserId(userId: string): Promise<DriverRow | null> {

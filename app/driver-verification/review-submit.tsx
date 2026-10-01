@@ -57,7 +57,18 @@ export default function ReviewScreen() {
       position: 'top',
       visibilityTime: 5000,
     });
-    router.replace('/(driver-tabs)/dashboard');
+    // A fresh driver-only signup (users.role === 'driver') has nowhere else to go,
+    // so it lands in the driver dashboard as before. An existing rider who just
+    // registered as a driver (users.role is left at 'rider' — see
+    // database/schemas/supabase-schema-user-roles.sql) goes back to the rider app
+    // instead: they're pending review, not verified, so they shouldn't land in the
+    // driver dashboard yet — that's reserved for "Switch to Driver Mode" once
+    // verified (see app/(tabs)/account.tsx).
+    if (status?.primaryRole === 'rider') {
+      router.replace('/(tabs)/account');
+    } else {
+      router.replace('/(driver-tabs)/dashboard');
+    }
   };
 
   return (

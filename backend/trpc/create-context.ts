@@ -21,8 +21,35 @@ const t = initTRPC.context<Context>().create({
 export const createTRPCRouter = t.router;
 export const publicProcedure = t.procedure;
 
+// Checks the user_roles table (see database/schemas/supabase-schema-user-roles.sql)
+// rather than users.role, since an account can now hold more than one role — e.g.
+// an existing rider who also registered as a driver. users.role is left as each
+// account's default/primary experience and is never treated as an exhaustive list
+// of what that account is allowed to do.
+async function hasRole(client: NonNullable<typeof supabaseAdmin>, userId: string, role: "rider" | "driver" | "admin"): Promise<boolean> {
+  const { data, error } = await client
+    .from("user_roles")
+    .select("role")
+    .eq("userId", userId)
+    .eq("role", role)
+    .maybeSingle();
+
+  // A genuine query failure (e.g. the user_roles migration hasn't been run yet, so
+  // the table doesn't exist) must not be swallowed as "role not found" — that would
+  // reject every driver/admin with a misleading "this account does not have a driver
+  // profile" instead of surfacing the real, fixable cause.
+  if (error) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Could not verify account role (${error.message}). Has the user_roles migration been run?`,
+    });
+  }
+
+  return !!data;
+}
+
 // Admin-only procedure: verifies the caller's Supabase session token belongs
-// to a user with role='admin' before allowing access to service-role-key queries.
+// to a user holding the 'admin' role before allowing access to service-role-key queries.
 export const adminProcedure = publicProcedure.use(async ({ ctx, next }) => {
   if (!supabaseAdmin) {
     throw new TRPCError({
@@ -43,13 +70,7 @@ export const adminProcedure = publicProcedure.use(async ({ ctx, next }) => {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid or expired session." });
   }
 
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from("users")
-    .select("role")
-    .eq("uid", userData.user.id)
-    .single();
-
-  if (profileError || profile?.role !== "admin") {
+  if (!(await hasRole(supabaseAdmin, userData.user.id, "admin"))) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "This account does not have admin access." });
   }
 
@@ -86,10 +107,11 @@ export const authedProcedure = publicProcedure.use(async ({ ctx, next }) => {
 });
 
 // Driver-only procedure: verifies the caller's Supabase session token belongs to a
-// user with role='driver', and resolves their own drivers.id server-side — driver
-// verification writes must never trust a client-supplied driverId. This is the sole
-// entry point for the driver-verification engine (backend/services/verification/),
-// which is itself the only code path allowed to write drivers.verificationStatus.
+// user holding the 'driver' role (see user_roles — a rider can hold this alongside
+// 'rider'), and resolves their own drivers.id server-side — driver verification
+// writes must never trust a client-supplied driverId. This is the sole entry point
+// for the driver-verification engine (backend/services/verification/), which is
+// itself the only code path allowed to write drivers.verificationStatus.
 export const driverProcedure = publicProcedure.use(async ({ ctx, next }) => {
   if (!supabaseAdmin) {
     throw new TRPCError({
@@ -110,13 +132,7 @@ export const driverProcedure = publicProcedure.use(async ({ ctx, next }) => {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid or expired session." });
   }
 
-  const { data: profile, error: profileError } = await supabaseAdmin
-    .from("users")
-    .select("role")
-    .eq("uid", userData.user.id)
-    .single();
-
-  if (profileError || profile?.role !== "driver") {
+  if (!(await hasRole(supabaseAdmin, userData.user.id, "driver"))) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "This account does not have a driver profile." });
   }
 

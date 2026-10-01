@@ -69,7 +69,17 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         }
 
         try {
-          const profile = await AuthService.getUserProfile(session.user.id);
+          let profile = await AuthService.getUserProfile(session.user.id);
+
+          // Self-heals a phone number that never made it into public.users at signup
+          // (see the comment in signup() below) — now that a real session exists,
+          // the update's RLS check (auth.uid() = uid) actually passes.
+          const metadataPhone = session.user.user_metadata?.phone;
+          if (!profile?.phoneNumber && metadataPhone) {
+            await AuthService.updateUserProfile(session.user.id, { phoneNumber: metadataPhone });
+            profile = await AuthService.getUserProfile(session.user.id);
+          }
+
           const userData: User = {
             id: session.user.id,
             name: profile?.displayName || session.user.email?.split('@')[0] || 'User',
@@ -115,7 +125,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) throw new Error('Please enter a valid email address.');
 
-      await AsyncStorage.removeItem('driver_auth_user');
+      // No longer wipes 'driver_auth_user' here: an account can now legitimately
+      // hold both roles (see database/schemas/supabase-schema-user-roles.sql), and
+      // useDriverAuthStore's own auth-state listener already re-resolves the driver
+      // profile for whichever account actually signs in, so this cache doesn't need
+      // a manual clear to stay correct.
 
       const normalizedEmail = email.trim().toLowerCase();
       // __DEV__ is compiled to `false` in production/release builds (App Store,
@@ -168,7 +182,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     try {
       const deviceFingerprint = await DeviceSecurityService.generateDeviceFingerprint();
 
-      const supabaseUser = await AuthService.signUpWithEmail(email, password, name, 'rider');
+      // phone also goes into auth user_metadata (mirrors driver signup) — the RLS
+      // policy for updating public.users requires an active session (auth.uid() =
+      // uid), which doesn't exist yet while email confirmation is pending, so the
+      // updateUserProfile call below can silently no-op. Metadata survives that gap;
+      // the auth-state-change listener backfills phoneNumber from it once a real
+      // session exists (right after confirmation, or on next login).
+      const supabaseUser = await AuthService.signUpWithEmail(email, password, name, 'rider', { phone });
 
       try {
         await DeviceSecurityService.registerDevice(deviceFingerprint, supabaseUser.id);
@@ -239,7 +259,9 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const loginWithGoogle = async (): Promise<{ hasPhone: boolean }> => {
     setIsLoading(true);
     try {
-      await AsyncStorage.removeItem('driver_auth_user');
+      // See the matching note in login() — this account may legitimately also be a
+      // driver, so the cached driver session is left for useDriverAuthStore's own
+      // listener to re-resolve rather than wiped proactively here.
       const result = await GoogleAuthService.signIn();
       const profile = await AuthService.getUserProfile(result.userId);
 

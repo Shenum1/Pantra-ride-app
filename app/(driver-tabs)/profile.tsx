@@ -17,8 +17,6 @@ import {
   Award,
   Bell,
   Shield,
-  CreditCard,
-  MapPin,
   Phone,
   Mail,
   Camera,
@@ -27,6 +25,10 @@ import {
   LogOut,
   ChevronRight,
   FileCheck,
+  Clock,
+  Wallet,
+  Target,
+  Repeat,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -50,25 +52,10 @@ export default function DriverProfile() {
     };
   }, []);
 
-  const totalTrips = driver?.totalRides ?? 0;
   const driverStats = {
     rating: driver?.rating ?? null,
-    totalTrips,
-    totalEarnings: driver?.totalEarnings ?? 0,
-    yearsActive: driver?.createdAt
-      ? Math.floor((Date.now() - new Date(driver.createdAt).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-      : 0,
+    totalTrips: driver?.totalRides ?? 0,
   };
-
-  const ProfileStat = ({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) => (
-    <View style={[styles.statItem, { backgroundColor: colors.card }]}>
-      <View style={[styles.statIcon, { backgroundColor: colors.primaryLight }]}>
-        {icon}
-      </View>
-      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
-    </View>
-  );
 
   const SettingsItem = ({
     icon,
@@ -219,36 +206,14 @@ export default function DriverProfile() {
           </View>
         </View>
 
-        {/* Stats */}
-        <View style={styles.statsSection}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Your Stats</Text>
-          <View style={styles.statsGrid}>
-            <ProfileStat
-              label="Total Trips"
-              value={driverStats.totalTrips.toLocaleString()}
-              icon={<MapPin size={20} color={colors.primary} />}
-            />
-            <ProfileStat
-              label="Total Earned"
-              value={`₦${driverStats.totalEarnings.toLocaleString()}`}
-              icon={<CreditCard size={20} color={colors.success} />}
-            />
-            <ProfileStat
-              label="Rating"
-              value={driverStats.rating != null ? driverStats.rating.toFixed(1) : 'New'}
-              icon={<Star size={20} color="#FFD700" />}
-            />
-            <ProfileStat
-              label="Years Active"
-              value={driverStats.yearsActive.toString()}
-              icon={<Award size={20} color={colors.primary} />}
-            />
-          </View>
-        </View>
-
         {/* Settings */}
         <View style={styles.settingsSection}>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Settings</Text>
+          <SettingsItem
+            icon={<Repeat size={20} color={colors.primary} />}
+            title="Switch to Rider Mode"
+            subtitle="Book rides with the same account"
+            onPress={() => router.replace('/(tabs)/home')}
+          />
 
           <SettingsItem
             icon={<Bell size={20} color={colors.primary} />}
@@ -304,6 +269,30 @@ export default function DriverProfile() {
             title="Support"
             subtitle="Get help and report issues"
             onPress={() => router.push('/support')}
+          />
+
+          <SettingsItem
+            icon={<Clock size={20} color={colors.primary} />}
+            title="Trip History"
+            onPress={() => router.push('/driver-trip-history')}
+          />
+
+          <SettingsItem
+            icon={<Wallet size={20} color={colors.primary} />}
+            title="Earnings"
+            onPress={() => router.push('/driver-earnings')}
+          />
+
+          <SettingsItem
+            icon={<Award size={20} color={colors.primary} />}
+            title="Achievements"
+            onPress={() => router.push('/driver-achievements')}
+          />
+
+          <SettingsItem
+            icon={<Target size={20} color={colors.primary} />}
+            title="Goals"
+            onPress={() => router.push('/driver-goals')}
           />
         </View>
 
@@ -379,51 +368,8 @@ const styles = StyleSheet.create({
   ratingCount: {
     fontSize: 14,
   },
-  statsSection: {
-    marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginHorizontal: 20,
-    marginBottom: 15,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 20,
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    width: '48%',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  statIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
   settingsSection: {
+    marginTop: 20,
     marginBottom: 30,
   },
   settingsItem: {

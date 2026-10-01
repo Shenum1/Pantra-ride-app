@@ -2,7 +2,6 @@ import React, { useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { Location } from "@/types";
 import Colors from "@/constants/colors";
-import { MAP_MARKER_COLORS } from "@/constants/map-style";
 import { NIGERIA_DEFAULT_COORDS } from "@/constants/nigeria-region";
 import { GoogleMapsService } from "@/lib/google-maps-service";
 
@@ -158,12 +157,12 @@ const styles = StyleSheet.create({
   pickupPin: {
     left: '34%',
     top: '42%',
-    backgroundColor: MAP_MARKER_COLORS.pickup,
+    backgroundColor: Colors.light.primary,
   },
   dropoffPin: {
     right: '31%',
     bottom: '36%',
-    backgroundColor: MAP_MARKER_COLORS.dropoff,
+    backgroundColor: Colors.light.secondary,
   },
   providerBadge: {
     position: 'absolute',
