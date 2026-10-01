@@ -49,7 +49,10 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
               setPickupLocation(null);
               setPickupAddress("");
               setHasPermission(false);
-              setLocationError("Location unavailable");
+              // TEMPORARY debug change — surfaces the real browser error so we can
+              // diagnose the "Location unavailable" report. Revert to the plain
+              // "Location unavailable" string once the cause is confirmed.
+              setLocationError(`Location unavailable (code ${error.code}: ${error.message || "no message"})`);
               setIsLoading(false);
             }
           );
