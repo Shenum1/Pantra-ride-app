@@ -17,6 +17,11 @@ import driverBankAccountsAddRoute from "./routes/driver/bank-accounts/add/route"
 import driverBankAccountsRemoveRoute from "./routes/driver/bank-accounts/remove/route";
 import driverPayoutsListRoute from "./routes/driver/payouts/list/route";
 import driverPayoutsRequestRoute from "./routes/driver/payouts/request/route";
+import driverPayoutsAvailableBalanceRoute from "./routes/driver/payouts/available-balance/route";
+import driverCashEligibilityRoute from "./routes/driver/cash-eligibility/route";
+import driverCommissionPayRoute from "./routes/driver/commission/pay/route";
+import adminCommissionListRoute from "./routes/admin/commission/list/route";
+import adminCommissionRecordPaymentRoute from "./routes/admin/commission/record-payment/route";
 import adminPayoutsListRoute from "./routes/admin/payouts/list/route";
 import adminPayoutsRevealBankAccountRoute from "./routes/admin/payouts/reveal-bank-account/route";
 import adminPayoutsMoveToManualReviewRoute from "./routes/admin/payouts/move-to-manual-review/route";
@@ -124,6 +129,10 @@ export const appRouter = createTRPCRouter({
         checkOne: adminPayoutsReconciliationCheckOneRoute,
       }),
     }),
+    commission: createTRPCRouter({
+      list: adminCommissionListRoute,
+      recordPayment: adminCommissionRecordPaymentRoute,
+    }),
     refunds: createTRPCRouter({
       eligibility: adminRefundsEligibilityRoute,
       request: adminRefundsRequestRoute,
@@ -222,6 +231,11 @@ export const appRouter = createTRPCRouter({
     payouts: createTRPCRouter({
       list: driverPayoutsListRoute,
       request: driverPayoutsRequestRoute,
+      availableBalance: driverPayoutsAvailableBalanceRoute,
+    }),
+    cashEligibility: driverCashEligibilityRoute,
+    commission: createTRPCRouter({
+      pay: driverCommissionPayRoute,
     }),
   }),
   driverVerification: createTRPCRouter({

@@ -158,6 +158,14 @@ export const WALLET_TOPUP_CONFIG = {
 // (never trust a client-supplied amount past these limits). minAmount
 // matches the pre-existing client-side check in app/(driver-tabs)/wallet.tsx
 // — an existing business rule being enforced server-side too, not a new one.
+// `provider` is the single switch that decides which provider new
+// automatic payouts use (backend/lib/payout-processor.ts reads this once,
+// at reference-generation time, and persists it onto the driver_payouts
+// row). Flutterwave is active because it's the provider with real
+// credentials configured; Paystack's implementation is left fully intact
+// and dormant (see backend/lib/payout-provider.ts) — flipping this one
+// value back to 'paystack' is all it takes to reactivate it.
 export const DRIVER_PAYOUT_CONFIG = {
   minAmount: 100,
+  provider: "flutterwave" as "paystack" | "flutterwave",
 } as const;

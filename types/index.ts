@@ -13,9 +13,11 @@ export interface SavedLocation extends Location {
   icon?: string;
 }
 
+// Cardless wallet architecture — no saved cards, no tokenization. See
+// database/schemas/supabase-schema-payment-methods-cardless-deprecation.sql.
 export interface PaymentMethod {
   id: string;
-  type: 'card' | 'cash' | 'wallet';
+  type: 'cash' | 'wallet';
   name: string;
   isDefault: boolean;
   lastFour?: string;
@@ -171,6 +173,9 @@ export interface RideRequestForDriver extends RideRequest {
   passenger: PassengerInfo;
   estimatedEarnings: number;
   distanceToPickup: number;
+  // How the rider pays — cash rides are hidden from a driver whose cash
+  // commission debt is over the limit.
+  paysWith?: 'cash' | 'wallet';
 }
 
 export interface DriverEarnings {

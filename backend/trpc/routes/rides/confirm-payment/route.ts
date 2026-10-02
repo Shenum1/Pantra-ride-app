@@ -42,8 +42,12 @@ export default driverProcedure
       return { status: true as const, message: "Already paid." };
     }
 
-    let isWallet = false;
-    if (ride.paymentMethod && UUID_RE.test(ride.paymentMethod)) {
+    // rides.create stores the plain method ('cash' / 'wallet' — see
+    // resolveRidePaymentMethod there). The saved-method-id lookup below only
+    // exists for rides booked before that change, which stored the id of
+    // the rider's payment_methods row instead.
+    let isWallet = ride.paymentMethod === "wallet";
+    if (!isWallet && ride.paymentMethod && UUID_RE.test(ride.paymentMethod)) {
       const { data: method } = await db
         .from("payment_methods")
         .select("type")
@@ -73,10 +77,17 @@ export default driverProcedure
         return { status: false as const, message };
       }
     }
-    // Cash and card rides: the driver confirming completion (or the — not
-    // yet built — checkout charge, for card) is treated as payment
-    // received, same as before this migration; only wallet rides had a
-    // real debit to perform here.
+    // Cash rides: the driver confirming completion is treated as payment
+    // received (the rider paid the driver directly, in person) — there is
+    // no rider-side debit to perform here. The platform's commission on
+    // this ride is NOT forgiven, though: once paymentStatus becomes 'paid'
+    // here, rides_settle_trigger() (fired when status next moves to
+    // 'completed') records a matching debt against the driver in
+    // driver_commission_ledger — see
+    // supabase-schema-cash-commission-ledger.sql. Card rides: not yet
+    // built as a real ride-time charge; cardless is now the committed
+    // architecture (see supabase-schema-payment-methods-cardless-deprecation.sql),
+    // so this branch is expected to stay dead rather than get built out.
 
     const { error: updateError } = await db
       .from("rides")

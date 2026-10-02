@@ -1,8 +1,11 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { verifyPaystackTransaction, verifyFlutterwaveTransaction, ProviderState } from "./payment-providers";
+import { recordCommissionSettlement } from "./cash-commission";
 
-// The ONE place that turns a provider-confirmed payment into a wallet
-// credit. Both the webhook routes (backend/hono.ts) and the client-facing
+// The ONE place that turns a provider-confirmed payment into money on
+// Pantra's books: a rider's wallet credit (purpose 'wallet_funding') or a
+// driver's cash-commission payment (purpose 'commission_settlement'). Both
+// the webhook routes (backend/hono.ts) and the client-facing
 // payments.wallet.credit tRPC route call this — there must never be a
 // second, divergent implementation of "verify then credit."
 //
@@ -45,6 +48,9 @@ export interface ProcessVerifiedPaymentResult {
   status: boolean;
   message: string;
   transaction?: unknown;
+  // What the payment was for, so a caller can describe the outcome
+  // correctly ("Wallet funded" vs "Commission paid").
+  purpose?: string;
 }
 
 interface PaymentIntentRow {
@@ -52,6 +58,7 @@ interface PaymentIntentRow {
   userId: string;
   provider: "paystack" | "flutterwave";
   reference: string;
+  purpose: string | null;
   expectedAmount: number;
   currency: string;
   status: string;
@@ -140,7 +147,7 @@ export async function processVerifiedPayment(
 
   const { data: intent, error: intentError } = await supabaseAdmin
     .from("payment_intents")
-    .select("id, userId, provider, reference, expectedAmount, currency, status, paymentMethodId")
+    .select("id, userId, provider, reference, purpose, expectedAmount, currency, status, paymentMethodId")
     .eq("reference", reference)
     .maybeSingle<PaymentIntentRow>();
 
@@ -196,6 +203,7 @@ export async function processVerifiedPayment(
     return {
       status: intent.status === "successful",
       message: intent.status === "successful" ? "Payment already processed." : "This payment previously failed.",
+      purpose: intent.purpose ?? "wallet_funding",
     };
   }
 
@@ -313,6 +321,39 @@ export async function processVerifiedPayment(
     return { status: false, message: "Currency mismatch detected. This payment requires manual review." };
   }
 
+  // A driver paying their cash commission: recorded against their
+  // commission debt instead of any wallet. Idempotent on the payment
+  // reference (unique for settlements), so the webhook and the app's own
+  // confirmation racing each other record it exactly once.
+  if (intent.purpose === "commission_settlement") {
+    const { data: driver, error: driverError } = await supabaseAdmin
+      .from("drivers")
+      .select("id")
+      .eq("userId", intent.userId)
+      .maybeSingle<{ id: string }>();
+    if (driverError || !driver) {
+      // Propagates so a webhook caller gets a 5xx and the provider retries —
+      // the payment is real but not yet recorded anywhere.
+      throw new Error(`Commission payment ${reference}: no driver found for this payment's user.`);
+    }
+
+    await recordCommissionSettlement(supabaseAdmin, {
+      driverId: driver.id,
+      amount: verification.amount as number,
+      reference,
+      reason: `Commission paid in-app via ${provider}`,
+    });
+
+    const settlementTransactionId = verification.raw?.data?.id != null ? String(verification.raw.data.id) : null;
+    await updateIntentStatus(supabaseAdmin, intent.id, "successful", { providerTransactionId: settlementTransactionId });
+    await recordEvent(supabaseAdmin, {
+      paymentIntentId: intent.id, provider, reference, providerEventId, eventType, sourceChannel,
+      providerState: verification.providerState, amount: verification.amount, currency: verification.currency,
+      processingStatus: "processed", safeMetadata: safeMetadataFrom(verification),
+    });
+    return { status: true, message: "Commission payment recorded", purpose: "commission_settlement" };
+  }
+
   // Amount and currency both match — credit via the existing, unmodified
   // RPC. Its own partial-unique-index idempotency means this is safe to
   // call even if another concurrent caller (webhook vs. client-verify, or
@@ -353,5 +394,5 @@ export async function processVerifiedPayment(
   });
 
   const transaction = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-  return { status: true, message: "Wallet credited", transaction };
+  return { status: true, message: "Wallet credited", transaction, purpose: "wallet_funding" };
 }

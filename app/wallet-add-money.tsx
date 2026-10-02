@@ -1,28 +1,18 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { CreditCard, Plus, Wallet } from 'lucide-react-native';
+import { Wallet } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useThemeStore';
 import { useWallet } from '@/hooks/useWalletStore';
-import { usePayment } from '@/hooks/usePaymentStore';
 
 export default function AddMoneyScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { isAddingMoney, balance } = useWallet();
-  const { paymentMethods } = usePayment();
-  
+
   const [amount, setAmount] = useState('');
-  const [selectedPaymentId, setSelectedPaymentId] = useState<string>('');
 
   const quickAmounts = [1000, 2500, 5000, 10000];
-  const defaultPayment = paymentMethods.find(pm => pm.isDefault);
-
-  React.useEffect(() => {
-    if (defaultPayment && !selectedPaymentId) {
-      setSelectedPaymentId(defaultPayment.id);
-    }
-  }, [defaultPayment, selectedPaymentId]);
 
   const handleAddMoney = async () => {
     const numAmount = parseFloat(amount);
@@ -43,7 +33,7 @@ export default function AddMoneyScreen() {
         gateway: 'flutterwave',
         amount: String(numAmount),
         purpose: 'wallet_funding',
-        paymentMethodId: selectedPaymentId || 'flutterwave',
+        paymentMethodId: 'flutterwave',
       },
     });
   };
@@ -108,45 +98,11 @@ export default function AddMoneyScreen() {
             </View>
           </View>
 
-          <View style={styles.paymentSection}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Payment Method</Text>
-            {paymentMethods.length === 0 ? (
-              <TouchableOpacity
-                style={[styles.addPaymentButton, { backgroundColor: colors.card, borderColor: colors.primary }]}
-                onPress={() => router.push('/payment-methods' as any)}
-              >
-                <Plus size={20} color={colors.primary} />
-                <Text style={[styles.addPaymentText, { color: colors.primary }]}>Add Payment Method</Text>
-              </TouchableOpacity>
-            ) : (
-              paymentMethods.map((method) => (
-                <TouchableOpacity
-                  key={method.id}
-                  style={[
-                    styles.paymentMethodCard,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                    selectedPaymentId === method.id && { borderColor: colors.primary, borderWidth: 2 }
-                  ]}
-                  onPress={() => setSelectedPaymentId(method.id)}
-                >
-                  <CreditCard size={20} color={colors.text} />
-                  <View style={styles.paymentMethodInfo}>
-                    <Text style={[styles.paymentMethodName, { color: colors.text }]}>{method.name}</Text>
-                    {method.lastFour && (
-                      <Text style={[styles.paymentMethodDetails, { color: colors.textSecondary }]}>
-                        •••• {method.lastFour}
-                      </Text>
-                    )}
-                  </View>
-                  {method.isDefault && (
-                    <View style={[styles.defaultBadge, { backgroundColor: colors.primary + '20' }]}>
-                      <Text style={[styles.defaultBadgeText, { color: colors.primary }]}>Default</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
+          {/* How the money is paid is chosen on Flutterwave's checkout, not
+              here — Pantra never collects card details (cardless wallet). */}
+          <Text style={[styles.checkoutNote, { color: colors.textSecondary }]}>
+            You&apos;ll choose card, bank transfer or USSD on Flutterwave&apos;s secure checkout.
+          </Text>
         </ScrollView>
 
         <View style={[styles.footer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
@@ -243,51 +199,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  paymentSection: {
-    marginBottom: 24,
-  },
-  paymentMethodCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  paymentMethodInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  paymentMethodName: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  paymentMethodDetails: {
+  checkoutNote: {
     fontSize: 14,
-    marginTop: 2,
-  },
-  defaultBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  defaultBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  addPaymentButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-  },
-  addPaymentText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
+    lineHeight: 20,
+    marginBottom: 24,
   },
   footer: {
     position: 'absolute',

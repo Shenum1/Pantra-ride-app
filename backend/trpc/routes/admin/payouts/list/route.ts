@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { adminProcedure } from "../../../../create-context";
+import { flutterwaveTransferMayExist } from "../../../../../lib/payout-processor";
 
 export default adminProcedure
   .input(
@@ -32,7 +33,7 @@ export default adminProcedure
     const driverIds = [...new Set((data ?? []).map((p) => p.driverId).filter(Boolean))];
     const bankAccountIds = [...new Set((data ?? []).map((p) => p.bankAccountId).filter(Boolean))];
 
-    const [driversRes, bankRes, manualActionsRes, reconciliationRes] = await Promise.all([
+    const [driversRes, bankRes, manualActionsRes, reconciliationRes, attemptsRes] = await Promise.all([
       driverIds.length > 0
         ? db.from("drivers").select("id, name, email").in("id", driverIds)
         : Promise.resolve({ data: [] as { id: string; name: string; email: string }[] }),
@@ -56,6 +57,9 @@ export default adminProcedure
             .in("payoutId", payoutIds)
             .eq("reconciliationStatus", "open")
         : Promise.resolve({ data: [] as { payoutId: string }[] }),
+      payoutIds.length > 0
+        ? db.from("payout_provider_attempts").select("payoutId, attemptStatus").in("payoutId", payoutIds)
+        : Promise.resolve({ data: [] as { payoutId: string; attemptStatus: string }[] }),
     ]);
 
     const driverMap = new Map((driversRes.data ?? []).map((d) => [d.id, { name: d.name, email: d.email }]));
@@ -72,6 +76,12 @@ export default adminProcedure
       manualActionsByPayout.set(action.payoutId, list);
     }
     const openReconciliationPayoutIds = new Set((reconciliationRes.data ?? []).map((r) => r.payoutId));
+    const attemptStatusesByPayout = new Map<string, string[]>();
+    for (const attempt of attemptsRes.data ?? []) {
+      const list = attemptStatusesByPayout.get(attempt.payoutId) ?? [];
+      list.push(attempt.attemptStatus);
+      attemptStatusesByPayout.set(attempt.payoutId, list);
+    }
 
     const payouts = (data ?? []).map((p) => ({
       ...p,
@@ -79,6 +89,13 @@ export default adminProcedure
       bankAccount: p.bankAccountId ? (bankMap.get(p.bankAccountId) ?? null) : null,
       manualActions: manualActionsByPayout.get(p.id) ?? [],
       hasOpenReconciliation: openReconciliationPayoutIds.has(p.id),
+      // Same rule admin.payouts.completeManually enforces server-side: a
+      // Flutterwave transfer may exist but can't be looked up, so manual
+      // completion needs the admin to confirm against the dashboard first.
+      needsProviderConfirmation:
+        p.provider === "flutterwave" &&
+        !p.providerTransferCode &&
+        flutterwaveTransferMayExist(attemptStatusesByPayout.get(p.id) ?? []),
     }));
 
     return { payouts, total: count ?? 0 };

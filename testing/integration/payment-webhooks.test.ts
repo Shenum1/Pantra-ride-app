@@ -77,6 +77,7 @@ describe('POST /webhooks/paystack', () => {
 
     expect(res.status).toBe(200);
     expect(processPayoutWebhookEventMock).toHaveBeenCalledTimes(1);
+    expect(processPayoutWebhookEventMock.mock.calls[0][1]).toBe('paystack');
     expect(processVerifiedPaymentMock).not.toHaveBeenCalled();
   });
 
@@ -181,6 +182,51 @@ describe('POST /webhooks/flutterwave', () => {
     processVerifiedPaymentMock.mockResolvedValue({ status: true, message: 'ok' });
     processRefundWebhookEventMock.mockReset();
     processRefundWebhookEventMock.mockResolvedValue(undefined);
+    processPayoutWebhookEventMock.mockReset();
+    processPayoutWebhookEventMock.mockResolvedValue(undefined);
+  });
+
+  it('dispatches transfer.completed (both outcomes share this one event name) to the payout processor as Flutterwave', async () => {
+    for (const status of ['SUCCESSFUL', 'FAILED']) {
+      processPayoutWebhookEventMock.mockClear();
+      const body = JSON.stringify({ event: 'transfer.completed', data: { id: 26251, reference: 'PANTRA-PAYOUT-abc', amount: 5000, status } });
+      const res = await app.request('/webhooks/flutterwave', {
+        method: 'POST',
+        headers: { 'verif-hash': 'flw-configured-hash-for-webhook-tests' },
+        body,
+      });
+
+      expect(res.status).toBe(200);
+      expect(processPayoutWebhookEventMock).toHaveBeenCalledTimes(1);
+      expect(processPayoutWebhookEventMock.mock.calls[0][1]).toBe('flutterwave');
+    }
+    // Never misrouted as a wallet top-up charge or a refund.
+    expect(processVerifiedPaymentMock).not.toHaveBeenCalled();
+    expect(processRefundWebhookEventMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a transfer.completed with a forged verif-hash before any payout processing', async () => {
+    const body = JSON.stringify({ event: 'transfer.completed', data: { id: 1, reference: 'PANTRA-PAYOUT-abc', status: 'FAILED' } });
+    const res = await app.request('/webhooks/flutterwave', {
+      method: 'POST',
+      headers: { 'verif-hash': 'forged' },
+      body,
+    });
+
+    expect(res.status).toBe(401);
+    expect(processPayoutWebhookEventMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a payout-processing infrastructure failure as 5xx so Flutterwave retries', async () => {
+    processPayoutWebhookEventMock.mockRejectedValue(new Error('database unavailable'));
+    const body = JSON.stringify({ event: 'transfer.completed', data: { id: 1, reference: 'PANTRA-PAYOUT-abc', status: 'SUCCESSFUL' } });
+    const res = await app.request('/webhooks/flutterwave', {
+      method: 'POST',
+      headers: { 'verif-hash': 'flw-configured-hash-for-webhook-tests' },
+      body,
+    });
+
+    expect(res.status).toBeGreaterThanOrEqual(500);
   });
 
   it('dispatches an explicit event === "refund.completed" payload to the refund processor (defensive fallback shape)', async () => {

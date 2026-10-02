@@ -3,6 +3,8 @@ import { driverProcedure } from "../../../../create-context";
 import { encryptAccountNumber, accountNumberLast4 } from "../../../../../lib/bank-account-crypto";
 import { resolveBankCode } from "../../../../../lib/nigerian-banks";
 import { createPaystackTransferRecipient } from "../../../../../lib/payout-provider";
+import { resolveFlutterwaveAccountName } from "../../../../../lib/flutterwave-payout-provider";
+import { DRIVER_PAYOUT_CONFIG } from "../../../../../../lib/pricing-config";
 
 export default driverProcedure
   .input(
@@ -35,31 +37,44 @@ export default driverProcedure
 
     if (error) throw new Error(error.message);
 
-    // Best-effort: front-load Paystack recipient creation (which itself
-    // validates the account number/bank code pair) so a later automatic
-    // payout doesn't need to do it on the critical path. Never blocks saving
-    // the bank account — if the bank name doesn't resolve to a known code,
-    // or Paystack rejects it, the account is still saved and automatic
-    // payout initiation will retry this same resolution later, falling back
-    // to manual_review if it still can't be done then.
-    const bankCode = resolveBankCode(input.bankName);
+    // Best-effort: front-load the active payout provider's account
+    // verification (Paystack: recipient creation; Flutterwave:
+    // /v3/accounts/resolve — it has no recipient object) so a later
+    // automatic payout doesn't need to do it on the critical path. Never
+    // blocks saving the bank account — if the bank name doesn't resolve to a
+    // known code, or the provider rejects it, the account is still saved and
+    // automatic payout initiation will retry this same verification later,
+    // falling back to manual_review if it still can't be done then.
+    // bankCode (the cached column) always holds the PAYSTACK code; Flutterwave
+    // gets its own code, resolved separately — the two differ for several
+    // banks (see backend/lib/nigerian-banks.ts).
+    const bankCode = resolveBankCode(input.bankName, "paystack");
     if (bankCode) {
       try {
-        const recipient = await createPaystackTransferRecipient({
-          accountNumber: input.accountNumber,
-          bankCode,
-          accountName: input.accountName,
-        });
-        if (recipient.ok && recipient.recipientCode) {
+        if (DRIVER_PAYOUT_CONFIG.provider === "flutterwave") {
+          const flutterwaveBankCode = resolveBankCode(input.bankName, "flutterwave") as string;
+          const resolved = await resolveFlutterwaveAccountName({ accountNumber: input.accountNumber, bankCode: flutterwaveBankCode });
           await db
             .from("driver_bank_accounts")
-            .update({ bankCode, paystackRecipientCode: recipient.recipientCode, recipientVerifiedAt: new Date().toISOString() })
+            .update(resolved.ok ? { bankCode, recipientVerifiedAt: new Date().toISOString() } : { bankCode })
             .eq("id", data.id);
         } else {
-          await db.from("driver_bank_accounts").update({ bankCode }).eq("id", data.id);
+          const recipient = await createPaystackTransferRecipient({
+            accountNumber: input.accountNumber,
+            bankCode,
+            accountName: input.accountName,
+          });
+          if (recipient.ok && recipient.recipientCode) {
+            await db
+              .from("driver_bank_accounts")
+              .update({ bankCode, paystackRecipientCode: recipient.recipientCode, recipientVerifiedAt: new Date().toISOString() })
+              .eq("id", data.id);
+          } else {
+            await db.from("driver_bank_accounts").update({ bankCode }).eq("id", data.id);
+          }
         }
-      } catch (recipientError) {
-        console.error(`bank account ${data.id}: recipient pre-creation failed (will retry at payout time):`, recipientError);
+      } catch (verificationError) {
+        console.error(`bank account ${data.id}: provider account verification failed (will retry at payout time):`, verificationError);
       }
     }
 

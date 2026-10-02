@@ -25,6 +25,14 @@ export interface DriverPayout {
   bankAccount?: { id: string; bankName: string; accountName: string; accountNumberLast4: string } | null;
 }
 
+export interface CashCommissionStatus {
+  netBalance: number;
+  amountOwed: number;
+  limit: number;
+  // Owes more than the limit — cash rides are hidden and can't be accepted.
+  blocked: boolean;
+}
+
 // All driver_bank_accounts reads/writes go through these backend routes —
 // direct client access was revoked entirely (RLS policy dropped in
 // supabase-schema-driver-bank-accounts-encryption.sql) since the table now
@@ -51,12 +59,31 @@ export const DriverWalletService = {
     return trpcClient.driver.payouts.list.query();
   },
 
+  // Server-authoritative withdrawable balance — the same number the backend
+  // checks a payout request against.
+  async getAvailableBalance(): Promise<number> {
+    const { availableBalance } = await trpcClient.driver.payouts.availableBalance.query();
+    return availableBalance;
+  },
+
+  // How much cash-ride commission the driver owes, and whether that has
+  // paused cash rides.
+  async getCashCommissionStatus(): Promise<CashCommissionStatus> {
+    return trpcClient.driver.cashEligibility.query();
+  },
+
+  // Starts an in-app Flutterwave checkout for the full amount owed (the
+  // server decides the amount).
+  async startCommissionPayment(returnUrl: string) {
+    return trpcClient.driver.commission.pay.mutate({ returnUrl });
+  },
+
   // Phase 3A: driver_payouts.insert is no longer directly client-writable
   // (the RLS policy that allowed it was revoked — see
   // supabase-schema-driver-payouts-automation.sql). Creating a payout now
   // goes through this tRPC route, which validates balance/ownership
-  // server-side and immediately attempts an automatic Paystack transfer in
-  // the same request. `driverId` is accepted here only to keep this
+  // server-side and immediately attempts an automatic transfer in the same
+  // request (falling back to the admin's manual payout queue). `driverId` is accepted here only to keep this
   // method's external signature unchanged for existing callers — the server
   // resolves the actual driver identity from the authenticated session and
   // ignores any client-supplied id.

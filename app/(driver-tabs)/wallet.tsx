@@ -27,7 +27,7 @@ import {
   Plus,
   CreditCard,
 } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import Toast from 'react-native-toast-message';
 import { useTheme } from '@/hooks/useThemeStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
@@ -54,7 +54,7 @@ interface EarningsData {
 
 export default function DriverWallet() {
   const { colors } = useTheme();
-  const { driverProfile, earnings: earningsHistory, stats } = useDriverStore();
+  const { earnings: earningsHistory, stats, cashCommission, refreshCashCommission } = useDriverStore();
   const { driver } = useDriverAuth();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month'>('week');
@@ -62,6 +62,7 @@ export default function DriverWallet() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [bankAccounts, setBankAccounts] = useState<DriverBankAccount[]>([]);
   const [payouts, setPayouts] = useState<DriverPayout[]>([]);
+  const [serverAvailableBalance, setServerAvailableBalance] = useState<number | null>(null);
   const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,12 +70,14 @@ export default function DriverWallet() {
   const loadWalletData = useCallback(async () => {
     if (!driver?.id) return;
     try {
-      const [accounts, payoutHistory] = await Promise.all([
+      const [accounts, payoutHistory, balance] = await Promise.all([
         DriverWalletService.getBankAccounts(),
         DriverWalletService.getPayouts(),
+        DriverWalletService.getAvailableBalance().catch(() => null),
       ]);
       setBankAccounts(accounts);
       setPayouts(payoutHistory);
+      setServerAvailableBalance(balance);
       const defaultAccount = accounts.find(a => a.isDefault) ?? accounts[0];
       if (defaultAccount) setSelectedBankId(defaultAccount.id);
     } catch (error: any) {
@@ -83,6 +86,15 @@ export default function DriverWallet() {
   }, [driver?.id]);
 
   useEffect(() => { void loadWalletData(); }, [loadWalletData]);
+
+  // Returning to this tab (e.g. right after paying commission) reloads the
+  // balance and the commission owed.
+  useFocusEffect(
+    useCallback(() => {
+      void loadWalletData();
+      void refreshCashCommission();
+    }, [loadWalletData, refreshCashCommission])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -108,16 +120,18 @@ export default function DriverWallet() {
   const currentEarnings = earnings[selectedPeriod];
   const currentTips = tipsByPeriod[selectedPeriod];
 
-  // Pending/processing payouts already claim part of the driver's earnings —
-  // not just completed ones — otherwise this would show a balance a driver
-  // could file a second withdrawal request against before the first is even
-  // reviewed. The backend enforces this for real (get_driver_available_balance
-  // in database/schemas/supabase-schema-driver-payouts.sql, which now also
-  // includes tips); this mirrors the same math purely for display.
+  // The withdrawable balance comes from the server (driver.payouts.availableBalance)
+  // — the same number a payout request is checked against, including
+  // cash-commission debt. The local figure below is only a fallback if that
+  // request fails; it can't see cash-commission debt, so it may overstate
+  // what's withdrawable (the server still refuses anything over the real
+  // balance). Every payout still reserving money counts against it,
+  // including ones waiting in the admin's manual-payout queue.
   const claimedPayoutsTotal = payouts
-    .filter(p => p.status === 'completed' || p.status === 'pending' || p.status === 'processing')
+    .filter(p => p.status === 'completed' || p.status === 'pending' || p.status === 'processing' || p.status === 'manual_review')
     .reduce((sum, p) => sum + p.amount, 0);
-  const availableBalance = Math.max(0, stats.totalEarnings + (stats.totalTips ?? 0) - claimedPayoutsTotal);
+  const availableBalance =
+    serverAvailableBalance ?? Math.max(0, stats.totalEarnings + (stats.totalTips ?? 0) - claimedPayoutsTotal);
 
   const transactions: Transaction[] = [
     ...earningsHistory.map((e: any) => {
@@ -235,7 +249,7 @@ export default function DriverWallet() {
       Toast.show({
         type: 'success',
         text1: 'Withdrawal Requested',
-        text2: `₦${amount.toFixed(2)} request submitted — usually sent within minutes`,
+        text2: `₦${amount.toFixed(2)} request submitted — we'll send it to your bank account`,
         position: 'top',
         visibilityTime: 4000,
       });
@@ -246,12 +260,27 @@ export default function DriverWallet() {
     }
   };
 
+  // manual_review is an internal admin queue — to the driver it's simply
+  // still being processed.
   const statusColor = (status: DriverPayout['status']) => {
     switch (status) {
       case 'completed': return '#4CAF50';
-      case 'processing': return '#FF9800';
-      case 'failed': return '#F44336';
+      case 'processing':
+      case 'manual_review': return '#FF9800';
+      case 'failed':
+      case 'reversed': return '#F44336';
       default: return '#9E9E9E';
+    }
+  };
+
+  const statusLabel = (status: DriverPayout['status']) => {
+    switch (status) {
+      case 'completed': return 'Paid';
+      case 'processing':
+      case 'manual_review': return 'Processing';
+      case 'failed': return 'Failed';
+      case 'reversed': return 'Reversed';
+      default: return 'Pending';
     }
   };
 
@@ -320,6 +349,40 @@ export default function DriverWallet() {
             </View>
           </LinearGradient>
         </View>
+
+        {/* Cash commission owed — from cash rides, where the driver kept the
+            whole fare. Shown whenever anything is owed; over the limit it
+            also pauses cash rides. */}
+        {cashCommission && cashCommission.amountOwed > 0 && (
+          <View
+            style={[
+              styles.commissionCard,
+              { backgroundColor: colors.card, borderLeftColor: cashCommission.blocked ? colors.danger : colors.warning },
+            ]}
+            testID="cash-commission-owed-card"
+          >
+            <View style={styles.commissionText}>
+              <Text style={[styles.commissionLabel, { color: colors.textSecondary }]}>Commission owed on cash rides</Text>
+              <Text style={[styles.commissionAmount, { color: colors.text }]}>₦{cashCommission.amountOwed.toLocaleString()}</Text>
+              <Text style={[styles.commissionHint, { color: cashCommission.blocked ? colors.danger : colors.textSecondary }]}>
+                {cashCommission.blocked
+                  ? 'Cash rides are paused until this is paid.'
+                  : `Cash rides pause if this goes over ₦${cashCommission.limit.toLocaleString()}.`}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.commissionButton, { backgroundColor: colors.primary }]}
+              onPress={() =>
+                router.push({
+                  pathname: '/payment-initialize' as any,
+                  params: { gateway: 'flutterwave', purpose: 'commission_settlement' },
+                })
+              }
+            >
+              <Text style={styles.commissionButtonText}>Pay now</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Period Selector */}
         <View style={styles.periodSelector}>
@@ -506,7 +569,7 @@ export default function DriverWallet() {
                     ₦{payout.amount.toFixed(2)}
                   </Text>
                   <Text style={[styles.payoutStatus, { color: statusColor(payout.status) }]}>
-                    {payout.status.charAt(0).toUpperCase() + payout.status.slice(1)}
+                    {statusLabel(payout.status)}
                   </Text>
                 </View>
               </View>
@@ -627,6 +690,41 @@ export default function DriverWallet() {
 }
 
 const styles = StyleSheet.create({
+  commissionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+  },
+  commissionText: {
+    flex: 1,
+  },
+  commissionLabel: {
+    fontSize: 13,
+  },
+  commissionAmount: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  commissionHint: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  commissionButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  commissionButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   container: {
     flex: 1,
   },

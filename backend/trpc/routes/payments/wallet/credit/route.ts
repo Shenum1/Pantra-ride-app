@@ -9,6 +9,12 @@ import { processVerifiedPayment } from "../../../../../lib/payment-processor";
 // balance update. Both paths converge on the exact same
 // processVerifiedPayment — there is no separate wallet-credit
 // implementation here.
+//
+// Despite the name, this confirms ANY payment the caller made through a
+// Pantra checkout: a rider's wallet top-up, or a driver's cash-commission
+// payment. processVerifiedPayment decides what the money is for from the
+// payment's own record (never from the client), and `purpose` tells the
+// caller which it was.
 export default authedProcedure
   .input(
     z.object({
@@ -28,5 +34,5 @@ export default authedProcedure
       eventType: "client_verify",
     });
 
-    return { status: result.status, message: result.message, transaction: result.transaction };
+    return { status: result.status, message: result.message, transaction: result.transaction, purpose: result.purpose };
   });

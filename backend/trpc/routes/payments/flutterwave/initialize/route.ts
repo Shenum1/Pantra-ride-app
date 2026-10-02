@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { authedProcedure } from "../../../../create-context";
-import { generatePaymentReference } from "../../../../../lib/payment-providers";
+import { createFlutterwaveCheckout } from "../../../../../lib/flutterwave-checkout";
 import { WALLET_TOPUP_CONFIG } from "../../../../../../lib/pricing-config";
 
-const FLUTTERWAVE_SECRET_KEY = process.env.FLUTTERWAVE_SECRET_KEY ?? "";
-
+// A rider's wallet top-up checkout. Driver commission payments use the same
+// checkout (backend/lib/flutterwave-checkout.ts) via driver.commission.pay.
 export default authedProcedure
   .input(
     z.object({
@@ -17,14 +17,6 @@ export default authedProcedure
     })
   )
   .mutation(async ({ ctx, input }) => {
-    if (!FLUTTERWAVE_SECRET_KEY) {
-      console.warn("⚠️ FLUTTERWAVE_SECRET_KEY is not configured on the server");
-      return {
-        status: "error" as const,
-        message: "Flutterwave is not configured. Please add FLUTTERWAVE_SECRET_KEY to the server environment.",
-      };
-    }
-
     const amount = Math.round(input.amount * 100) / 100;
     if (amount < WALLET_TOPUP_CONFIG.minAmount || amount > WALLET_TOPUP_CONFIG.maxAmount) {
       return {
@@ -33,73 +25,15 @@ export default authedProcedure
       };
     }
 
-    // Generated server-side, never client-supplied.
-    const tx_ref = generatePaymentReference();
-
-    const { error: intentError } = await ctx.supabaseAdmin.from("payment_intents").insert({
+    return createFlutterwaveCheckout({
+      supabaseAdmin: ctx.supabaseAdmin,
       userId: ctx.userId,
-      provider: "flutterwave",
-      reference: tx_ref,
       purpose: "wallet_funding",
-      expectedAmount: amount,
-      currency: "NGN",
-      status: "initialized",
+      amount,
+      customer: { email: input.email, name: input.name, phone: input.phone_number },
+      returnUrl: input.redirect_url,
+      title: "Pantra Wallet",
+      description: "Add money to your Pantra wallet",
+      meta: input.meta,
     });
-
-    if (intentError) {
-      console.error("Failed to create payment intent:", intentError);
-      return { status: "error" as const, message: "Could not start this payment. Please try again." };
-    }
-
-    try {
-      const response = await fetch("https://api.flutterwave.com/v3/payments", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${FLUTTERWAVE_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          tx_ref,
-          amount,
-          currency: "NGN",
-          redirect_url: input.redirect_url || "https://rork.app/payment-callback",
-          payment_options: "card,banktransfer,ussd,mobilemoney",
-          customer: {
-            email: input.email,
-            phonenumber: input.phone_number,
-            name: input.name || "Customer",
-          },
-          customizations: {
-            title: "Ride Payment",
-            description: "Payment for ride service",
-            logo: "https://rork.app/logo.png",
-          },
-          meta: input.meta,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.status !== "success") {
-        console.error("Flutterwave initialization failed:", result);
-        await ctx.supabaseAdmin.from("payment_intents").update({ status: "cancelled" }).eq("reference", tx_ref);
-        return {
-          status: "error" as const,
-          message: result.message || "Failed to initialize payment",
-        };
-      }
-
-      return {
-        status: "success" as const,
-        message: "Payment initialized successfully",
-        data: result.data,
-      };
-    } catch (error) {
-      console.error("Error initializing Flutterwave payment:", error);
-      await ctx.supabaseAdmin.from("payment_intents").update({ status: "cancelled" }).eq("reference", tx_ref);
-      return {
-        status: "error" as const,
-        message: "Network error while contacting Flutterwave.",
-      };
-    }
   });

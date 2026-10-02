@@ -3,14 +3,22 @@ import { AppState, Platform, Alert } from 'react-native';
 import * as ExpoLocation from 'expo-location';
 import createContextHook from '@nkzw/create-context-hook';
 import { DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
-import { FirebaseDriverService } from '@/lib/firebase-driver-service';
+import { CashRidesPausedError, FirebaseDriverService } from '@/lib/firebase-driver-service';
+import { CashCommissionStatus, DriverWalletService } from '@/lib/driver-wallet-service';
 import { NotificationService } from '@/lib/notification-service';
 import { trpcClient } from '@/lib/trpc';
 import { useDriverAuth } from './useDriverAuthStore';
 
 export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
   const [driverProfile, setDriverProfile] = useState<DriverProfile | null>(null);
-  const [rideRequests, setRideRequests] = useState<RideRequestForDriver[]>([]);
+  // Every pending ride the driver could see; `rideRequests` (below) is what
+  // they're actually shown, minus cash rides while cash rides are paused.
+  const [allRideRequests, setRideRequests] = useState<RideRequestForDriver[]>([]);
+  // Cash-commission position (driver.cashEligibility). Changes only when a
+  // ride completes or the driver pays, so it's refreshed at those points
+  // and on load/foreground — not polled.
+  const [cashCommission, setCashCommission] = useState<CashCommissionStatus | null>(null);
+  const cashRidesPausedRef = useRef(false);
   const [currentRide, setCurrentRide] = useState<RideRequestForDriver | null>(null);
   const [earnings, setEarnings] = useState<DriverEarnings[]>([]);
   const [stats, setStats] = useState<DriverStats>({
@@ -26,9 +34,30 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
   const [isOnline, setIsOnline] = useState(false);
   const knownRequestIdsRef = useRef<Set<string>>(new Set());
 
+  // Cash rides are hidden while the driver's cash commission debt is over the
+  // limit (the database also refuses the accept, so this is the UX half).
+  // Declared before anything that closes over it (acceptRideRequest).
+  const rideRequests = useMemo(
+    () => (cashCommission?.blocked ? allRideRequests.filter((r) => r.paysWith === 'wallet') : allRideRequests),
+    [allRideRequests, cashCommission?.blocked]
+  );
+
+  const refreshCashCommission = useCallback(async (): Promise<CashCommissionStatus | null> => {
+    try {
+      const status = await DriverWalletService.getCashCommissionStatus();
+      cashRidesPausedRef.current = status.blocked;
+      setCashCommission(status);
+      return status;
+    } catch (error) {
+      console.error('Error loading cash commission status:', error);
+      return null;
+    }
+  }, []);
+
   const loadDriverData = useCallback(async (driverId: string) => {
     try {
       setIsLoading(true);
+      void refreshCashCommission();
 
       const profile = await FirebaseDriverService.getDriver(driverId);
       if (profile) {
@@ -50,7 +79,7 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [refreshCashCommission]);
 
   const refreshRideRequests = useCallback(async (driverId: string) => {
     try {
@@ -87,7 +116,11 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
             knownRequestIdsRef.current = new Set(requests.map((r) => r.id).filter((id): id is string => !!id));
             setRideRequests(requests);
 
-            newRequests.forEach((request) => {
+            // Never notify about a cash ride the driver can't take right now.
+            const notifiable = cashRidesPausedRef.current
+              ? newRequests.filter((r) => r.paysWith === 'wallet')
+              : newRequests;
+            notifiable.forEach((request) => {
               void NotificationService.getDriverNotificationsEnabled().then((enabled) => {
                 if (!enabled) return;
                 void NotificationService.notifyNewRideRequest(
@@ -122,11 +155,12 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         refreshRideRequests(activeDriverId);
+        void refreshCashCommission();
       }
     });
 
     return () => subscription.remove();
-  }, [activeDriverId, refreshRideRequests]);
+  }, [activeDriverId, refreshRideRequests, refreshCashCommission]);
 
   // Safety net independent of realtime/AppState — poll for pending rides while online.
   // The realtime channel and foreground-refetch above should normally be enough, but
@@ -212,13 +246,18 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
         price: ride.price,
       });
       setRideRequests(prev => prev.filter(r => r.id !== rideId));
-      
+
       console.log('Ride accepted:', rideId);
     } catch (error) {
       console.error('Error accepting ride:', error);
+      // The database refused a cash ride because the driver's debt went over
+      // the limit since this list loaded — refresh so cash rides disappear.
+      if (error instanceof CashRidesPausedError) {
+        void refreshCashCommission();
+      }
       throw error;
     }
-  }, [rideRequests, driverProfile]);
+  }, [rideRequests, driverProfile, refreshCashCommission]);
 
   const declineRideRequest = useCallback(async (rideId: string) => {
     try {
@@ -259,6 +298,9 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
 
           const statsData = await FirebaseDriverService.getDriverStats(driverProfile.id);
           setStats(statsData);
+
+          // A completed cash ride adds commission debt (a wallet ride pays it down).
+          void refreshCashCommission();
         }
 
         setCurrentRide(null);
@@ -275,7 +317,7 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       // ride had completed and the rider/driver had been settled.
       throw error;
     }
-  }, [currentRide, driverProfile]);
+  }, [currentRide, driverProfile, refreshCashCommission]);
 
   const updateLocation = useCallback(async (latitude: number, longitude: number) => {
     try {
@@ -325,6 +367,8 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
   return useMemo(() => ({
     driverProfile,
     rideRequests,
+    cashCommission,
+    refreshCashCommission,
     currentRide,
     earnings,
     stats,
@@ -340,6 +384,8 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
   }), [
     driverProfile,
     rideRequests,
+    cashCommission,
+    refreshCashCommission,
     currentRide,
     earnings,
     stats,

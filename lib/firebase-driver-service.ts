@@ -2,6 +2,15 @@ import { supabase } from './supabase';
 import { Driver, DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
 import { calculateDriverPayout, calculateWaitingCharge } from './fare-calculator';
 
+// The driver owes more than the cash commission limit, so the database
+// refused to let them accept a cash ride.
+export class CashRidesPausedError extends Error {
+  constructor() {
+    super('Cash rides are paused until you pay the commission you owe. Wallet rides are still available.');
+    this.name = 'CashRidesPausedError';
+  }
+}
+
 export interface DriverTripRecord {
   id: string;
   pickupAddress: string;
@@ -248,6 +257,9 @@ export class FirebaseDriverService {
           bookerPhone: booker.phoneNumber || undefined,
         },
         estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0, ride.priorityFee || 0).netAmount,
+        // rides.create stores plain 'cash'/'wallet'; anything else (a ride
+        // booked before that) is treated as cash, the safe side for hiding.
+        paysWith: ride.paymentMethod === 'wallet' ? 'wallet' : 'cash',
         isPriority: !!ride.isPriority,
         distanceToPickup,
         createdAt: ride.createdAt ? new Date(ride.createdAt) : new Date(),
@@ -273,7 +285,15 @@ export class FirebaseDriverService {
       .from('rides')
       .update(updates)
       .eq('id', rideId);
-    if (error) throw new Error(error.message);
+    if (error) {
+      // Raised by the rides_cash_dispatch_guard database check
+      // (supabase-schema-cash-commission-settlement.sql) when this driver
+      // owes more than the cash commission limit.
+      if (error.message?.includes('CASH_RIDES_PAUSED')) {
+        throw new CashRidesPausedError();
+      }
+      throw new Error(error.message);
+    }
     await this.setDriverOnlineStatus(driverId, false);
   }
 

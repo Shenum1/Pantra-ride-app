@@ -46,6 +46,31 @@ export const rideCreateInputSchema = z.object({
   zoneFee: z.number().min(0).optional(),
 });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// rides.paymentMethod always stores the plain method — 'cash' or 'wallet' —
+// never the id of a saved payment_methods row. The app sends the id of the
+// rider's chosen saved method (app/payment-methods.tsx seeds "Cash" and
+// "Pantra Wallet" rows), and everything downstream decides how money moves
+// by reading this column: rides.confirmPayment debits the wallet only for
+// 'wallet', and the settlement trigger records the driver's cash-commission
+// debt only for 'cash'. Storing an id there made those checks miss.
+//
+// Anything that doesn't resolve to the rider's own wallet is a cash ride —
+// the schema's existing default, and how a legacy 'card' row was always
+// actually paid (card charging was never built; the driver was paid in
+// person). A lookup failure throws rather than silently guessing.
+export async function resolveRidePaymentMethod(
+  requested: string,
+  lookupOwnSavedMethodType: (id: string) => Promise<string | null>
+): Promise<"cash" | "wallet"> {
+  const value = requested.trim();
+  const plain = value.toLowerCase();
+  if (plain === "cash" || plain === "wallet") return plain;
+  if (UUID_RE.test(value) && (await lookupOwnSavedMethodType(value)) === "wallet") return "wallet";
+  return "cash";
+}
+
 const VALID_ZONE_FEES = new Set<number>([
   0,
   ZONE_FEES.airportPickup,
@@ -79,6 +104,19 @@ export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ct
       serviceFee: t.serviceFee,
     };
   }
+
+  // Only the rider's OWN saved method counts — another rider's id resolves
+  // to nothing, so it can never be used to pick a different wallet.
+  const paymentMethod = await resolveRidePaymentMethod(input.paymentMethod, async (id) => {
+    const { data, error } = await db
+      .from("payment_methods")
+      .select("type")
+      .eq("id", id)
+      .eq("userId", ctx.userId)
+      .maybeSingle();
+    if (error) throw new Error(`Could not read the selected payment method: ${error.message}`);
+    return data?.type ?? null;
+  });
 
   const directions = await getServerDirections(input.pickupLocation, input.dropoffLocation);
   const distanceKm = directions.distanceMeters / 1000;
@@ -201,7 +239,7 @@ export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ct
     duration: Math.round(durationMin),
     trackingStage: "searching",
     statusText: "Looking for a nearby driver",
-    paymentMethod: input.paymentMethod,
+    paymentMethod,
     promoCode: promoId ? input.promoCode : null,
     isShared: input.isShared,
     sharedWith: input.isShared && input.sharedWith && input.sharedWith.length > 0 ? input.sharedWith : null,

@@ -99,14 +99,18 @@ describe('payments.{paystack,flutterwave}.initialize — require authentication 
   it('neither initialize route accepts a client-supplied reference/tx_ref anymore', async () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
-    const [paystackSource, flutterwaveSource] = await Promise.all([
+    const [paystackSource, flutterwaveSource, flutterwaveCheckoutSource] = await Promise.all([
       fs.readFile(path.resolve(process.cwd(), 'backend/trpc/routes/payments/paystack/initialize/route.ts'), 'utf8'),
       fs.readFile(path.resolve(process.cwd(), 'backend/trpc/routes/payments/flutterwave/initialize/route.ts'), 'utf8'),
+      fs.readFile(path.resolve(process.cwd(), 'backend/lib/flutterwave-checkout.ts'), 'utf8'),
     ]);
     expect(paystackSource).not.toMatch(/reference:\s*z\./);
     expect(flutterwaveSource).not.toMatch(/tx_ref:\s*z\./);
     expect(paystackSource).toContain('generatePaymentReference()');
-    expect(flutterwaveSource).toContain('generatePaymentReference()');
+    // Flutterwave checkouts (top-ups and driver commission payments) are
+    // created by one shared helper, which generates the reference itself.
+    expect(flutterwaveSource).toContain('createFlutterwaveCheckout(');
+    expect(flutterwaveCheckoutSource).toContain('generatePaymentReference()');
   });
 });
 
@@ -159,6 +163,52 @@ describe('admin.payouts — no generic status-setter route exists (Phase 3A)', (
     );
     expect(source).toContain('reconcileOnePayout');
     expect(source).toMatch(/status\s*!==\s*["']manual_review["']/);
+  });
+
+  it('completeManually refuses an unverifiable payout unless the admin confirms they checked the provider dashboard', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const source = await fs.readFile(
+      path.resolve(process.cwd(), 'backend/trpc/routes/admin/payouts/complete-manually/route.ts'),
+      'utf8'
+    );
+    // The re-check result must actually be used — not awaited and discarded.
+    expect(source).toMatch(/const check = await reconcileOnePayout/);
+    expect(source).toMatch(/if \(check\.unverifiable\)/);
+    expect(source).toMatch(/if \(!input\.confirmedNoProviderTransfer\)/);
+  });
+});
+
+describe('driver.payouts.availableBalance — requires driver authentication', () => {
+  it('rejects an unauthenticated call', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(caller.driver.payouts.availableBalance()).rejects.toThrow();
+  });
+});
+
+describe('cash commission routes — require authentication', () => {
+  it('driver routes reject an unauthenticated call', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(caller.driver.cashEligibility()).rejects.toThrow();
+    await expect(caller.driver.commission.pay({})).rejects.toThrow();
+  });
+
+  it('admin routes reject an unauthenticated call', async () => {
+    const caller = appRouter.createCaller({ req: new Request('http://localhost/api/trpc') });
+    await expect(caller.admin.commission.list({ owingOnly: true })).rejects.toThrow();
+    await expect(
+      caller.admin.commission.recordPayment({
+        driverId: '00000000-0000-0000-0000-000000000000', amount: 100, externalReference: 'ref-1',
+      })
+    ).rejects.toThrow();
+  });
+
+  it('the in-app payment amount is decided by the server, never sent by the app', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const source = await fs.readFile(path.resolve(process.cwd(), 'backend/trpc/routes/driver/commission/pay/route.ts'), 'utf8');
+    expect(source).not.toMatch(/amount:\s*z\./);
+    expect(source).toContain('amount: status.amountOwed');
   });
 });
 

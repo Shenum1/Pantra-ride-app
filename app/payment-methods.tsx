@@ -1,120 +1,121 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, Pressable, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { CreditCard, Plus, Trash2 } from 'lucide-react-native';
+import { Wallet as WalletIcon, Banknote, Check } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { usePayment } from '@/hooks/usePaymentStore';
-import Button from '@/components/Button';
+import { useWallet } from '@/hooks/useWalletStore';
 import { SkeletonRow, ShimmerGroup } from '@/components/skeletons';
 
+// Pantra is cardless: exactly two ways to pay for a ride, Pantra Wallet or
+// Cash. No card entry, no saved card list — see
+// database/schemas/supabase-schema-payment-methods-cardless-deprecation.sql.
+// Selecting one here sets it as the rider's default payment method
+// (usePayment().setDefaultPaymentMethod), which useRideStore's requestRide()
+// falls back to whenever a ride isn't given an explicit per-trip override.
 export default function PaymentMethodsScreen() {
   const router = useRouter();
-  const { paymentMethods, isLoading, setDefaultPaymentMethod, removePaymentMethod } = usePayment();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { paymentMethods, isLoading, addPaymentMethod, setDefaultPaymentMethod } = usePayment();
+  const { balance } = useWallet();
+  const seeding = useRef(false);
 
-  const handleSetDefault = () => {
-    if (selectedId) {
-      const method = paymentMethods.find(m => m.id === selectedId);
-      if (method) {
-        setDefaultPaymentMethod(method.id);
-        Alert.alert('Default Updated', `${method.name} is now your default payment method`);
-      }
+  const cashMethod = paymentMethods.find((m) => m.type === 'cash');
+  const walletMethod = paymentMethods.find((m) => m.type === 'wallet');
+
+  // First visit for this rider: seed the two fixed options once, Cash
+  // default (matches the pre-existing paymentMethod="cash" server default
+  // in rides/create/route.ts, so a rider who never opens this screen at all
+  // still behaves exactly as before).
+  useEffect(() => {
+    if (isLoading || seeding.current) return;
+    if (!cashMethod && !walletMethod && paymentMethods.length === 0) {
+      seeding.current = true;
+      (async () => {
+        try {
+          await addPaymentMethod({ type: 'cash', name: 'Cash', isDefault: true, icon: 'banknote' });
+          await addPaymentMethod({ type: 'wallet', name: 'Pantra Wallet', isDefault: false, icon: 'wallet' });
+        } catch (error) {
+          console.error('Error seeding default payment methods:', error);
+        } finally {
+          seeding.current = false;
+        }
+      })();
+    }
+  }, [isLoading, cashMethod, walletMethod, paymentMethods.length, addPaymentMethod]);
+
+  const handleSelect = async (id: string, name: string) => {
+    try {
+      await setDefaultPaymentMethod(id);
+      Alert.alert('Default Updated', `${name} is now your default payment method`);
+    } catch (error) {
+      console.error('Error setting default payment method:', error);
+      Alert.alert('Error', 'Could not update your default payment method. Please try again.');
     }
   };
 
-  const handleRemove = (id: string) => {
-    Alert.alert(
-      'Remove Payment Method',
-      'Are you sure you want to remove this payment method?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
-          style: 'destructive',
-          onPress: () => {
-            removePaymentMethod(id);
-            if (selectedId === id) {
-              setSelectedId(null);
-            }
-          }
-        },
-      ]
-    );
-  };
-
-  const handleAddNew = () => {
-    router.push('/add-payment-method');
-  };
+  const options = [
+    walletMethod && {
+      method: walletMethod,
+      icon: WalletIcon,
+      subtitle: `Balance: ₦${balance.toLocaleString()}`,
+    },
+    cashMethod && {
+      method: cashMethod,
+      icon: Banknote,
+      subtitle: 'Pay the driver directly after your ride',
+    },
+  ].filter(Boolean) as { method: NonNullable<typeof cashMethod>; icon: typeof WalletIcon; subtitle: string }[];
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <Stack.Screen options={{ 
+      <Stack.Screen options={{
         title: 'Payment Methods',
         headerShadowVisible: false,
         headerStyle: { backgroundColor: Colors.light.background },
       }} />
 
       <ScrollView style={styles.content}>
-        <Text style={styles.sectionTitle}>Your payment methods</Text>
+        <Text style={styles.sectionTitle}>How you pay</Text>
+        <Text style={styles.sectionSubtitle}>Pantra is cardless — choose your wallet or pay cash.</Text>
 
-        {isLoading ? (
+        {isLoading || options.length === 0 ? (
           <View style={styles.skeletonContainer}>
             <ShimmerGroup>
               <SkeletonRow leadingSize={40} style={styles.skeletonRow} />
               <SkeletonRow leadingSize={40} style={styles.skeletonRow} />
             </ShimmerGroup>
           </View>
-        ) : paymentMethods.map(method => (
-          <Pressable 
+        ) : options.map(({ method, icon: Icon, subtitle }) => (
+          <Pressable
             key={method.id}
-            style={[styles.paymentCard, selectedId === method.id && styles.selectedCard]}
-            onPress={() => setSelectedId(method.id)}
-            testID={`payment-method-${method.id}`}
+            style={[styles.paymentCard, method.isDefault && styles.selectedCard]}
+            onPress={() => handleSelect(method.id, method.name)}
+            testID={`payment-method-${method.type}`}
           >
             <View style={styles.paymentCardLeft}>
               <View style={styles.iconContainer}>
-                <CreditCard size={20} color={Colors.light.text} />
+                <Icon size={20} color={Colors.light.text} />
               </View>
               <View style={styles.paymentInfo}>
                 <Text style={styles.paymentName}>{method.name}</Text>
-                <Text style={styles.paymentDetails}>
-                  {method.isDefault && '(Default) '}
-                  {method.lastFour ? `\u2022\u2022\u2022\u2022 ${method.lastFour}` : ''}
-                  {method.expiryDate ? ` \u2022 Expires ${method.expiryDate}` : ''}
-                </Text>
+                <Text style={styles.paymentDetails}>{subtitle}</Text>
               </View>
             </View>
-            <Pressable 
-              hitSlop={10}
-              onPress={() => handleRemove(method.id)}
-              style={styles.deleteButton}
-              testID={`delete-payment-${method.id}`}
-            >
-              <Trash2 size={18} color={Colors.light.danger} />
-            </Pressable>
+            {method.isDefault && (
+              <View style={styles.checkBadge}>
+                <Check size={16} color={Colors.light.white} />
+              </View>
+            )}
           </Pressable>
         ))}
 
-        <Pressable 
-          style={styles.addNewButton}
-          onPress={handleAddNew}
-          testID="add-payment-method"
-        >
-          <Plus size={20} color={Colors.light.primary} />
-          <Text style={styles.addNewText}>Add payment method</Text>
-        </Pressable>
+        {walletMethod && walletMethod.isDefault && balance <= 0 && (
+          <Pressable style={styles.topUpBanner} onPress={() => router.push('/wallet-add-money' as any)}>
+            <Text style={styles.topUpBannerText}>Your wallet is empty — add money to pay for rides with it</Text>
+          </Pressable>
+        )}
       </ScrollView>
-
-      {selectedId && (
-        <View style={styles.buttonContainer}>
-          <Button 
-            title="Set as Default" 
-            onPress={handleSetDefault} 
-            testID="set-default-button"
-          />
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -133,7 +134,13 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     marginHorizontal: 16,
     marginTop: 16,
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: Colors.light.gray,
+    marginHorizontal: 16,
+    marginBottom: 16,
   },
   paymentCard: {
     flexDirection: 'row',
@@ -178,32 +185,13 @@ const styles = StyleSheet.create({
     color: Colors.light.gray,
     marginTop: 2,
   },
-  deleteButton: {
-    padding: 8,
-  },
-  addNewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  checkBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.light.primary,
     justifyContent: 'center',
-    backgroundColor: Colors.light.white,
-    marginHorizontal: 16,
-    marginBottom: 20,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.light.primary,
-    borderStyle: 'dashed',
-  },
-  addNewText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.light.primary,
-    marginLeft: 8,
-  },
-  buttonContainer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.light.lightGray,
+    alignItems: 'center',
   },
   skeletonContainer: {
     marginHorizontal: 16,
@@ -211,5 +199,17 @@ const styles = StyleSheet.create({
   },
   skeletonRow: {
     marginBottom: 0,
+  },
+  topUpBanner: {
+    marginHorizontal: 16,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+  },
+  topUpBannerText: {
+    fontSize: 13,
+    color: Colors.light.text,
+    lineHeight: 18,
   },
 });

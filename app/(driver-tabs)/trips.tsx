@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -23,9 +23,10 @@ import Colors from '@/constants/colors';
 import Map from '@/components/Map';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as ExpoLocation from 'expo-location';
 import { RideRequestForDriver } from '@/types';
+import { CashRidesPausedError } from '@/lib/firebase-driver-service';
 
 export default function DriverTrips() {
   const { userLocation, setUserLocation } = useLocation();
@@ -35,9 +36,26 @@ export default function DriverTrips() {
     isOnline,
     acceptRideRequest,
     declineRideRequest,
-    updateLocation
+    updateLocation,
+    cashCommission,
+    refreshCashCommission,
   } = useDriverStore();
   const [locationPermission, setLocationPermission] = useState(false);
+
+  // Coming back to this tab (e.g. after paying commission) re-checks whether
+  // cash rides are still paused.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshCashCommission();
+    }, [refreshCashCommission])
+  );
+
+  const payCommission = () => {
+    router.push({
+      pathname: '/payment-initialize' as any,
+      params: { gateway: 'flutterwave', purpose: 'commission_settlement' },
+    });
+  };
 
   const snapPoints = useMemo(() => ['15%', '87%'], []);
 
@@ -106,6 +124,13 @@ export default function DriverTrips() {
       router.push('/driver-active-trip');
     } catch (error) {
       console.error('Error accepting ride:', error);
+      if (error instanceof CashRidesPausedError) {
+        Alert.alert('Cash rides paused', error.message, [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Pay now', onPress: payCommission },
+        ]);
+        return;
+      }
       Alert.alert('Error', 'Failed to accept ride. Please try again.');
     }
   };
@@ -225,6 +250,23 @@ export default function DriverTrips() {
     </View>
   );
 
+  // Shown above the request list while cash rides are hidden, so a driver
+  // knows why and can clear it straight away.
+  const CashPausedBanner = () =>
+    cashCommission?.blocked ? (
+      <View style={styles.cashBanner} testID="cash-rides-paused-banner">
+        <View style={styles.cashBannerText}>
+          <Text style={styles.cashBannerTitle}>Cash rides paused</Text>
+          <Text style={styles.cashBannerBody}>
+            You owe ₦{cashCommission.amountOwed.toLocaleString()} in commission on cash rides. Wallet rides are still available.
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.cashBannerButton} onPress={payCommission}>
+          <Text style={styles.cashBannerButtonText}>Pay now</Text>
+        </TouchableOpacity>
+      </View>
+    ) : null;
+
   const EmptyListState = () => (
     !isOnline ? (
       <View style={styles.offlineContainer}>
@@ -275,6 +317,7 @@ export default function DriverTrips() {
           renderItem={({ item }: { item: RideRequestForDriver }) => <RideCard ride={item} />}
           contentContainerStyle={styles.ridesContainer}
           showsVerticalScrollIndicator={false}
+          ListHeaderComponent={CashPausedBanner}
           ListEmptyComponent={EmptyListState}
         />
       </BottomSheet>
@@ -286,6 +329,42 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  cashBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.light.warning,
+    backgroundColor: Colors.light.white,
+  },
+  cashBannerText: {
+    flex: 1,
+  },
+  cashBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.light.text,
+  },
+  cashBannerBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+    color: Colors.light.textSecondary,
+  },
+  cashBannerButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: Colors.light.primary,
+  },
+  cashBannerButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.light.white,
   },
   mapContainer: {
     flex: 1,

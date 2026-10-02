@@ -39,7 +39,16 @@ interface PayoutRow {
   bankAccount: { bankName: string; accountNumberLast4: string; accountName: string } | null;
   manualActions: ManualAction[];
   hasOpenReconciliation: boolean;
+  needsProviderConfirmation: boolean;
 }
+
+interface CompleteTarget {
+  id: string;
+  needsProviderConfirmation: boolean;
+  providerTransferReference: string | null;
+}
+
+const EMPTY_COMPLETE_FORM = { externalReference: '', notes: '', confirmedNoProviderTransfer: false };
 
 interface PayoutsResponse {
   payouts: PayoutRow[];
@@ -64,8 +73,8 @@ export default function Payouts() {
   const [revealed, setRevealed] = useState<Record<string, string>>({});
   const [manualReviewModal, setManualReviewModal] = useState<{ id: string } | null>(null);
   const [failModal, setFailModal] = useState<{ id: string } | null>(null);
-  const [completeModal, setCompleteModal] = useState<{ id: string } | null>(null);
-  const [completeForm, setCompleteForm] = useState({ externalReference: '', notes: '' });
+  const [completeModal, setCompleteModal] = useState<CompleteTarget | null>(null);
+  const [completeForm, setCompleteForm] = useState(EMPTY_COMPLETE_FORM);
   const [checkResult, setCheckResult] = useState<Record<string, string>>({});
 
   const { data, loading, error, refetch } = useTrpcQuery<PayoutsResponse>(
@@ -121,19 +130,27 @@ export default function Payouts() {
     );
   };
 
+  const canSubmitComplete =
+    !!completeModal &&
+    !!completeForm.externalReference.trim() &&
+    (!completeModal.needsProviderConfirmation || completeForm.confirmedNoProviderTransfer);
+
+  const closeComplete = () => {
+    setCompleteModal(null);
+    setCompleteForm(EMPTY_COMPLETE_FORM);
+  };
+
   const submitComplete = () => {
-    if (!completeModal || !completeForm.externalReference.trim()) return;
+    if (!completeModal || !canSubmitComplete) return;
     const id = completeModal.id;
     runAction(id, () =>
       trpcMutate('admin.payouts.completeManually', {
         payoutId: id,
         externalReference: completeForm.externalReference.trim(),
         notes: completeForm.notes.trim() || undefined,
+        confirmedNoProviderTransfer: completeModal.needsProviderConfirmation ? completeForm.confirmedNoProviderTransfer : undefined,
       })
-    ).then(() => {
-      setCompleteModal(null);
-      setCompleteForm({ externalReference: '', notes: '' });
-    });
+    ).then(closeComplete);
   };
 
   const columns: TableColumn<PayoutRow>[] = [
@@ -223,7 +240,18 @@ export default function Payouts() {
           )}
           {p.status === 'manual_review' && (
             <>
-              <Button variant="success" size="sm" disabled={busy === p.id} onClick={() => setCompleteModal({ id: p.id })}>
+              <Button
+                variant="success"
+                size="sm"
+                disabled={busy === p.id}
+                onClick={() =>
+                  setCompleteModal({
+                    id: p.id,
+                    needsProviderConfirmation: p.needsProviderConfirmation,
+                    providerTransferReference: p.providerTransferReference,
+                  })
+                }
+              >
                 Complete manually
               </Button>
               <Button variant="secondary" size="sm" disabled={busy === p.id} onClick={() => retry(p.id)}>
@@ -259,7 +287,7 @@ export default function Payouts() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Payouts" description="Driver withdrawal requests — automatic Paystack transfer by default, with a controlled, audited manual fallback." />
+      <PageHeader title="Payouts" description="Driver withdrawal requests — automatic Flutterwave transfer by default, with a controlled, audited manual fallback." />
 
       <FilterTabs options={STATUS_OPTIONS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setOffset(0); }} />
 
@@ -309,17 +337,17 @@ export default function Payouts() {
       {completeModal && (
         <Modal
           title="Complete payout manually"
-          description="Before completing, Pantra re-checks with Paystack to make sure an automatic transfer hasn't already succeeded — this is refused if it has."
-          onClose={() => setCompleteModal(null)}
+          description="Before completing, Pantra re-checks with the payout's provider to make sure an automatic transfer hasn't already succeeded — this is refused if it has."
+          onClose={closeComplete}
           footer={
             <>
-              <Button variant="secondary" className="flex-1" onClick={() => setCompleteModal(null)}>
+              <Button variant="secondary" className="flex-1" onClick={closeComplete}>
                 Cancel
               </Button>
               <Button
                 variant="success"
                 className="flex-1"
-                disabled={busy === completeModal.id || !completeForm.externalReference.trim()}
+                disabled={busy === completeModal.id || !canSubmitComplete}
                 onClick={submitComplete}
               >
                 Complete
@@ -327,6 +355,25 @@ export default function Payouts() {
             </>
           }
         >
+          {completeModal.needsProviderConfirmation && (
+            <div className="rounded-md border border-warning/30 bg-warning-tint p-3 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">An automatic transfer may already have been sent</p>
+              <p className="mt-1">
+                An automatic Flutterwave attempt for this payout didn&apos;t return a clear result, and Pantra can&apos;t look it up.
+                Search the Flutterwave dashboard for reference{' '}
+                <span className="font-mono text-xs">{completeModal.providerTransferReference}</span> before paying this driver.
+              </p>
+              <label className="mt-3 flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={completeForm.confirmedNoProviderTransfer}
+                  onChange={(e) => setCompleteForm((f) => ({ ...f, confirmedNoProviderTransfer: e.target.checked }))}
+                  className="mt-0.5"
+                />
+                <span>I checked the Flutterwave dashboard and no transfer was sent for this reference.</span>
+              </label>
+            </div>
+          )}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-500">External transfer reference (required)</label>
             <input

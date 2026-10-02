@@ -11,17 +11,21 @@ interface MockIntent {
   currency: string;
   status: string;
   paymentMethodId: string | null;
+  purpose?: string | null;
 }
 
 function createSupabaseMock(opts: {
   intent: MockIntent | null;
   rpcError?: { message: string } | null;
   eventsInsertError?: { code: string; message: string } | null;
+  driver?: { id: string } | null;
+  ledgerInsertError?: { code: string; message: string } | null;
 }) {
   const calls = {
     intentUpdates: [] as { table: string; row: any }[],
     eventsInserts: [] as any[],
     reconciliationInserts: [] as any[],
+    ledgerInserts: [] as any[],
     rpc: [] as { fn: string; args: any }[],
   };
 
@@ -37,6 +41,9 @@ function createSupabaseMock(opts: {
           if (table === 'payment_intents') {
             return Promise.resolve({ data: opts.intent, error: null });
           }
+          if (table === 'drivers') {
+            return Promise.resolve({ data: opts.driver ?? null, error: null });
+          }
           return Promise.resolve({ data: null, error: null });
         },
         insert: (row: any) => {
@@ -48,6 +55,10 @@ function createSupabaseMock(opts: {
           if (table === 'payment_reconciliation_records') {
             calls.reconciliationInserts.push(row);
             return Promise.resolve({ error: null });
+          }
+          if (table === 'driver_commission_ledger') {
+            calls.ledgerInserts.push(row);
+            return Promise.resolve({ error: opts.ledgerInsertError ?? null });
           }
           return Promise.resolve({ error: null });
         },
@@ -267,5 +278,92 @@ describe('processVerifiedPayment', () => {
     expect(calls.intentUpdates).toHaveLength(0); // never attempts to mutate the immutable 'successful' status
     expect(calls.reconciliationInserts[0].mismatchType).toBe('pantra_success_provider_failed');
     expect(intent.status).toBe('successful'); // unchanged
+  });
+});
+
+describe('processVerifiedPayment — driver cash-commission payments', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const verified = () =>
+    vi.spyOn(paymentProviders, 'verifyFlutterwaveTransaction').mockResolvedValue({
+      success: true, providerState: 'successful', amount: 6200, currency: 'NGN', message: '', raw: { data: { status: 'successful', id: 991 } },
+    });
+
+  const commissionIntent = () =>
+    baseIntent({ provider: 'flutterwave', purpose: 'commission_settlement', expectedAmount: 6200, userId: 'driver-user-1' });
+
+  it("records a settlement against the driver's commission debt — never a wallet credit", async () => {
+    verified();
+    const intent = commissionIntent();
+    const { supabaseAdmin, calls } = createSupabaseMock({ intent, driver: { id: 'driver-1' } });
+
+    const result = await processVerifiedPayment({
+      supabaseAdmin, provider: 'flutterwave', reference: intent.reference, sourceChannel: 'webhook', eventType: 'charge.completed',
+    });
+
+    expect(result.status).toBe(true);
+    expect(result.purpose).toBe('commission_settlement');
+    expect(calls.rpc.some((c) => c.fn === 'add_wallet_transaction')).toBe(false);
+    expect(calls.ledgerInserts).toHaveLength(1);
+    expect(calls.ledgerInserts[0]).toMatchObject({
+      driverId: 'driver-1', type: 'cash_commission_settlement', amount: 6200, reference: intent.reference,
+    });
+    expect(calls.intentUpdates.some((u) => u.row.status === 'successful')).toBe(true);
+  });
+
+  it('a second confirmation of the same payment (webhook + app racing) is a harmless no-op, not a double credit', async () => {
+    verified();
+    const intent = commissionIntent();
+    const { supabaseAdmin } = createSupabaseMock({
+      intent, driver: { id: 'driver-1' }, ledgerInsertError: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+
+    const result = await processVerifiedPayment({
+      supabaseAdmin, provider: 'flutterwave', reference: intent.reference, sourceChannel: 'client_verification', callingUserId: 'driver-user-1', eventType: 'client_verify',
+    });
+
+    expect(result.status).toBe(true);
+  });
+
+  it('an amount mismatch is never recorded as a settlement', async () => {
+    vi.spyOn(paymentProviders, 'verifyFlutterwaveTransaction').mockResolvedValue({
+      success: true, providerState: 'successful', amount: 100, currency: 'NGN', message: '', raw: { data: { status: 'successful' } },
+    });
+    const intent = commissionIntent();
+    const { supabaseAdmin, calls } = createSupabaseMock({ intent, driver: { id: 'driver-1' } });
+
+    const result = await processVerifiedPayment({
+      supabaseAdmin, provider: 'flutterwave', reference: intent.reference, sourceChannel: 'webhook', eventType: 'charge.completed',
+    });
+
+    expect(result.status).toBe(false);
+    expect(calls.ledgerInserts).toHaveLength(0);
+  });
+
+  it('a real payment with no matching driver fails loudly so the webhook is retried, rather than being dropped', async () => {
+    verified();
+    const intent = commissionIntent();
+    const { supabaseAdmin, calls } = createSupabaseMock({ intent, driver: null });
+
+    await expect(
+      processVerifiedPayment({ supabaseAdmin, provider: 'flutterwave', reference: intent.reference, sourceChannel: 'webhook', eventType: 'charge.completed' })
+    ).rejects.toThrow(/no driver found/);
+    expect(calls.ledgerInserts).toHaveLength(0);
+  });
+
+  it('a top-up still credits the wallet and reports its purpose', async () => {
+    vi.spyOn(paymentProviders, 'verifyPaystackTransaction').mockResolvedValue({
+      success: true, providerState: 'successful', amount: 5000, currency: 'NGN', message: '', raw: { data: { status: 'success' } },
+    });
+    const intent = baseIntent({ purpose: 'wallet_funding' });
+    const { supabaseAdmin, calls } = createSupabaseMock({ intent });
+
+    const result = await processVerifiedPayment({
+      supabaseAdmin, provider: 'paystack', reference: intent.reference, sourceChannel: 'webhook', eventType: 'charge.success',
+    });
+
+    expect(result.purpose).toBe('wallet_funding');
+    expect(calls.rpc[0].fn).toBe('add_wallet_transaction');
+    expect(calls.ledgerInserts).toHaveLength(0);
   });
 });

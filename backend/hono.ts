@@ -106,7 +106,7 @@ app.post("/webhooks/paystack", async (c) => {
   const eventType: string = payload?.event ?? "unknown";
 
   if (typeof eventType === "string" && eventType.startsWith("transfer.")) {
-    await processPayoutWebhookEvent(supabaseAdmin, payload);
+    await processPayoutWebhookEvent(supabaseAdmin, "paystack", payload);
     return c.json({ received: true });
   }
 
@@ -163,6 +163,17 @@ app.post("/webhooks/flutterwave", async (c) => {
   // case a specific account/API version does wrap it that way — never
   // assumed to be the primary shape.
   const rawEventType: string = typeof payload?.event === "string" ? payload.event : (payload?.event?.type ?? "");
+
+  // Driver payout outcome — verified live: Flutterwave sends this ONE event
+  // name for both successful and failed transfers (the outcome is in
+  // data.status), wrapped as {event, data} unlike the flat refund webhook.
+  // Checked before the refund-shape heuristic below since it's an explicit
+  // event name refunds never use.
+  if (rawEventType === "transfer.completed") {
+    await processPayoutWebhookEvent(supabaseAdmin, "flutterwave", payload);
+    return c.json({ received: true });
+  }
+
   if (rawEventType === "refund.completed" || isFlutterwaveRefundWebhookShape(payload)) {
     await processRefundWebhookEvent(supabaseAdmin, "flutterwave", payload);
     return c.json({ received: true });

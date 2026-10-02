@@ -13,6 +13,7 @@ import Verification from './pages/Verification';
 import Trips from './pages/Trips';
 import Payments from './pages/Payments';
 import Payouts from './pages/Payouts';
+import Commission from './pages/Commission';
 import Refunds from './pages/Refunds';
 import Pricing from './pages/Pricing';
 import Promotions from './pages/Promotions';
@@ -61,6 +62,7 @@ export default function App() {
             <Route path="/verification" element={<Verification />} />
             <Route path="/payments" element={<Payments />} />
             <Route path="/payouts" element={<Payouts />} />
+            <Route path="/commission" element={<Commission />} />
             <Route path="/refunds" element={<Refunds />} />
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/promotions" element={<Promotions />} />
