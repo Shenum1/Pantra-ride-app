@@ -22,28 +22,14 @@ export interface WalletTransaction {
   };
 }
 
-export interface BankAccount {
-  id: string;
-  bankName: string;
-  accountNumber: string;
-  accountHolderName: string;
-  ifscCode?: string;
-  swiftCode?: string;
-  isDefault: boolean;
-  isVerified: boolean;
-  type: 'savings' | 'checking';
-}
-
 export interface WalletData {
   balance: number;
   transactions: WalletTransaction[];
-  bankAccounts: BankAccount[];
 }
 
 const EMPTY_WALLET_DATA: WalletData = {
   balance: 0,
   transactions: [],
-  bankAccounts: [],
 };
 
 export const [WalletProvider, useWallet] = createContextHook(() => {
@@ -105,27 +91,6 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
     },
   });
 
-  const withdrawMoneyMutation = useMutation({
-    mutationFn: async ({ amount, bankAccountId }: { amount: number; bankAccountId: string }) => {
-      if (amount > walletData.balance) {
-        throw new Error("Insufficient balance");
-      }
-
-      if (isSupabaseUser && user) {
-        await WalletService.addTransaction(user.id, {
-          type: 'withdraw',
-          amount: -amount,
-          description: 'Withdrawn to bank account',
-          status: 'pending',
-          paymentMethodId: bankAccountId,
-        });
-        return refreshWalletData();
-      }
-
-      throw new Error('Wallet requires a signed-in account');
-    },
-  });
-
   const processRidePaymentMutation = useMutation({
     mutationFn: async ({ amount, rideId, metadata }: { amount: number; rideId: string; metadata?: WalletTransaction['metadata'] }) => {
       if (amount > walletData.balance) {
@@ -178,75 +143,28 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
     },
   });
 
-  const addBankAccountMutation = useMutation({
-    mutationFn: async (bankAccount: Omit<BankAccount, 'id' | 'isVerified'>) => {
-      if (isSupabaseUser && user) {
-        await WalletService.addBankAccount(user.id, bankAccount);
-        return refreshWalletData();
-      }
-
-      throw new Error('Wallet requires a signed-in account');
-    },
-  });
-
-  const removeBankAccountMutation = useMutation({
-    mutationFn: async (bankAccountId: string) => {
-      if (isSupabaseUser && user) {
-        await WalletService.removeBankAccount(user.id, bankAccountId);
-        return refreshWalletData();
-      }
-
-      throw new Error('Wallet requires a signed-in account');
-    },
-  });
-
-  const setDefaultBankAccountMutation = useMutation({
-    mutationFn: async (bankAccountId: string) => {
-      if (isSupabaseUser && user) {
-        await WalletService.setDefaultBankAccount(user.id, bankAccountId);
-        return refreshWalletData();
-      }
-
-      throw new Error('Wallet requires a signed-in account');
-    },
-  });
-
   return useMemo(() => ({
     balance: walletData.balance,
     transactions: walletData.transactions,
-    bankAccounts: walletData.bankAccounts,
     isLoading,
     refreshWallet,
     addMoney: addMoneyMutation.mutate,
     addMoneyAsync: addMoneyMutation.mutateAsync,
-    withdrawMoney: withdrawMoneyMutation.mutate,
-    withdrawMoneyAsync: withdrawMoneyMutation.mutateAsync,
     processRidePayment: processRidePaymentMutation.mutate,
     processRidePaymentAsync: processRidePaymentMutation.mutateAsync,
     addCashback: addCashbackMutation.mutate,
     addCashbackAsync: addCashbackMutation.mutateAsync,
     addRefund: addRefundMutation.mutate,
     addRefundAsync: addRefundMutation.mutateAsync,
-    addBankAccount: addBankAccountMutation.mutate,
-    addBankAccountAsync: addBankAccountMutation.mutateAsync,
-    removeBankAccount: removeBankAccountMutation.mutate,
-    removeBankAccountAsync: removeBankAccountMutation.mutateAsync,
-    setDefaultBankAccount: setDefaultBankAccountMutation.mutate,
-    setDefaultBankAccountAsync: setDefaultBankAccountMutation.mutateAsync,
     isAddingMoney: addMoneyMutation.isPending,
-    isWithdrawing: withdrawMoneyMutation.isPending,
     isProcessingPayment: processRidePaymentMutation.isPending,
   }), [
     walletData.balance,
     walletData.transactions,
-    walletData.bankAccounts,
     isLoading,
     addMoneyMutation.mutate,
     addMoneyMutation.mutateAsync,
     addMoneyMutation.isPending,
-    withdrawMoneyMutation.mutate,
-    withdrawMoneyMutation.mutateAsync,
-    withdrawMoneyMutation.isPending,
     processRidePaymentMutation.mutate,
     processRidePaymentMutation.mutateAsync,
     processRidePaymentMutation.isPending,
@@ -254,12 +172,6 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
     addCashbackMutation.mutateAsync,
     addRefundMutation.mutate,
     addRefundMutation.mutateAsync,
-    addBankAccountMutation.mutate,
-    addBankAccountMutation.mutateAsync,
-    removeBankAccountMutation.mutate,
-    removeBankAccountMutation.mutateAsync,
-    setDefaultBankAccountMutation.mutate,
-    setDefaultBankAccountMutation.mutateAsync,
     refreshWallet,
   ]);
 });

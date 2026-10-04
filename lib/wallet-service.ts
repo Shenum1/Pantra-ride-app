@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { WalletData, WalletTransaction, BankAccount } from '@/hooks/useWalletStore';
+import type { WalletData, WalletTransaction } from '@/hooks/useWalletStore';
 
 interface WalletTransactionRow {
   id: string;
@@ -11,18 +11,6 @@ interface WalletTransactionRow {
   paymentMethodId: string | null;
   metadata: WalletTransaction['metadata'] | null;
   createdAt: string;
-}
-
-interface BankAccountRow {
-  id: string;
-  bankName: string;
-  accountNumber: string;
-  accountHolderName: string;
-  ifscCode: string | null;
-  swiftCode: string | null;
-  type: BankAccount['type'];
-  isDefault: boolean;
-  isVerified: boolean;
 }
 
 function mapTransaction(row: WalletTransactionRow): WalletTransaction {
@@ -39,23 +27,9 @@ function mapTransaction(row: WalletTransactionRow): WalletTransaction {
   };
 }
 
-function mapBankAccount(row: BankAccountRow): BankAccount {
-  return {
-    id: row.id,
-    bankName: row.bankName,
-    accountNumber: row.accountNumber,
-    accountHolderName: row.accountHolderName,
-    ifscCode: row.ifscCode ?? undefined,
-    swiftCode: row.swiftCode ?? undefined,
-    isDefault: row.isDefault,
-    isVerified: row.isVerified,
-    type: row.type,
-  };
-}
-
 export class WalletService {
   static async getWalletData(userId: string): Promise<WalletData> {
-    const [walletResult, txResult, bankResult] = await Promise.all([
+    const [walletResult, txResult] = await Promise.all([
       supabase.from('wallets').select('balance').eq('userId', userId).maybeSingle(),
       supabase
         .from('wallet_transactions')
@@ -63,11 +37,6 @@ export class WalletService {
         .eq('userId', userId)
         .order('createdAt', { ascending: false })
         .limit(50),
-      supabase
-        .from('wallet_bank_accounts')
-        .select('*')
-        .eq('userId', userId)
-        .order('createdAt', { ascending: true }),
     ]);
 
     let balance = Number(walletResult.data?.balance ?? 0);
@@ -87,7 +56,6 @@ export class WalletService {
     return {
       balance,
       transactions: (txResult.data ?? []).map((row) => mapTransaction(row as WalletTransactionRow)),
-      bankAccounts: (bankResult.data ?? []).map((row) => mapBankAccount(row as BankAccountRow)),
     };
   }
 
@@ -120,70 +88,5 @@ export class WalletService {
 
     const row = (Array.isArray(data) ? data[0] : data) as WalletTransactionRow;
     return mapTransaction(row);
-  }
-
-  static async addBankAccount(
-    userId: string,
-    account: Omit<BankAccount, 'id' | 'isVerified'>
-  ): Promise<BankAccount> {
-    if (account.isDefault) {
-      await supabase.from('wallet_bank_accounts').update({ isDefault: false }).eq('userId', userId);
-    }
-
-    const { data, error } = await supabase
-      .from('wallet_bank_accounts')
-      .insert({
-        userId,
-        bankName: account.bankName,
-        accountNumber: account.accountNumber,
-        accountHolderName: account.accountHolderName,
-        ifscCode: account.ifscCode ?? null,
-        swiftCode: account.swiftCode ?? null,
-        type: account.type,
-        isDefault: account.isDefault,
-        isVerified: false,
-      })
-      .select('*')
-      .single();
-
-    if (error) throw new Error(error.message);
-    return mapBankAccount(data as BankAccountRow);
-  }
-
-  static async removeBankAccount(userId: string, bankAccountId: string): Promise<void> {
-    const { data: removed, error } = await supabase
-      .from('wallet_bank_accounts')
-      .delete()
-      .eq('id', bankAccountId)
-      .eq('userId', userId)
-      .select('isDefault')
-      .single();
-
-    if (error) throw new Error(error.message);
-
-    if (removed?.isDefault) {
-      const { data: remaining } = await supabase
-        .from('wallet_bank_accounts')
-        .select('id')
-        .eq('userId', userId)
-        .order('createdAt', { ascending: true })
-        .limit(1);
-
-      if (remaining && remaining.length > 0) {
-        await supabase.from('wallet_bank_accounts').update({ isDefault: true }).eq('id', remaining[0].id);
-      }
-    }
-  }
-
-  static async setDefaultBankAccount(userId: string, bankAccountId: string): Promise<void> {
-    await supabase.from('wallet_bank_accounts').update({ isDefault: false }).eq('userId', userId);
-
-    const { error } = await supabase
-      .from('wallet_bank_accounts')
-      .update({ isDefault: true })
-      .eq('id', bankAccountId)
-      .eq('userId', userId);
-
-    if (error) throw new Error(error.message);
   }
 }

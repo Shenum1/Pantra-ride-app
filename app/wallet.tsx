@@ -230,16 +230,6 @@ export default function WalletScreen() {
                   </View>
                   <Text style={styles.actionText}>Add Money</Text>
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => router.push('/wallet-withdraw' as any)}
-                >
-                  <View style={[styles.actionIcon, { backgroundColor: '#2196F3' }]}>
-                    <ArrowUpCircle size={18} color="#FFF" />
-                  </View>
-                  <Text style={styles.actionText}>Withdraw</Text>
-                </TouchableOpacity>
               </View>
             </LinearGradient>
           </View>

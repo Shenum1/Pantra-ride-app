@@ -101,10 +101,7 @@ function RootLayoutNav() {
         <Stack.Screen name="my-rides" options={{ title: "My Rides" }} />
         <Stack.Screen name="wallet" options={{ title: "My Wallet" }} />
         <Stack.Screen name="wallet-add-money" options={{ title: "Add Money" }} />
-        <Stack.Screen name="wallet-withdraw" options={{ title: "Withdraw" }} />
         <Stack.Screen name="wallet-transaction-details" options={{ title: "Transaction Details" }} />
-        <Stack.Screen name="wallet-add-bank" options={{ title: "Add Bank Account" }} />
-        <Stack.Screen name="wallet-bank-accounts" options={{ title: "Bank Accounts" }} />
         <Stack.Screen name="backend-test" options={{ title: "Backend Test" }} />
 
       </Stack>
