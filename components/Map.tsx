@@ -5,6 +5,7 @@ import MapView, { Camera, Marker, Polyline, PROVIDER_GOOGLE, Region } from 'reac
 import * as ExpoLocation from 'expo-location';
 
 import Colors from '@/constants/colors';
+import { MAP_COLORS, PANTRA_MAP_STYLE } from '@/constants/map-style';
 import { NIGERIA_DEFAULT_REGION } from '@/constants/nigeria-region';
 import { Skeleton } from '@/components/skeletons';
 import { useLocation } from '@/hooks/useLocationStore';
@@ -510,6 +511,7 @@ const Map: React.FC<MapProps> = ({
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={styles.map}
+            customMapStyle={PANTRA_MAP_STYLE}
             initialRegion={resolvedInitialRegion as Region}
             showsUserLocation={Boolean(userLocation)}
             showsMyLocationButton={false}
@@ -526,7 +528,10 @@ const Map: React.FC<MapProps> = ({
             testID="google-native-map"
           >
             {showRoute && routeCoordinates.length > 0 ? (
-              <Polyline coordinates={routeCoordinates} strokeWidth={5} strokeColor={Colors.light.primary} />
+              <>
+                <Polyline coordinates={routeCoordinates} strokeWidth={9} strokeColor={MAP_COLORS.routeCasing} />
+                <Polyline coordinates={routeCoordinates} strokeWidth={5} strokeColor={MAP_COLORS.route} />
+              </>
             ) : null}
             {staticMapMarkers.map((marker) => (
               <Marker

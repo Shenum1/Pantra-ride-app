@@ -39,8 +39,8 @@ export default function AuthCallbackScreen() {
       const { role, ...result } = await GoogleAuthService.completeRedirect(params.code);
 
       if (role === 'rider') {
-        const { hasPhone } = await completeRider(result);
-        router.replace(hasPhone ? '/(tabs)/home' : '/collect-phone');
+        await completeRider(result);
+        router.replace('/(tabs)/home');
         return;
       }
 

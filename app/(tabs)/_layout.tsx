@@ -1,13 +1,27 @@
 import { Tabs } from "expo-router";
 import { Home, User, Gift, MapPin } from "lucide-react-native";
 import React from "react";
-import { StyleSheet, Platform } from "react-native";
+import { StyleSheet, Platform, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { AuthGuard } from "@/components/AuthGuard";
+import { MAX_CONTENT_WIDTH } from "@/components/ResponsiveShell";
 import { useTheme } from "@/hooks/useThemeStore";
+
+const BAR_WIDTH = 280;
+const MIN_SIDE_INSET = 16;
+const MIN_BOTTOM_INSET = 20;
 
 export default function TabLayout() {
   const { colors, isDark } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  // On web, ResponsiveShell caps the app column at MAX_CONTENT_WIDTH, and the
+  // bar is positioned inside that column — not the full browser window.
+  const containerWidth = Platform.OS === 'web' ? Math.min(windowWidth, MAX_CONTENT_WIDTH) : windowWidth;
+  const sideInset = Math.max(MIN_SIDE_INSET, (containerWidth - BAR_WIDTH) / 2);
+  const bottomInset = Math.max(MIN_BOTTOM_INSET, insets.bottom);
 
   return (
     <AuthGuard>
@@ -16,7 +30,7 @@ export default function TabLayout() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
           tabBarShowLabel: false,
-          tabBarStyle: styles.tabBar,
+          tabBarStyle: [styles.tabBar, { left: sideInset, right: sideInset, bottom: bottomInset }],
           tabBarBackground: () => (
             <BlurView
               intensity={65}
@@ -69,9 +83,6 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    alignSelf: 'center',
-    width: 280,
-    bottom: Platform.OS === 'ios' ? 30 : 20,
     height: 56,
     borderRadius: 28,
     borderTopWidth: 0,

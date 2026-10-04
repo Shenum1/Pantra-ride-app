@@ -1,6 +1,7 @@
 import { Location } from '@/types';
 import { Platform } from 'react-native';
 import { NIGERIA_DEFAULT_COORDS } from '@/constants/nigeria-region';
+import { MAP_COLORS, PANTRA_STATIC_MAP_STYLE_PARAMS } from '@/constants/map-style';
 
 function buildGoogleMapsProxyUrl(url: string): string {
   const googleUrl = new URL(url);
@@ -204,6 +205,15 @@ function encodeStaticMarkers(markers: Array<{ location: Location; color: string;
     .join('');
 }
 
+// A wider white casing drawn under the brand-colored route so the line stays
+// legible against the muted road colors.
+function encodeStaticRoute(polyline: string): string {
+  const encoded = encodeURIComponent(polyline);
+  const casing = `&path=color:0x${MAP_COLORS.routeCasing.slice(1)}ff|weight:9|enc:${encoded}`;
+  const route = `&path=color:0x${MAP_COLORS.route.slice(1)}ff|weight:5|enc:${encoded}`;
+  return `${casing}${route}`;
+}
+
 async function isGoogleJsonApiOk(response: Response): Promise<boolean> {
   if (!response.ok) return false;
 
@@ -243,12 +253,13 @@ export class GoogleMapsService {
     const height = Math.min(params.height ?? 900, 1200);
     const markerParams = encodeStaticMarkers((params.markers ?? []).map((marker) => ({
       location: marker.location,
-      color: marker.type === 'dropoff' ? 'red' : marker.type === 'driver' ? 'black' : 'blue',
+      color: `0x${(marker.type === 'dropoff' ? MAP_COLORS.dropoff : marker.type === 'driver' ? MAP_COLORS.label : MAP_COLORS.pickup).slice(1)}`,
       label: marker.type === 'dropoff' ? 'D' : marker.type === 'pickup' ? 'P' : undefined,
     })));
-    const path = params.routePolyline ? `&path=enc:${encodeURIComponent(params.routePolyline)}` : '';
+    const path = params.routePolyline ? encodeStaticRoute(params.routePolyline) : '';
+    const styleParams = PANTRA_STATIC_MAP_STYLE_PARAMS.map((style) => `&style=${encodeURIComponent(style)}`).join('');
 
-    return `https://maps.googleapis.com/maps/api/staticmap?center=${params.center.latitude},${params.center.longitude}&zoom=${params.zoom ?? 14}&size=${width}x${height}&scale=2&maptype=roadmap${markerParams}${path}&key=${GOOGLE_MAPS_API_KEY}`;
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${params.center.latitude},${params.center.longitude}&zoom=${params.zoom ?? 14}&size=${width}x${height}&scale=2&maptype=roadmap${styleParams}${markerParams}${path}&key=${GOOGLE_MAPS_API_KEY}`;
   }
 
   static async testApiKey(): Promise<DiagnosticResult> {

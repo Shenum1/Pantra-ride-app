@@ -2,7 +2,7 @@ import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useTheme } from '@/hooks/useThemeStore';
 
-const MAX_CONTENT_WIDTH = 560;
+export const MAX_CONTENT_WIDTH = 560;
 
 interface ResponsiveShellProps {
   children: React.ReactNode;
