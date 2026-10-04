@@ -1,6 +1,8 @@
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { supabase } from './supabase';
-import { AuthService } from './auth-service';
+import { finalizeGoogleUser, GoogleAuthRole, GoogleSignInResult } from './google-profile';
+
+export type { GoogleAuthRole, GoogleSignInResult } from './google-profile';
 
 let configured = false;
 
@@ -20,21 +22,10 @@ function ensureConfigured() {
   configured = true;
 }
 
-export interface GoogleSignInResult {
-  userId: string;
-  email: string;
-  fullName: string | null;
-  photoUrl: string | null;
-  hasPhone: boolean;
-}
-
-// Shared by both rider (useAuthStore) and driver (useDriverAuthStore) sign-in —
-// role-agnostic: it only establishes the Supabase identity and the base
-// public.users row. Deciding rider vs. driver (and creating the public.drivers
-// row) is the caller's job, same split of responsibility signUpWithEmail already
-// has vs. DriverAuthService.signUpWithEmail.
+// Native implementation. Web uses google-auth-service.web.ts (Supabase OAuth
+// redirect), since this library's web build is a sponsor-only stub.
 export class GoogleAuthService {
-  static async signIn(): Promise<GoogleSignInResult> {
+  static async signIn(_role?: GoogleAuthRole): Promise<GoogleSignInResult> {
     ensureConfigured();
 
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -55,34 +46,15 @@ export class GoogleAuthService {
     if (error) throw new Error(error.message);
     if (!data.user) throw new Error('Google sign-in failed — no user returned.');
 
-    const fullName = response.data.user.name ?? null;
-    const photoUrl = response.data.user.photo ?? null;
-    const email = data.user.email ?? response.data.user.email;
+    return finalizeGoogleUser(data.user, {
+      email: response.data.user.email,
+      fullName: response.data.user.name ?? null,
+      photoUrl: response.data.user.photo ?? null,
+    });
+  }
 
-    let profile = await AuthService.getUserProfile(data.user.id);
-    if (!profile) {
-      await AuthService.createMissingUserProfile(data.user.id, email, fullName ?? email.split('@')[0], 'rider');
-      profile = await AuthService.getUserProfile(data.user.id);
-    }
-
-    // The on_auth_user_created trigger falls back to the email prefix for
-    // displayName (Google's identity claims don't populate raw_user_meta_data's
-    // displayName key) — patch in the real Google name/photo so it isn't stuck
-    // looking like an email-based account.
-    if (fullName || photoUrl) {
-      await AuthService.updateUserProfile(data.user.id, {
-        displayName: fullName ?? profile?.displayName,
-        photoURL: photoUrl ?? profile?.photoURL,
-      });
-    }
-
-    return {
-      userId: data.user.id,
-      email,
-      fullName,
-      photoUrl,
-      hasPhone: !!profile?.phoneNumber,
-    };
+  static async completeRedirect(_code: string): Promise<GoogleSignInResult & { role: GoogleAuthRole }> {
+    throw new Error('Google redirect sign-in is only used on web.');
   }
 
   static async signOut(): Promise<void> {

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import createContextHook from '@nkzw/create-context-hook';
 import { DriverAuthService, DriverRow } from '@/lib/driver-auth-service';
 import { FirebaseDriverService } from '@/lib/firebase-driver-service';
-import { GoogleAuthService } from '@/lib/google-auth-service';
+import { GoogleAuthService, GoogleSignInResult } from '@/lib/google-auth-service';
 import { supabase } from '@/lib/supabase';
 import { StorageService } from '@/lib/storage-service';
 
@@ -83,10 +83,10 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     }
   }, []);
 
-  const loginWithGoogle = useCallback(async (): Promise<{ isNewDriver: boolean }> => {
+  const runGoogleSignIn = useCallback(async (getResult: () => Promise<GoogleSignInResult>): Promise<{ isNewDriver: boolean }> => {
     setIsLoading(true);
     try {
-      const result = await GoogleAuthService.signIn();
+      const result = await getResult();
       const existing = await DriverAuthService.getDriverByUserId(result.userId);
       const d = existing ?? await DriverAuthService.createOrGetDriverForGoogleUser(result.userId, result.fullName ?? result.email.split('@')[0], result.email);
       setDriver(d);
@@ -96,6 +96,16 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
       setIsLoading(false);
     }
   }, []);
+
+  const loginWithGoogle = useCallback(
+    () => runGoogleSignIn(() => GoogleAuthService.signIn('driver')),
+    [runGoogleSignIn]
+  );
+
+  const completeGoogleSignIn = useCallback(
+    (result: GoogleSignInResult) => runGoogleSignIn(async () => result),
+    [runGoogleSignIn]
+  );
 
   // Starts driver registration for the currently-authenticated account (normally a
   // rider, from the rider Account tab) without a second login — see
@@ -170,10 +180,11 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
     signup,
     verifySignupCode,
     loginWithGoogle,
+    completeGoogleSignIn,
     becomeDriver,
     logout,
     updateProfile,
     updateProfileImage,
     toggleOnlineStatus,
-  }), [driver, isLoading, login, signup, verifySignupCode, loginWithGoogle, becomeDriver, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
+  }), [driver, isLoading, login, signup, verifySignupCode, loginWithGoogle, completeGoogleSignIn, becomeDriver, logout, updateProfile, updateProfileImage, toggleOnlineStatus]);
 });

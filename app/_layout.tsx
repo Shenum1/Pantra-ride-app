@@ -62,6 +62,7 @@ function RootLayoutNav() {
         <Stack.Screen name="driver-login" options={{ headerShown: false }} />
         <Stack.Screen name="driver-signup" options={{ headerShown: false }} />
         <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+        <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(driver-tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="search" options={{ title: "Set destination" }} />

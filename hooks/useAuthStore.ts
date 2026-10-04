@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useEffect, useState } from 'react';
 import { AuthService } from '@/lib/auth-service';
-import { GoogleAuthService } from '@/lib/google-auth-service';
+import { GoogleAuthService, GoogleSignInResult } from '@/lib/google-auth-service';
 import { supabase } from '@/lib/supabase';
 import Toast from 'react-native-toast-message';
 import { DeviceSecurityService } from '@/lib/device-security-service';
@@ -28,6 +28,7 @@ export interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   signup: (name: string, email: string, phone: string, password: string, profileImage?: string) => Promise<void>;
   loginWithGoogle: () => Promise<{ hasPhone: boolean }>;
+  completeGoogleSignIn: (result: GoogleSignInResult) => Promise<{ hasPhone: boolean }>;
   logout: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
   googlePromptAsync: (() => Promise<void>) | null;
@@ -256,13 +257,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     await saveUser(updatedUser);
   };
 
-  const loginWithGoogle = async (): Promise<{ hasPhone: boolean }> => {
+  const runGoogleSignIn = async (getResult: () => Promise<GoogleSignInResult>): Promise<{ hasPhone: boolean }> => {
     setIsLoading(true);
     try {
       // See the matching note in login() — this account may legitimately also be a
       // driver, so the cached driver session is left for useDriverAuthStore's own
       // listener to re-resolve rather than wiped proactively here.
-      const result = await GoogleAuthService.signIn();
+      const result = await getResult();
       const profile = await AuthService.getUserProfile(result.userId);
 
       const userData: User = {
@@ -289,9 +290,13 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   };
 
+  const loginWithGoogle = () => runGoogleSignIn(() => GoogleAuthService.signIn('rider'));
+
+  const completeGoogleSignIn = (result: GoogleSignInResult) => runGoogleSignIn(async () => result);
+
   return {
     user, isLoading, isAuthenticated: !!user,
-    login, signup, loginWithGoogle,
+    login, signup, loginWithGoogle, completeGoogleSignIn,
     logout, updateProfile, googlePromptAsync: null,
   };
 });

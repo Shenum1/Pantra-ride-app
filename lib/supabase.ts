@@ -34,4 +34,6 @@ export const supabase = createSupabaseAuthClient({
   autoRefreshToken: true,
   persistSession: true,
   detectSessionInUrl: false,
+  // Web Google OAuth returns ?code= for app/auth-callback.tsx to exchange explicitly.
+  flowType: 'pkce',
 });
