@@ -1,6 +1,6 @@
 import createContextHook from "@nkzw/create-context-hook";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuthStore";
 import { WalletService } from "@/lib/wallet-service";
 
@@ -76,6 +76,13 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
       setWalletData(fetchedWalletData);
     }
   }, [fetchedWalletData]);
+
+  // Re-fetches the balance from the server. The wallet otherwise loads once
+  // per sign-in, so screens call this to pick up money credited in the
+  // background (e.g. by a Flutterwave webhook). Stable across renders.
+  const refreshWallet = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ["walletData"] });
+  }, [queryClient]);
 
   const refreshWalletData = async (): Promise<WalletData> => {
     await queryClient.invalidateQueries({ queryKey: ["walletData"] });
@@ -209,6 +216,7 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
     transactions: walletData.transactions,
     bankAccounts: walletData.bankAccounts,
     isLoading,
+    refreshWallet,
     addMoney: addMoneyMutation.mutate,
     addMoneyAsync: addMoneyMutation.mutateAsync,
     withdrawMoney: withdrawMoneyMutation.mutate,
@@ -252,5 +260,6 @@ export const [WalletProvider, useWallet] = createContextHook(() => {
     removeBankAccountMutation.mutateAsync,
     setDefaultBankAccountMutation.mutate,
     setDefaultBankAccountMutation.mutateAsync,
+    refreshWallet,
   ]);
 });

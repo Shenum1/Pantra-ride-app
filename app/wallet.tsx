@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Pressable,
   Animated,
+  RefreshControl,
 } from 'react-native';
 import {
   Wallet,
@@ -23,7 +24,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '@/hooks/useThemeStore';
 import { useWallet } from '@/hooks/useWalletStore';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
 import { Skeleton, SkeletonLine, SkeletonTransactionRow, ShimmerGroup } from '@/components/skeletons';
 
@@ -114,8 +115,26 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, onPress 
 export default function WalletScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { balance, transactions, isLoading } = useWallet();
+  const { balance, transactions, isLoading, refreshWallet } = useWallet();
   const [balanceVisible, setBalanceVisible] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Reload every time the wallet is opened, so a top-up credited in the
+  // background (by Flutterwave's webhook) shows without signing out and in.
+  useFocusEffect(
+    useCallback(() => {
+      void refreshWallet();
+    }, [refreshWallet])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshWallet();
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'credit' | 'debit'>('all');
 
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
@@ -161,7 +180,11 @@ export default function WalletScreen() {
         }}
       />
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        >
           <View style={styles.balanceSection}>
             <LinearGradient
               colors={[colors.primary, colors.primary + 'DD', colors.primary + 'BB']}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Animated,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import {
@@ -26,14 +28,38 @@ import {
 import { useTheme } from '@/hooks/useThemeStore';
 import { useWallet } from '@/hooks/useWalletStore';
 import { format } from 'date-fns';
+import { downloadReceipt, ReceiptCopiedError, shareReceipt } from '@/lib/transaction-receipt';
 
 export default function TransactionDetailsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { transactions } = useWallet();
-  
+  const [busyAction, setBusyAction] = useState<'download' | 'share' | null>(null);
+
   const transaction = transactions.find(t => t.id === id);
+
+  const runReceiptAction = async (action: 'download' | 'share') => {
+    if (!transaction || busyAction) return;
+    setBusyAction(action);
+    try {
+      if (action === 'download') {
+        await downloadReceipt(transaction);
+      } else {
+        await shareReceipt(transaction);
+      }
+    } catch (error) {
+      if (error instanceof ReceiptCopiedError) {
+        Alert.alert('Copied', error.message);
+      } else if (!(error instanceof Error && /cancel|abort/i.test(error.message))) {
+        // A user dismissing the share/print sheet isn't an error worth showing.
+        console.error(`Receipt ${action} failed:`, error);
+        Alert.alert('Something went wrong', `Couldn't ${action === 'download' ? 'create' : 'share'} the receipt. Please try again.`);
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  };
 
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
   const slideAnim = React.useRef(new Animated.Value(50)).current;
@@ -294,16 +320,22 @@ export default function TransactionDetailsScreen() {
 
           <View style={styles.actionsContainer}>
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }, busyAction === 'share' && { opacity: 0.5 }]}
+              onPress={() => runReceiptAction('download')}
+              disabled={busyAction !== null}
+              testID="download-receipt-button"
             >
-              <Download size={20} color={colors.text} />
+              {busyAction === 'download' ? <ActivityIndicator size="small" color={colors.text} /> : <Download size={20} color={colors.text} />}
               <Text style={[styles.actionButtonText, { color: colors.text }]}>Download Receipt</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }, busyAction === 'download' && { opacity: 0.5 }]}
+              onPress={() => runReceiptAction('share')}
+              disabled={busyAction !== null}
+              testID="share-receipt-button"
             >
-              <Share2 size={20} color={colors.text} />
+              {busyAction === 'share' ? <ActivityIndicator size="small" color={colors.text} /> : <Share2 size={20} color={colors.text} />}
               <Text style={[styles.actionButtonText, { color: colors.text }]}>Share</Text>
             </TouchableOpacity>
           </View>
