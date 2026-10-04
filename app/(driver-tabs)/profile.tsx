@@ -35,6 +35,7 @@ import { router } from 'expo-router';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useTheme } from '@/hooks/useThemeStore';
 import { NotificationService } from '@/lib/notification-service';
+import { formatRating } from '@/lib/format-rating';
 
 export default function DriverProfile() {
   const { logout, driver, updateProfileImage } = useDriverAuth();
@@ -201,7 +202,7 @@ export default function DriverProfile() {
           <Text style={[styles.driverInfo, { color: colors.textSecondary }]}>{driver?.vehicle ? `${driver.vehicle.make} ${driver.vehicle.model}` : 'Vehicle not set'}</Text>
           <View style={styles.ratingContainer}>
             <Star size={16} color="#FFD700" fill="#FFD700" />
-            <Text style={[styles.rating, { color: colors.text }]}>{driverStats.rating != null ? driverStats.rating.toFixed(1) : 'New'}</Text>
+            <Text style={[styles.rating, { color: colors.text }]}>{formatRating(driverStats.rating)}</Text>
             <Text style={[styles.ratingCount, { color: colors.textSecondary }]}>({driverStats.totalTrips} trips)</Text>
           </View>
         </View>

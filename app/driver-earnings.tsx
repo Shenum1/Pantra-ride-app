@@ -17,6 +17,7 @@ import {
   Download,
 } from 'lucide-react-native';
 import { useDriverStore } from '@/hooks/useDriverStore';
+import { formatRating } from '@/lib/format-rating';
 import Colors from '@/constants/colors';
 import { router } from 'expo-router';
 import { Skeleton, SkeletonCircle, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
@@ -192,7 +193,7 @@ export default function DriverEarnings() {
               <Text style={styles.statLabel}>Total Rides</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{stats.averageRating != null ? stats.averageRating.toFixed(1) : 'New'}</Text>
+              <Text style={styles.statValue}>{formatRating(stats.averageRating)}</Text>
               <Text style={styles.statLabel}>Rating</Text>
             </View>
             <View style={styles.statItem}>

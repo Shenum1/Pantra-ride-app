@@ -155,7 +155,10 @@ export default function PaymentInitializeScreen() {
 
     let result: WebBrowser.WebBrowserAuthSessionResult;
     try {
-      result = await WebBrowser.openAuthSessionAsync(paymentUrl, checkoutReturnUrl());
+      // createTask: false (Android) keeps the sheet inside Pantra's own task.
+      // The default opens it as a separate task, so closing it dropped the
+      // user on the home screen instead of back in the app.
+      result = await WebBrowser.openAuthSessionAsync(paymentUrl, checkoutReturnUrl(), { createTask: false });
     } catch (error) {
       console.error('Error opening checkout:', error);
       setStatus('failed');

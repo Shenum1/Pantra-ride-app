@@ -31,6 +31,7 @@ import { useDriverStore } from '@/hooks/useDriverStore';
 import { useDriverVerification } from '@/hooks/useDriverVerification';
 import { useVideoConfig } from '@/hooks/useVideoConfig';
 import { SkeletonLine, ShimmerGroup } from '@/components/skeletons';
+import { formatRating } from '@/lib/format-rating';
 
 const { width } = Dimensions.get('window');
 
@@ -346,7 +347,7 @@ export default function DriverDashboard() {
               {isLoading ? (
                 <SkeletonLine width={50} height={22} style={{ marginBottom: 4 }} />
               ) : (
-                <Text style={styles.performanceValue}>{rating != null ? rating.toFixed(1) : 'New'}</Text>
+                <Text style={styles.performanceValue}>{formatRating(rating)}</Text>
               )}
               <Text style={styles.performanceLabel}>Rating</Text>
             </View>
