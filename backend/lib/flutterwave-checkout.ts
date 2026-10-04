@@ -10,7 +10,8 @@ import { generatePaymentReference } from "./payment-providers";
 
 export type CheckoutPurpose = "wallet_funding" | "commission_settlement";
 
-const DEFAULT_CHECKOUT_RETURN_URL = "https://pantraride.space/payment-callback";
+// www. is the canonical host — the bare domain 308-redirects to it.
+const DEFAULT_CHECKOUT_RETURN_URL = "https://www.pantraride.space/payment-callback";
 
 // Where Flutterwave sends the user once checkout finishes. The app asks for
 // its own link (pantra:// in builds, exp:// in Expo Go) so the in-app

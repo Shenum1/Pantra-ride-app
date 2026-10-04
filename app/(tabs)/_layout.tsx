@@ -30,7 +30,12 @@ export default function TabLayout() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textSecondary,
           tabBarShowLabel: false,
-          tabBarStyle: [styles.tabBar, { left: sideInset, right: sideInset, bottom: bottomInset }],
+          // bottom-tabs sets `start: 0, end: 0` on the bar, and native gives
+          // start/end priority over left/right — so the inset must be set on both.
+          tabBarStyle: [
+            styles.tabBar,
+            { start: sideInset, end: sideInset, left: sideInset, right: sideInset, bottom: bottomInset },
+          ],
           tabBarBackground: () => (
             <BlurView
               intensity={65}

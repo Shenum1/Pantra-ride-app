@@ -1,7 +1,7 @@
 import { describe, expect, it, afterEach } from 'vitest';
 import { resolveCheckoutReturnUrl } from '@/backend/lib/flutterwave-checkout';
 
-const DEFAULT = 'https://pantraride.space/payment-callback';
+const DEFAULT = 'https://www.pantraride.space/payment-callback';
 
 describe('resolveCheckoutReturnUrl — where Flutterwave sends the user after checkout', () => {
   const originalBase = process.env.PANTRA_API_BASE_URL;

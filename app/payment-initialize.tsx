@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, StyleSheet, View, Text, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { CheckCircle, XCircle } from 'lucide-react-native';
@@ -15,18 +15,24 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 
-// 'closed': the checkout sheet was dismissed without the provider's
-// redirect and a quiet check didn't find a payment yet — the user may still
-// have paid (e.g. a bank transfer that settles later), so they're offered
-// "Check payment" or "Try again" rather than an error.
+// 'closed': the checkout sheet was closed and a few quiet checks didn't
+// find a payment yet — the user may still have paid (e.g. a bank transfer
+// that settles later), so they're offered "Check payment" or "Try again"
+// rather than an error.
 type PaymentStatus = 'initializing' | 'ready' | 'processing' | 'closed' | 'success' | 'failed';
 
-// Where the provider sends the user when checkout finishes: the app's own
-// link on native (pantra://payment-callback, or exp://… in Expo Go) — which
-// the in-app browser sheet watches for so it can close itself — or this
-// site's /payment-callback page on web. Computed per call, not at module
-// load, since it reads the current runtime/location.
-const checkoutReturnUrl = () => Linking.createURL('payment-callback');
+// Where the provider sends the user when checkout finishes.
+// - Web: this site's own /payment-callback page, which confirms the payment.
+// - Native: nothing from the app — the server's default, Pantra's web
+//   /payment-callback page, which (opened inside the checkout sheet) just
+//   tells the rider to close the window. The app deliberately does NOT ask
+//   to be sent back via an app link (pantra:// / exp://): in Expo Go that
+//   link reopened the project from scratch, landing the rider on the login
+//   screen without ever confirming the payment. Instead the app confirms the
+//   payment itself when the sheet is closed (see onCheckoutClosed).
+const checkoutReturnUrl = () => (Platform.OS === 'web' ? Linking.createURL('payment-callback') : undefined);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function PaymentInitializeScreen() {
   const router = useRouter();
@@ -47,9 +53,33 @@ export default function PaymentInitializeScreen() {
   const [message, setMessage] = useState('Initializing payment...');
   const [paymentUrl, setPaymentUrl] = useState<string>('');
   const [reference, setReference] = useState<string>('');
+  // True while the checkout sheet is open and its outcome hasn't been handled.
+  const awaitingCheckoutRef = useRef(false);
+  // Android: set once the app has actually gone to the background behind the
+  // sheet, so its return to the foreground means the sheet was closed.
+  const leftAppRef = useRef(false);
+  const checkoutClosedRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     initializePayment();
+  }, []);
+
+  // Android's checkout sheet can't report being closed (openBrowserAsync
+  // resolves immediately), so its closing is detected by Pantra coming back
+  // to the foreground. iOS reports closing directly (handled in
+  // handleOpenPayment); the awaiting flag makes sure it's handled only once.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (!awaitingCheckoutRef.current) return;
+      if (next === 'background' || next === 'inactive') {
+        leftAppRef.current = true;
+        return;
+      }
+      if (next === 'active' && leftAppRef.current) {
+        checkoutClosedRef.current();
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   // Stop claiming this checkout once the screen goes away, so a later
@@ -147,44 +177,47 @@ export default function PaymentInitializeScreen() {
     }
 
     // Native: checkout opens in a secure browser sheet over the app (Safari
-    // View / Chrome Custom Tab) — never a hand-off to the phone's browser —
-    // and closes itself when the provider redirects to the app's link.
+    // View / Chrome Custom Tab) — never a hand-off to the phone's browser.
+    // createTask: false (Android) keeps the sheet inside Pantra's own task;
+    // the default opened it as a separate task, so closing it dropped the
+    // user on the home screen instead of back in the app.
     setStatus('processing');
-    setMessage('Complete your payment in the secure checkout...');
+    setMessage('Complete your payment in the secure checkout, then close it to return here.');
     CheckoutSession.claim(reference);
+    awaitingCheckoutRef.current = true;
+    leftAppRef.current = false;
 
-    let result: WebBrowser.WebBrowserAuthSessionResult;
     try {
-      // createTask: false (Android) keeps the sheet inside Pantra's own task.
-      // The default opens it as a separate task, so closing it dropped the
-      // user on the home screen instead of back in the app.
-      result = await WebBrowser.openAuthSessionAsync(paymentUrl, checkoutReturnUrl(), { createTask: false });
+      const result = await WebBrowser.openBrowserAsync(paymentUrl, { createTask: false });
+      // iOS resolves when the rider closes the sheet; Android resolves at
+      // once with 'opened', and the AppState listener above takes over.
+      if (result.type !== 'opened') {
+        await onCheckoutClosed();
+      }
     } catch (error) {
+      awaitingCheckoutRef.current = false;
       console.error('Error opening checkout:', error);
       setStatus('failed');
       setMessage('Could not open the secure checkout. Please try again.');
-      return;
     }
+  };
 
-    if (result.type === 'success') {
-      const { queryParams } = Linking.parse(result.url);
-      if (queryParams?.status === 'cancelled') {
-        setStatus('ready');
-        setMessage('Payment cancelled. You can try again whenever you are ready.');
-        return;
-      }
-      await handleVerifyPayment();
-      return;
-    }
+  // The rider closed the checkout sheet. Flutterwave marks a payment
+  // successful the moment it completes, but give it a few seconds in case
+  // it's still settling before showing "Check payment / Try again".
+  const onCheckoutClosed = async () => {
+    if (!awaitingCheckoutRef.current) return;
+    awaitingCheckoutRef.current = false;
 
-    // The sheet closed without the provider's redirect reaching it (the
-    // user tapped Done, or the platform delivered the redirect as a deep
-    // link instead). They may still have paid — check quietly first.
-    const paid = await handleVerifyPayment({ quiet: true });
-    if (!paid) {
-      setStatus('closed');
-      setMessage('Checkout closed. If you completed the payment, tap "Check payment". Otherwise, you can try again.');
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await handleVerifyPayment({ quiet: true })) return;
+      if (attempt < 2) await sleep(2000);
     }
+    setStatus('closed');
+    setMessage('Checkout closed. If you completed the payment, tap "Check payment". Otherwise, you can try again.');
+  };
+  checkoutClosedRef.current = () => {
+    void onCheckoutClosed();
   };
 
   const confirmPaymentWithServer = async (gatewayName: 'paystack' | 'flutterwave') => {

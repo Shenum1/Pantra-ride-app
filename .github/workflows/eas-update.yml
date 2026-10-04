@@ -41,11 +41,15 @@ jobs:
       - name: Install EAS CLI
         run: bun add -g eas-cli
 
+      # --environment is required: the runner has no .env, so without it every
+      # EXPO_PUBLIC_* value is undefined in the bundle and the update crashes on
+      # launch (expo-updates then silently falls back to the embedded bundle).
       - name: Publish update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           eas update \
             --branch "${{ inputs.channel }}" \
+            --environment "${{ inputs.channel }}" \
             --message "${{ inputs.message || format('Manual update via GitHub Actions ({0})', github.sha) }}" \
             --non-interactive

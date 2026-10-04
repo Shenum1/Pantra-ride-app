@@ -74,7 +74,7 @@ export const DriverWalletService = {
 
   // Starts an in-app Flutterwave checkout for the full amount owed (the
   // server decides the amount).
-  async startCommissionPayment(returnUrl: string) {
+  async startCommissionPayment(returnUrl?: string) {
     return trpcClient.driver.commission.pay.mutate({ returnUrl });
   },
 
