@@ -66,6 +66,14 @@ export const reconciliationStatusTone: Record<string, BadgeTone> = {
   ignored: 'neutral',
 };
 
+export const agentActionStatusTone: Record<string, BadgeTone> = {
+  PENDING: 'warning',
+  APPROVED: 'pending',
+  EXECUTED: 'success',
+  REJECTED: 'neutral',
+  EXECUTION_FAILED: 'danger',
+};
+
 export const refundStatusTone: Record<string, BadgeTone> = {
   requested: 'pending',
   processing: 'pending',

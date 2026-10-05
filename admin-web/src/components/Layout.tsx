@@ -18,16 +18,20 @@ const NAV = [
   { to: '/pricing', label: 'Pricing' },
   { to: '/promotions', label: 'Promotions' },
   { to: '/content', label: 'Content' },
+  { to: '/agent-queue', label: 'Agent queue' },
 ];
 
 export default function Layout({ user, logout }: { user: AdminUser; logout: () => void }) {
   const [open, setOpen] = useState(false);
-  const [pendingVerification, setPendingVerification] = useState<number | null>(null);
+  const [badges, setBadges] = useState<Record<string, number>>({});
 
   useEffect(() => {
     trpcQuery<{ drivers: unknown[] }>('admin.driverVerification.list', { status: 'MANUAL_REVIEW' })
-      .then((res) => setPendingVerification(res.drivers.length))
-      .catch(() => setPendingVerification(null));
+      .then((res) => setBadges((b) => ({ ...b, Verification: res.drivers.length })))
+      .catch(() => {});
+    trpcQuery<{ total: number }>('admin.agentActions.list', { status: 'PENDING', limit: 1 })
+      .then((res) => setBadges((b) => ({ ...b, 'Agent queue': res.total })))
+      .catch(() => {});
   }, []);
 
   return (
@@ -55,9 +59,9 @@ export default function Layout({ user, logout }: { user: AdminUser; logout: () =
               }
             >
               {label}
-              {label === 'Verification' && pendingVerification ? (
+              {badges[label] ? (
                 <span className="rounded-full bg-warning-tint px-1.5 py-0.5 text-[11px] font-semibold text-warning">
-                  {pendingVerification}
+                  {badges[label]}
                 </span>
               ) : null}
             </NavLink>

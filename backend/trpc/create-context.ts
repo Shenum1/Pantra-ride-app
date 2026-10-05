@@ -2,6 +2,7 @@ import { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { supabaseAdmin } from "../lib/supabase-admin";
+import { AdminAuthError, bearerToken, hasRole as hasRoleOrThrow, verifyAdminToken } from "../lib/admin-auth";
 
 // Context creation function
 export const createContext = async (opts: FetchCreateContextFnOptions) => {
@@ -21,60 +22,33 @@ const t = initTRPC.context<Context>().create({
 export const createTRPCRouter = t.router;
 export const publicProcedure = t.procedure;
 
-// Checks the user_roles table (see database/schemas/supabase-schema-user-roles.sql)
-// rather than users.role, since an account can now hold more than one role — e.g.
-// an existing rider who also registered as a driver. users.role is left as each
-// account's default/primary experience and is never treated as an exhaustive list
-// of what that account is allowed to do.
-async function hasRole(client: NonNullable<typeof supabaseAdmin>, userId: string, role: "rider" | "driver" | "admin"): Promise<boolean> {
-  const { data, error } = await client
-    .from("user_roles")
-    .select("role")
-    .eq("userId", userId)
-    .eq("role", role)
-    .maybeSingle();
-
-  // A genuine query failure (e.g. the user_roles migration hasn't been run yet, so
-  // the table doesn't exist) must not be swallowed as "role not found" — that would
-  // reject every driver/admin with a misleading "this account does not have a driver
-  // profile" instead of surfacing the real, fixable cause.
-  if (error) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: `Could not verify account role (${error.message}). Has the user_roles migration been run?`,
-    });
+function toTRPCError(e: unknown): TRPCError {
+  if (e instanceof AdminAuthError) {
+    const internal = e.code === "NOT_CONFIGURED" || e.code === "ROLE_CHECK_FAILED";
+    return new TRPCError({ code: internal ? "INTERNAL_SERVER_ERROR" : "UNAUTHORIZED", message: e.message });
   }
+  return e instanceof TRPCError ? e : new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: (e as Error).message });
+}
 
-  return !!data;
+async function hasRole(client: NonNullable<typeof supabaseAdmin>, userId: string, role: "rider" | "driver" | "admin"): Promise<boolean> {
+  try {
+    return await hasRoleOrThrow(client, userId, role);
+  } catch (e) {
+    throw toTRPCError(e);
+  }
 }
 
 // Admin-only procedure: verifies the caller's Supabase session token belongs
 // to a user holding the 'admin' role before allowing access to service-role-key queries.
 export const adminProcedure = publicProcedure.use(async ({ ctx, next }) => {
-  if (!supabaseAdmin) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Admin features are not configured. Set SUPABASE_SERVICE_ROLE_KEY on the server.",
-    });
+  let adminUserId: string;
+  try {
+    ({ adminUserId } = await verifyAdminToken(supabaseAdmin, bearerToken(ctx.req.headers.get("authorization"))));
+  } catch (e) {
+    throw toTRPCError(e);
   }
 
-  const authHeader = ctx.req.headers.get("authorization") ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : "";
-
-  if (!token) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Missing admin session token." });
-  }
-
-  const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
-  if (userError || !userData.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid or expired session." });
-  }
-
-  if (!(await hasRole(supabaseAdmin, userData.user.id, "admin"))) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: "This account does not have admin access." });
-  }
-
-  return next({ ctx: { ...ctx, adminUserId: userData.user.id, supabaseAdmin } });
+  return next({ ctx: { ...ctx, adminUserId, supabaseAdmin: supabaseAdmin! } });
 });
 
 // Authenticated procedure: verifies the caller's Supabase session token and

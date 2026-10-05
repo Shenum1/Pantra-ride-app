@@ -59,20 +59,18 @@ describe('rides.create — no financial field can be supplied by the client', ()
 });
 
 describe('admin.payouts.list — never selects a full bank account number', () => {
-  it('the route source selects accountNumberLast4, never the raw accountNumber column', async () => {
+  it('the payout listing source selects accountNumberLast4, never the raw accountNumber column', async () => {
     // Static source inspection rather than an invocation test: this route
     // requires a mocked service-role Supabase client to actually call (no
     // such DB-mocking harness exists anywhere in this codebase yet — same
     // documented limitation as the SQL trigger/RLS behavior tested only via
     // the manual checklist). Reading the source directly still gives a real
     // regression guard against a future edit re-adding "accountNumber" to
-    // this route's select().
+    // this route's select(). The query lives in the shared admin service the
+    // tRPC route and the agent-admin list_payouts tool both call.
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
-    const source = await fs.readFile(
-      path.resolve(process.cwd(), 'backend/trpc/routes/admin/payouts/list/route.ts'),
-      'utf8'
-    );
+    const source = await fs.readFile(path.resolve(process.cwd(), 'backend/services/admin/payouts.ts'), 'utf8');
     expect(source).toContain('accountNumberLast4');
     // Word-boundary match: "accountNumberLast4"/"accountNumberEncrypted" are
     // fine (no boundary between "accountNumber" and the suffix — both are
@@ -154,13 +152,17 @@ describe('admin.payouts — no generic status-setter route exists (Phase 3A)', (
     ).rejects.toThrow();
   });
 
+  // completeManually's logic lives in backend/services/admin/payouts.ts so the
+  // tRPC route and the agent-admin complete_payout_manually tool share it.
   it('completeManually re-verifies with the provider before completing, and refuses if the payout is not in manual_review', async () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
-    const source = await fs.readFile(
+    const routeSource = await fs.readFile(
       path.resolve(process.cwd(), 'backend/trpc/routes/admin/payouts/complete-manually/route.ts'),
       'utf8'
     );
+    expect(routeSource).toContain('completePayoutManually(');
+    const source = await fs.readFile(path.resolve(process.cwd(), 'backend/services/admin/payouts.ts'), 'utf8');
     expect(source).toContain('reconcileOnePayout');
     expect(source).toMatch(/status\s*!==\s*["']manual_review["']/);
   });
@@ -168,10 +170,7 @@ describe('admin.payouts — no generic status-setter route exists (Phase 3A)', (
   it('completeManually refuses an unverifiable payout unless the admin confirms they checked the provider dashboard', async () => {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
-    const source = await fs.readFile(
-      path.resolve(process.cwd(), 'backend/trpc/routes/admin/payouts/complete-manually/route.ts'),
-      'utf8'
-    );
+    const source = await fs.readFile(path.resolve(process.cwd(), 'backend/services/admin/payouts.ts'), 'utf8');
     // The re-check result must actually be used — not awaited and discarded.
     expect(source).toMatch(/const check = await reconcileOnePayout/);
     expect(source).toMatch(/if \(check\.unverifiable\)/);

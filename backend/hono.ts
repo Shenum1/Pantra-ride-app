@@ -9,6 +9,7 @@ import { processVerifiedPayment } from "./lib/payment-processor";
 import { processPayoutWebhookEvent } from "./lib/payout-processor";
 import { isFlutterwaveRefundWebhookShape, processFlutterwaveRefundCallback, processRefundWebhookEvent } from "./lib/refund-processor";
 import { checkPaymentEnvironmentConsistency } from "./lib/payment-env-check";
+import { agentAdminRouter } from "./agent-admin/router";
 
 checkPaymentEnvironmentConsistency();
 
@@ -228,6 +229,11 @@ app.post("/webhooks/flutterwave-refund-callback", async (c) => {
   await processFlutterwaveRefundCallback(supabaseAdmin, payload);
   return c.json({ received: true });
 });
+
+// AI admin agent API — an explicit allowlist of tools authenticated with
+// AGENT_ADMIN_SECRET_KEY; every write is queued for human approval. See
+// backend/agent-admin/router.ts.
+app.route("/v1/agent-admin", agentAdminRouter);
 
 // Mount tRPC router at /trpc
 app.use(

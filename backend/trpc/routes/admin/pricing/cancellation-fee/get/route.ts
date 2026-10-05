@@ -1,8 +1,6 @@
 import { adminProcedure } from "../../../../../create-context";
+import { getSingleRowConfig, SINGLE_ROW_PRICING_TABLES } from "../../../../../../services/admin/pricing";
 
-export default adminProcedure.query(async ({ ctx }) => {
-  const db = ctx.supabaseAdmin;
-  const { data, error } = await db.from("cancellation_fee_config").select("*").single();
-  if (error) throw new Error(error.message);
-  return { config: data };
-});
+export default adminProcedure.query(async ({ ctx }) => ({
+  config: await getSingleRowConfig(ctx.supabaseAdmin, SINGLE_ROW_PRICING_TABLES.cancellationFee),
+}));

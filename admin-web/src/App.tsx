@@ -18,6 +18,7 @@ import Refunds from './pages/Refunds';
 import Pricing from './pages/Pricing';
 import Promotions from './pages/Promotions';
 import Content from './pages/Content';
+import AgentQueue from './pages/AgentQueue';
 import Support from './pages/Support';
 import SupportTicketDetail from './pages/SupportTicketDetail';
 
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/pricing" element={<Pricing />} />
             <Route path="/promotions" element={<Promotions />} />
             <Route path="/content" element={<Content />} />
+            <Route path="/agent-queue" element={<AgentQueue />} />
             <Route path="/support" element={<Support />} />
             <Route path="/support/:id" element={<SupportTicketDetail />} />
           </Route>
