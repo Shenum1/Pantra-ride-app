@@ -165,8 +165,8 @@ export default function SignupScreen() {
 
   const handleGoogleSignup = async () => {
     try {
-      await loginWithGoogle();
-      router.replace('/(tabs)/home');
+      const { hasPhone } = await loginWithGoogle();
+      router.replace(hasPhone ? '/(tabs)/home' : '/collect-phone');
     } catch (error) {
       console.error('Signup: Google sign-in failed:', error);
     }

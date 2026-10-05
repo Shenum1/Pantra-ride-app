@@ -59,8 +59,8 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     try {
-      await loginWithGoogle();
-      router.replace('/(tabs)/home');
+      const { hasPhone } = await loginWithGoogle();
+      router.replace(hasPhone ? '/(tabs)/home' : '/collect-phone');
     } catch (error) {
       console.error('Login: Google sign-in failed:', error);
     }

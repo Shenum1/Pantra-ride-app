@@ -20,6 +20,7 @@ import { getVehicleImageSource } from '@/assets/vehicles';
 import VehicleImage from '@/assets/vehicles/VehicleImage';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
+import { useAuth } from '@/hooks/useAuthStore';
 import { Location } from '@/types';
 
 const COLLAPSED_OFFSET = 188;
@@ -40,6 +41,7 @@ function buildRouteKey(pickup: Location | null, dropoff: Location | null) {
 
 export default function RideConfirmationScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const {
     estimatedDistance,
     estimatedDuration,
@@ -156,6 +158,16 @@ export default function RideConfirmationScreen() {
   const handleBookRide = async () => {
     if (!pickupLocation || !dropoffLocation) {
       Alert.alert('Trip unavailable', 'Please select your route again.');
+      return;
+    }
+
+    // Google sign-ins never collected a phone number, and the driver needs one
+    // to reach the rider at pickup.
+    if (user && !user.id.startsWith('test-') && !user.phone) {
+      Alert.alert('Phone number needed', 'Add a phone number so your driver can reach you at pickup.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Add number', onPress: () => router.push('/collect-phone?required=1' as any) },
+      ]);
       return;
     }
 

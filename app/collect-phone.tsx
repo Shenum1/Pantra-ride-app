@@ -10,70 +10,56 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { supabase } from '@/lib/supabase';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '@/hooks/useAuthStore';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 
-// Shown once, right after a Google sign-in/sign-up that has no phone number on
-// file yet — email/password signup already collects phone inline, but a Google
-// sign-in is a single tap with no form. Reuses the exact OTP pattern already
-// proven in app/driver-verification (updateUser + verifyOtp
-// type:'phone_change') rather than the old rider phone-*login* flow, since this
-// attaches/verifies a phone number on the already-authenticated Google identity
-// instead of creating a separate one.
+// Asks for a phone number that a Google sign-in never provides (email signup
+// collects it inline). Saved as-is, with no SMS code — same as email signup,
+// which doesn't verify the phone either. Verifying would need an SMS provider
+// configured in Supabase.
+//
+// Two entry points:
+//  - right after Google sign-in (skippable, then continues to home), and
+//  - from booking, when a rider with no number tries to book (`required=1`):
+//    no skip, and it returns to the booking screen once saved, because the
+//    driver needs a number to call the rider.
 function formatE164(rawPhone: string): string {
-  return rawPhone.startsWith('+') ? rawPhone : `+234${rawPhone.replace(/^0+/, '')}`;
+  const trimmed = rawPhone.trim().replace(/[\s-]/g, '');
+  return trimmed.startsWith('+') ? trimmed : `+234${trimmed.replace(/^0+/, '')}`;
 }
 
 export default function CollectPhoneScreen() {
+  const { required } = useLocalSearchParams<{ required?: string }>();
+  const isRequired = required === '1';
   const { updateProfile } = useAuth();
   const [phone, setPhone] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSendCode = async () => {
-    if (!phone.trim()) {
-      Alert.alert('Phone required', 'Enter your phone number first.');
+  const leave = () => {
+    if (isRequired && router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/home');
+    }
+  };
+
+  const handleSave = async () => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      Alert.alert('Invalid number', 'Enter a valid phone number, e.g. 08012345678.');
       return;
     }
-    setIsSending(true);
+    setIsSaving(true);
     try {
-      const { error } = await supabase.auth.updateUser({ phone: formatE164(phone) });
-      if (error) throw new Error(error.message);
-      setOtpSent(true);
+      await updateProfile({ phone: formatE164(phone) });
+      leave();
     } catch (error: any) {
-      Alert.alert('Could not send code', error?.message ?? 'Please try again.');
+      Alert.alert('Could not save number', error?.message ?? 'Please try again.');
     } finally {
-      setIsSending(false);
+      setIsSaving(false);
     }
-  };
-
-  const handleVerifyCode = async () => {
-    if (!otpCode.trim()) return;
-    setIsVerifying(true);
-    try {
-      const formatted = formatE164(phone);
-      const { error } = await supabase.auth.verifyOtp({
-        phone: formatted,
-        token: otpCode.trim(),
-        type: 'phone_change',
-      });
-      if (error) throw new Error(error.message);
-      await updateProfile({ phone: formatted });
-      router.replace('/(tabs)/home');
-    } catch (error: any) {
-      Alert.alert('Verification failed', error?.message ?? 'Please try again.');
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  const handleSkip = () => {
-    router.replace('/(tabs)/home');
   };
 
   return (
@@ -82,7 +68,9 @@ export default function CollectPhoneScreen() {
         <View style={styles.content}>
           <Text style={styles.title}>Add your phone number</Text>
           <Text style={styles.subtitle}>
-            Drivers and support use this to reach you about your rides. You can add it later from your profile.
+            {isRequired
+              ? 'Your driver needs a number to reach you at pickup. Add one to continue booking.'
+              : 'Drivers and support use this to reach you about your rides. You can add it later from your profile.'}
           </Text>
 
           <View style={styles.inputContainer}>
@@ -92,34 +80,20 @@ export default function CollectPhoneScreen() {
               value={phone}
               onChangeText={setPhone}
               placeholder="e.g. 08012345678"
+              placeholderTextColor={Colors.light.textSecondary}
               keyboardType="phone-pad"
-              editable={!otpSent}
+              autoFocus
               testID="collect-phone-input"
             />
           </View>
 
-          {!otpSent ? (
-            <Button title="Send Verification Code" onPress={handleSendCode} loading={isSending} disabled={isSending} />
-          ) : (
-            <>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Verification Code</Text>
-                <TextInput
-                  style={styles.input}
-                  value={otpCode}
-                  onChangeText={setOtpCode}
-                  placeholder="Enter 6-digit code"
-                  keyboardType="number-pad"
-                  testID="collect-phone-otp-input"
-                />
-              </View>
-              <Button title="Verify" onPress={handleVerifyCode} loading={isVerifying} disabled={isVerifying} />
-            </>
-          )}
+          <Button title="Save" onPress={handleSave} loading={isSaving} disabled={isSaving} testID="collect-phone-save" />
 
-          <Pressable style={styles.skipButton} onPress={handleSkip} testID="collect-phone-skip">
-            <Text style={styles.skipText}>Skip for now</Text>
-          </Pressable>
+          {!isRequired && (
+            <Pressable style={styles.skipButton} onPress={leave} testID="collect-phone-skip">
+              <Text style={styles.skipText}>Skip for now</Text>
+            </Pressable>
+          )}
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
