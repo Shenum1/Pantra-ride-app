@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Toast from 'react-native-toast-message';
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ResponsiveShell } from "@/components/ResponsiveShell";
+import { PendingCheckoutResumer } from "@/components/PendingCheckoutResumer";
 import { LocationProvider } from "@/hooks/useLocationStore";
 import { RideProvider } from "@/hooks/useRideStore";
 import { AuthProvider, useAuth } from "@/hooks/useAuthStore";
@@ -140,6 +141,7 @@ export default function RootLayout() {
                 <DriverAuthProvider>
                 <DriverVerificationProvider>
                 <PushTokenRegistrar />
+                <PendingCheckoutResumer />
                 <PaymentProvider>
                 <WalletProvider>
                 <PromotionsProvider>

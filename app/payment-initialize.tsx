@@ -10,6 +10,7 @@ import { FlutterwaveService } from '@/lib/flutterwave-service';
 import { useAuth } from '@/hooks/useAuthStore';
 import { trpcClient } from '@/lib/trpc';
 import { CheckoutSession } from '@/lib/checkout-session';
+import { PendingCheckoutStore } from '@/lib/pending-checkout';
 import { DriverWalletService } from '@/lib/driver-wallet-service';
 import { useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
@@ -186,6 +187,15 @@ export default function PaymentInitializeScreen() {
     CheckoutSession.claim(reference);
     awaitingCheckoutRef.current = true;
     leftAppRef.current = false;
+    // Saved before the sheet opens: if Android shuts the app down while the
+    // sheet is open, PendingCheckoutResumer finishes confirming it on restart.
+    await PendingCheckoutStore.save({
+      reference,
+      gateway: gateway === 'paystack' ? 'paystack' : 'flutterwave',
+      purpose,
+      amount,
+      startedAt: Date.now(),
+    });
 
     try {
       const result = await WebBrowser.openBrowserAsync(paymentUrl, { createTask: false });
@@ -267,6 +277,7 @@ export default function PaymentInitializeScreen() {
       if (purpose === 'wallet_funding' || isCommissionPayment) {
         await confirmPaymentWithServer(gateway === 'paystack' ? 'paystack' : 'flutterwave');
       }
+      await PendingCheckoutStore.clear(reference);
       setStatus('success');
       setMessage(
         isCommissionPayment
