@@ -6,7 +6,9 @@ import path from 'node:path';
 // Postgres test harness in this codebase), plus checks that the client no
 // longer relies on the reads/writes the migration closes.
 const root = process.cwd();
-const read = (rel: string) => fs.readFileSync(path.resolve(root, rel), 'utf8');
+// Normalise CRLF: Windows checkouts (core.autocrlf) would otherwise break the
+// '\n'-anchored parsing below.
+const read = (rel: string) => fs.readFileSync(path.resolve(root, rel), 'utf8').replace(/\r\n/g, '\n');
 
 const sql = read('database/schemas/supabase-schema-security-hardening.sql');
 // Executable SQL only — the "how to verify" block at the bottom is all comments.
