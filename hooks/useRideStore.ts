@@ -135,26 +135,35 @@ export const [RideProvider, useRide] = createContextHook(() => {
   const { data: liveSurgeMultiplier } = useQuery({
     queryKey: ['surgeMultiplier'],
     queryFn: async () => {
-      const [onlineDriversResult, pendingRidesResult, surgeConfigResult] = await Promise.all([
-        supabase.from('drivers').select('id', { count: 'exact', head: true }).eq('isOnline', true),
-        supabase.from('rides').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('surge_config').select('*').limit(1).maybeSingle(),
-      ]);
+      const surgeConfigResult = await supabase.from('surge_config').select('*').limit(1).maybeSingle();
 
       const config = surgeConfigResult.data;
       if (!config) {
         return 1;
       }
 
+      // Riders can't read the drivers table or other riders' rides, so the
+      // platform-wide counts come from one aggregate-only RPC
+      // (supabase-schema-security-hardening.sql).
       const lookbackMinutes = Number(config.acceptanceLookbackMinutes ?? 60);
-      const cutoff = new Date(Date.now() - lookbackMinutes * 60_000).toISOString();
-      const [acceptedResult, declinedResult] = await Promise.all([
-        supabase.from('rides').select('id', { count: 'exact', head: true }).gte('acceptedAt', cutoff),
-        supabase.from('ride_declines').select('rideId', { count: 'exact', head: true }).gte('declinedAt', cutoff),
-      ]);
+      const { data: countRows, error: countsError } = await supabase.rpc('get_marketplace_demand_counts', {
+        p_lookback_minutes: lookbackMinutes,
+      });
+      if (countsError) {
+        console.error('get_marketplace_demand_counts failed:', countsError.message);
+        return 1;
+      }
+      const counts = (countRows as {
+        onlineDrivers: number;
+        pendingRides: number;
+        acceptedRecent: number;
+        declinedRecent: number;
+      }[] | null)?.[0];
+      const onlineDriversResult = { count: counts?.onlineDrivers ?? 0 };
+      const pendingRidesResult = { count: counts?.pendingRides ?? 0 };
 
-      const acceptedCount = acceptedResult.count ?? 0;
-      const declinedCount = declinedResult.count ?? 0;
+      const acceptedCount = counts?.acceptedRecent ?? 0;
+      const declinedCount = counts?.declinedRecent ?? 0;
       const totalResponses = acceptedCount + declinedCount;
       // Ignore the signal until there's enough recent activity to trust it —
       // a couple of declines in a quiet period shouldn't swing the price.
