@@ -53,7 +53,6 @@ interface BankAccountRow {
   bankName: string;
   accountName: string;
   accountNumberEncrypted: string | null;
-  accountNumber: string | null;
   bankCode: string | null;
   paystackRecipientCode: string | null;
   recipientVerifiedAt: string | null;
@@ -79,17 +78,19 @@ async function loadBankAccount(supabaseAdmin: SupabaseClient, bankAccountId: str
   if (!bankAccountId) return null;
   const { data, error } = await supabaseAdmin
     .from("driver_bank_accounts")
-    .select("id, bankName, accountName, accountNumberEncrypted, accountNumber, bankCode, paystackRecipientCode, recipientVerifiedAt")
+    .select("id, bankName, accountName, accountNumberEncrypted, bankCode, paystackRecipientCode, recipientVerifiedAt")
     .eq("id", bankAccountId)
     .maybeSingle<BankAccountRow>();
   if (error) throw new Error(`Failed to load bank account: ${error.message}`);
   return data;
 }
 
+// Encrypted column only — the legacy plaintext "accountNumber" column is
+// dropped by supabase-schema-bank-accounts-drop-plaintext.sql after
+// scripts/backfill-bank-account-encryption.ts. A row with no ciphertext
+// returns null, which callers route to manual review.
 function readAccountNumber(bankAccount: BankAccountRow): string | null {
-  return bankAccount.accountNumberEncrypted
-    ? decryptAccountNumber(bankAccount.accountNumberEncrypted)
-    : bankAccount.accountNumber;
+  return bankAccount.accountNumberEncrypted ? decryptAccountNumber(bankAccount.accountNumberEncrypted) : null;
 }
 
 // Returns false when the insert hit the (provider, providerEventId) unique

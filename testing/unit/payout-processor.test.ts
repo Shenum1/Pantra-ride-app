@@ -1,4 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { randomBytes } from 'node:crypto';
+import { encryptAccountNumber } from '@/backend/lib/bank-account-crypto';
+
+// Bank account numbers are only ever read from accountNumberEncrypted (the
+// legacy plaintext column is being dropped), so fixtures encrypt with a test key.
+process.env.BANK_ACCOUNT_ENCRYPTION_KEY ??= randomBytes(32).toString('base64');
 import * as payoutProvider from '@/backend/lib/payout-provider';
 import * as flutterwaveProvider from '@/backend/lib/flutterwave-payout-provider';
 import {
@@ -26,7 +32,6 @@ interface MockBankAccount {
   bankName: string;
   accountName: string;
   accountNumberEncrypted: string | null;
-  accountNumber: string | null;
   bankCode: string | null;
   paystackRecipientCode: string | null;
   recipientVerifiedAt: string | null;
@@ -156,7 +161,6 @@ function baseBankAccount(overrides: Partial<MockBankAccount> = {}): MockBankAcco
     bankName: 'GTBank',
     accountName: 'Jane Driver',
     accountNumberEncrypted: null,
-    accountNumber: null,
     bankCode: '058',
     paystackRecipientCode: 'RCP_cached',
     recipientVerifiedAt: null,
@@ -437,7 +441,7 @@ describe('processPayoutWebhookEvent', () => {
 // ---------------------------------------------------------------------------
 
 function fwBankAccount(overrides: Partial<MockBankAccount> = {}): MockBankAccount {
-  return baseBankAccount({ paystackRecipientCode: null, accountNumber: '0690000032', recipientVerifiedAt: '2026-01-01T00:00:00.000Z', ...overrides });
+  return baseBankAccount({ paystackRecipientCode: null, accountNumberEncrypted: encryptAccountNumber('0690000032'), recipientVerifiedAt: '2026-01-01T00:00:00.000Z', ...overrides });
 }
 
 const fwCreated = {

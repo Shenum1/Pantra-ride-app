@@ -17,12 +17,32 @@ function buildGoogleMapsProxyUrl(url: string): string {
   return proxyUrl.toString();
 }
 
-async function fetchGoogleMaps(url: string, options?: RequestInit): Promise<Response> {
-  const finalUrl = Platform.OS === 'web' && typeof window !== 'undefined'
-    ? buildGoogleMapsProxyUrl(url)
-    : url;
+// The /api/google-maps proxy (backend/lib/google-maps-proxy.ts) requires the
+// caller's Supabase session. Imported lazily so this module stays importable
+// without pulling the Supabase client in (native never uses the proxy).
+async function getSessionAuthHeader(): Promise<Record<string, string>> {
+  try {
+    const { supabase } = await import('./supabase');
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { authorization: `Bearer ${token}` } : {};
+  } catch (error) {
+    console.warn('Could not read session for Google Maps proxy:', error);
+    return {};
+  }
+}
 
-  return fetch(finalUrl, options);
+async function fetchGoogleMaps(url: string, options?: RequestInit): Promise<Response> {
+  // Web: browsers can't call the Google web-service APIs directly (CORS), so
+  // go through our authenticated same-origin proxy. Native: call Google
+  // directly, unchanged.
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const headers = new Headers(options?.headers);
+    for (const [key, value] of Object.entries(await getSessionAuthHeader())) headers.set(key, value);
+    return fetch(buildGoogleMapsProxyUrl(url), { ...options, headers });
+  }
+
+  return fetch(url, options);
 }
 
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
