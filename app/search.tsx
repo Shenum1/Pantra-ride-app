@@ -40,6 +40,7 @@ export default function SearchScreen() {
     pickupAddress,
     dropoffAddress,
     locationError,
+    isLocationSharingOff,
     retryLocation,
     setPickupLocation,
     setPickupAddress,
@@ -562,8 +563,8 @@ export default function SearchScreen() {
                       <LocateFixed size={20} color={Colors.light.gray} />
                       <View style={styles.locationInfo}>
                         <Text style={styles.locationName} numberOfLines={1}>{locationError}</Text>
-                        <Pressable onPress={() => void retryLocation()}>
-                          <Text style={styles.locationErrorRetryText}>Retry</Text>
+                        <Pressable onPress={() => (isLocationSharingOff ? router.push('/privacy') : void retryLocation())}>
+                          <Text style={styles.locationErrorRetryText}>{isLocationSharingOff ? 'Privacy settings' : 'Retry'}</Text>
                         </Pressable>
                       </View>
                     </View>

@@ -8,6 +8,7 @@ import Toast from 'react-native-toast-message';
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ResponsiveShell } from "@/components/ResponsiveShell";
 import { PendingCheckoutResumer } from "@/components/PendingCheckoutResumer";
+import { PrivacyBootstrap } from "@/components/PrivacyBootstrap";
 import { LocationProvider } from "@/hooks/useLocationStore";
 import { RideProvider } from "@/hooks/useRideStore";
 import { AuthProvider, useAuth } from "@/hooks/useAuthStore";
@@ -141,6 +142,7 @@ export default function RootLayout() {
                 <DriverAuthProvider>
                 <DriverVerificationProvider>
                 <PushTokenRegistrar />
+                <PrivacyBootstrap />
                 <PendingCheckoutResumer />
                 <PaymentProvider>
                 <WalletProvider>

@@ -1,7 +1,8 @@
-import { Eye, MapPin, MessageSquare, Share, Database } from "lucide-react-native";
+import { Eye, MapPin, MessageSquare, Share, Database, ShieldCheck } from "lucide-react-native";
 import React from "react";
 import {
   Pressable,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,8 +12,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import { useRiderPreferences } from '@/hooks/useRiderPreferences';
+import { usePrivacyStore } from '@/hooks/usePrivacyStore';
+import { showAdPrivacyOptions } from '@/lib/ad-consent';
+import { RiderPreferences } from '@/lib/rider-account-service';
 
 interface PrivacyOptionProps {
   icon: React.ReactElement;
@@ -61,7 +65,24 @@ export default function PrivacyScreen() {
   const { colors } = useTheme();
   
   const { preferences, updatePreference } = useRiderPreferences();
-  
+  const adPrivacyOptionsRequired = usePrivacyStore((s) => s.consent.privacyOptionsRequired);
+  const trackingDenied = usePrivacyStore(
+    (s) => Platform.OS === 'ios' && (s.consent.tracking === 'denied' || s.consent.tracking === 'unavailable')
+  );
+
+  const setPreference = (key: keyof RiderPreferences, value: boolean) => {
+    updatePreference(key, value).catch(() => {
+      Alert.alert('Could not save', 'Your privacy setting was not saved. Please check your connection and try again.');
+    });
+  };
+
+  const handleAdPrivacyOptions = () => {
+    showAdPrivacyOptions().catch((error) => {
+      console.error('Unable to open ad privacy options:', error);
+      Alert.alert('Unavailable', 'Ad privacy options could not be opened right now. Please try again later.');
+    });
+  };
+
   const handleDataDownload = () => {
     Alert.alert(
       'Download Your Data',
@@ -85,7 +106,7 @@ export default function PrivacyScreen() {
   };
   
   const handlePrivacyPolicy = () => {
-    Alert.alert('Privacy Policy', 'View our complete privacy policy and terms of service.');
+    router.push('/privacy-policy');
   };
   
   return (
@@ -113,34 +134,43 @@ export default function PrivacyScreen() {
             <PrivacyOption
               icon={<MapPin size={24} color={colors.primary} />}
               title="Location Sharing"
-              description="Share your location for better ride matching"
+              description={
+                preferences.locationSharing
+                  ? "Use your current location for pickup, the map, weather and nearby places"
+                  : "Off: Pantra won't read your location. Enter your pickup address manually"
+              }
               isEnabled={preferences.locationSharing}
-              onToggle={(value) => void updatePreference('locationSharing', value)}
+              onToggle={(value) => setPreference('locationSharing', value)}
             />
-            
-            <PrivacyOption
-              icon={<Database size={24} color={colors.primary} />}
-              title="Data Collection"
-              description="Allow collection of usage data for app improvement"
-              isEnabled={preferences.dataCollection}
-              onToggle={(value) => void updatePreference('dataCollection', value)}
-            />
-            
+
             <PrivacyOption
               icon={<MessageSquare size={24} color={colors.primary} />}
               title="Personalized Ads"
-              description="Show ads based on your preferences and activity"
+              description={
+                preferences.personalizedAds && trackingDenied
+                  ? "Tracking is off for Pantra in iOS Settings, so ads stay non-personalized"
+                  : "Show ads based on your interests. When off, you still see ads, but they aren't personalized"
+              }
               isEnabled={preferences.personalizedAds}
-              onToggle={(value) => void updatePreference('personalizedAds', value)}
+              onToggle={(value) => setPreference('personalizedAds', value)}
             />
-            
+
             <PrivacyOption
               icon={<Eye size={24} color={colors.primary} />}
-              title="Profile Visibility"
-              description="Make your profile visible to other users"
+              title="Profile Photo Visibility"
+              description="Let drivers on your trips see your profile photo"
               isEnabled={preferences.profileVisibility}
-              onToggle={(value) => void updatePreference('profileVisibility', value)}
+              onToggle={(value) => setPreference('profileVisibility', value)}
             />
+
+            {adPrivacyOptionsRequired && (
+              <PrivacyOption
+                icon={<ShieldCheck size={24} color={colors.primary} />}
+                title="Ad Privacy Options"
+                description="Review or change the ad consent choices you made"
+                onPress={handleAdPrivacyOptions}
+              />
+            )}
           </View>
           
           <View style={styles.dataManagementSection}>

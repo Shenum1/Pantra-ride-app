@@ -31,6 +31,16 @@ const resolvedPlugins = appJson.expo.plugins.map((plugin) => {
   return plugin;
 });
 
+// iOS App Tracking Transparency prompt (lib/ad-consent.ts), shown only to riders
+// who turned Personalized Ads on. Added here rather than in app.json to keep the
+// plugin list there untouched; the plugin writes NSUserTrackingUsageDescription
+// to Info.plist (and the AD_ID permission on Android). Needs a new native build.
+const TRACKING_USAGE_DESCRIPTION =
+  "Allow tracking so Pantra can show you ads that match your interests. You'll still see ads if you decline, and you can change this in Settings at any time.";
+if (!resolvedPlugins.some((p) => (Array.isArray(p) ? p[0] : p) === "expo-tracking-transparency")) {
+  resolvedPlugins.push(["expo-tracking-transparency", { userTrackingPermission: TRACKING_USAGE_DESCRIPTION }]);
+}
+
 module.exports = ({ config }) => ({
   ...config,
   ...appJson.expo,
