@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { adminProcedure } from "../../../../create-context";
+import { recordAdminAccess } from "../../../../../lib/admin-access-log";
 
 export default adminProcedure
   .input(z.object({ riderId: z.string().uuid() }))
@@ -33,6 +34,14 @@ export default adminProcedure
         .order("createdAt", { ascending: false })
         .limit(20),
     ]);
+
+    // Audit who viewed this rider's personal data. Non-fatal; no PII in metadata.
+    await recordAdminAccess(db, {
+      adminUserId: ctx.adminUserId,
+      action: "view_rider_detail",
+      subjectType: "rider",
+      subjectId: input.riderId,
+    });
 
     return {
       profile,
