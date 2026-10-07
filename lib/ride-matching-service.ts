@@ -88,40 +88,11 @@ export class RideMatchingService {
     return () => supabase.removeChannel(channel);
   }
 
-  static subscribeToDriverLocation(
-    driverId: string,
-    callback: (location: { lat: number; lng: number }) => void
-  ): () => void {
-    const channel = supabase
-      .channel(`driver-loc-${driverId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'drivers', filter: `id=eq.${driverId}` },
-        (payload) => {
-          const loc = (payload.new as any)?.location;
-          if (loc) callback({ lat: loc.latitude ?? loc.lat, lng: loc.longitude ?? loc.lng });
-        }
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }
-
-  static subscribeToAvailableRides(_driverId: string, callback: (rides: Ride[]) => void): () => void {
-    const channel = supabase
-      .channel('available-rides')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rides', filter: 'status=eq.pending' },
-        async () => {
-          const { data } = await supabase.from('rides').select('*').eq('status', 'pending');
-          callback((data ?? []) as Ride[]);
-        }
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }
+  // Driver live location for riders and the pending-rides feed for drivers are
+  // no longer table subscriptions — riders can't read `drivers` and drivers
+  // can't read pending `rides` rows (supabase-schema-security-hardening.sql).
+  // Use FirebaseDriverService.subscribeToRideDriverLocation and
+  // FirebaseDriverService.subscribeToRideRequests instead.
 
   static async cancelRide(rideId: string): Promise<void> {
     const ride = (await DatabaseService.get('rides', rideId)) as any;
