@@ -15,6 +15,7 @@ import {
   Calendar,
   ArrowLeft,
   Navigation,
+  Receipt,
 } from 'lucide-react-native';
 import { router } from 'expo-router';
 import Colors from '@/constants/colors';
@@ -149,6 +150,18 @@ export default function TripHistory() {
           <Text style={styles.fareText}>₦{trip.fare.toFixed(2)}</Text>
         </View>
       </View>
+
+      {/* A fee-charging cancellation stores the fee as its fare; ride-receipt re-checks. */}
+      {(trip.status === 'completed' || trip.fare > 0) && (
+        <TouchableOpacity
+          style={styles.receiptLink}
+          onPress={() => router.push({ pathname: '/ride-receipt', params: { rideId: trip.id, as: 'driver' } })}
+          testID={`trip-receipt-${trip.id}`}
+        >
+          <Receipt size={14} color={Colors.light.primary} />
+          <Text style={styles.receiptLinkText}>View receipt</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -457,6 +470,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: Colors.light.success,
+  },
+  receiptLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.light.lightGray,
+  },
+  receiptLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.light.primary,
   },
   emptyState: {
     alignItems: 'center',

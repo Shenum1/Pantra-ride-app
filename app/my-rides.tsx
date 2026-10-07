@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
-import { Calendar, Star, ChevronRight } from 'lucide-react-native';
+import { Calendar, Star, ChevronRight, Receipt } from 'lucide-react-native';
 import { useRide } from '@/hooks/useRideStore';
 import { useTheme } from '@/hooks/useThemeStore';
 import { RideRequest } from '@/types';
@@ -177,6 +177,19 @@ export default function MyRidesScreen() {
           <ChevronRight size={16} color={colors.gray} />
         </View>
       </View>
+
+      {/* pastRides doesn't carry cancellationFee, but a fee-charging
+          cancellation stores the fee as its price — ride-receipt re-checks. */}
+      {ride.id && (ride.status === 'completed' || (ride.status === 'cancelled' && (ride.price ?? 0) > 0)) && (
+        <Pressable
+          style={[styles.receiptLink, { borderTopColor: colors.border }]}
+          onPress={() => router.push({ pathname: '/ride-receipt', params: { rideId: ride.id, as: 'rider' } })}
+          testID={`ride-receipt-${ride.id}`}
+        >
+          <Receipt size={14} color={colors.primary} />
+          <Text style={[styles.receiptLinkText, { color: colors.primary }]}>View receipt</Text>
+        </Pressable>
+      )}
 
       {ride.driver && ride.status === 'completed' && (
         <View style={styles.driverInfo}>
@@ -370,6 +383,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginRight: 4,
+  },
+  receiptLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  receiptLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   driverInfo: {
     flexDirection: 'row',
