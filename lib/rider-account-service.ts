@@ -20,9 +20,13 @@ export interface FamilyMember {
   phone?: string;
 }
 
+// locationSharing / profileVisibility default ON and personalizedAds OFF —
+// see lib/privacy-preferences.ts and supabase-schema-rider-privacy.sql.
+// dataCollection is no longer shown or used (the app has no analytics); the
+// column is kept only so existing rows still load.
 export const DEFAULT_RIDER_PREFERENCES: RiderPreferences = {
-  locationSharing: false, dataCollection: false, personalizedAds: false,
-  profileVisibility: false, twoFactorRequested: false, biometricLogin: false,
+  locationSharing: true, dataCollection: false, personalizedAds: false,
+  profileVisibility: true, twoFactorRequested: false, biometricLogin: false,
   loginAlerts: false, shareTrip: false, emergencyContactsEnabled: false, rideCheck: false,
 };
 

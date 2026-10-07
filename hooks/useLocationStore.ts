@@ -5,8 +5,31 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Platform } from "react-native";
 import { Location as LocationType } from "@/types";
 import { GoogleMapsService, DirectionsResult } from "@/lib/google-maps-service";
+import { useAuth } from "@/hooks/useAuthStore";
+import { usePrivacyStore } from "@/hooks/usePrivacyStore";
+import { resolveLocationAccess } from "@/lib/privacy-preferences";
+
+export const LOCATION_SHARING_OFF_MESSAGE = "Location sharing is off — enter your pickup manually";
 
 export const [LocationProvider, useLocation] = createContextHook(() => {
+  // Rider privacy: with Privacy > Location Sharing off, this store never reads
+  // the device position (no live location on the home map, weather, nearby
+  // places or "Current Location" pickup) — the rider types a pickup instead.
+  // Driver location tracking does not go through here (useDriverStore /
+  // location-tracking-service), and (driver-tabs)/trips.tsx feeds its own
+  // GPS fixes in via setUserLocation, so drivers are unaffected.
+  const { user, isLoading: authLoading } = useAuth();
+  const riderPrefsLoaded = usePrivacyStore((s) => s.riderPrefsLoaded);
+  const locationSharing = usePrivacyStore((s) => s.riderPrefs.locationSharing);
+  const locationAccess = resolveLocationAccess({
+    authLoading,
+    isSignedInRider: !!user?.id && user.id !== 'test-rider',
+    prefsLoaded: riderPrefsLoaded,
+    locationSharing,
+  });
+  const locationAccessRef = useRef(locationAccess);
+  locationAccessRef.current = locationAccess;
+
   const [userLocation, setUserLocation] = useState<LocationType | null>(null);
   const [pickupLocation, setPickupLocation] = useState<LocationType | null>(null);
   const [dropoffLocation, setDropoffLocation] = useState<LocationType | null>(null);
@@ -20,7 +43,22 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
   const lastRouteKeyRef = useRef<string | null>(null);
   const activeRouteKeyRef = useRef<string | null>(null);
 
+  // Location Sharing off: drop any live position we hold and stop. A pickup the
+  // rider already chose is left alone (it may belong to a ride in progress).
+  const applySharingOff = useCallback(() => {
+    setUserLocation(null);
+    setLocationError(LOCATION_SHARING_OFF_MESSAGE);
+    setIsLoading(false);
+  }, []);
+
   const retryLocation = useCallback(async () => {
+    if (locationAccessRef.current === 'disabled') {
+      applySharingOff();
+      return;
+    }
+    if (locationAccessRef.current === 'wait') return;
+    // A GPS fix that lands after the rider turned sharing off is discarded.
+    const sharingTurnedOff = () => locationAccessRef.current === 'disabled';
     try {
       setIsLoading(true);
       setLocationError(null);
@@ -30,6 +68,10 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
+              if (sharingTurnedOff()) {
+                applySharingOff();
+                return;
+              }
               const newLocation = {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude,
@@ -69,6 +111,10 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
 
         if (status === "granted") {
           const location = await Location.getCurrentPositionAsync({});
+          if (sharingTurnedOff()) {
+            applySharingOff();
+            return;
+          }
           const newLocation = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
@@ -115,11 +161,18 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
       setLocationError("Location unavailable");
       setIsLoading(false);
     }
-  }, []);
+  }, [applySharingOff]);
 
+  // Read the position once we know the rider allows it; react when they
+  // change the Location Sharing toggle mid-session.
   useEffect(() => {
+    if (locationAccess === 'wait') return;
+    if (locationAccess === 'disabled') {
+      applySharingOff();
+      return;
+    }
     void retryLocation();
-  }, [retryLocation]);
+  }, [locationAccess, retryLocation, applySharingOff]);
 
   const getRecentLocations = useCallback(async () => {
     try {
@@ -216,6 +269,7 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
     isLoading,
     hasPermission,
     locationError,
+    isLocationSharingOff: locationAccess === 'disabled',
     retryLocation,
     routeInfo,
     isCalculatingRoute,
@@ -237,6 +291,7 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
     isLoading,
     hasPermission,
     locationError,
+    locationAccess,
     retryLocation,
     routeInfo,
     isCalculatingRoute,

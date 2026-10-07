@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+import { getAdRequestState } from '@/hooks/useAdPreferences';
+import { waitForAdsReady } from '@/lib/ad-consent';
 
 export type RewardedAdStatus = 'idle' | 'loading' | 'ready' | 'showing' | 'unsupported';
 export type RewardedAdOutcome = 'earned' | 'dismissed' | 'error';
@@ -43,15 +45,26 @@ export function useRewardedAd() {
 
   useEffect(() => teardown, [teardown]);
 
-  const watchAd = useCallback((): Promise<RewardedAdOutcome> => {
+  const watchAd = useCallback(async (): Promise<RewardedAdOutcome> => {
     if (Platform.OS === 'web') {
-      return Promise.resolve('error');
+      return 'error';
     }
 
     const adUnitId = resolveAdUnitId();
     if (!adUnitId) {
-      return Promise.resolve('error');
+      return 'error';
     }
+
+    // No ad request before the UMP consent flow has finished and the SDK is
+    // initialised (lib/ad-consent.ts).
+    setStatus('loading');
+    const ready = await waitForAdsReady();
+    if (!ready) {
+      setStatus('idle');
+      return 'error';
+    }
+    // Personalised only if the rider opted in and consent allows it.
+    const { requestOptions } = getAdRequestState();
 
     return new Promise((resolve) => {
       let earned = false;
@@ -59,9 +72,8 @@ export function useRewardedAd() {
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { RewardedAd, RewardedAdEventType, AdEventType } = require('react-native-google-mobile-ads');
-        const rewarded = RewardedAd.createForAdUnitId(adUnitId);
+        const rewarded = RewardedAd.createForAdUnitId(adUnitId, requestOptions);
         adRef.current = rewarded;
-        setStatus('loading');
 
         const onEarned = rewarded.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => {
           earned = true;

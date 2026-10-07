@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
+import { useAdPreferences } from '@/hooks/useAdPreferences';
 
 // No web build of the native AdMob module exists — see .env.example. Real
 // unit IDs come from EXPO_PUBLIC_ADMOB_*_BANNER_UNIT_ID; in dev (__DEV__) or
@@ -27,7 +28,11 @@ function resolveBannerAdUnitId(): string | null {
 }
 
 export default function AdBanner() {
-  if (Platform.OS === 'web') return null;
+  // Nothing is requested until the UMP consent flow has run and the SDK is
+  // initialised (lib/ad-consent.ts); personalisation follows the rider's
+  // Personalized Ads toggle + consent (hooks/useAdPreferences.ts).
+  const { adsReady, requestOptions } = useAdPreferences();
+  if (Platform.OS === 'web' || !adsReady) return null;
 
   const adUnitId = resolveBannerAdUnitId();
   if (!adUnitId) return null;
@@ -37,7 +42,10 @@ export default function AdBanner() {
 
   return (
     <BannerAd
+      // Remount when personalisation changes so the next request uses it.
+      key={requestOptions.requestNonPersonalizedAdsOnly ? 'npa' : 'pa'}
       unitId={adUnitId}
+      requestOptions={requestOptions}
       size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
       onAdFailedToLoad={(error: unknown) => console.error('AdBanner: failed to load', error)}
     />
