@@ -85,7 +85,12 @@ export function buildReceiptHtml(tx: WalletTransaction): string {
 }
 
 export async function shareReceipt(tx: WalletTransaction): Promise<void> {
-  const message = buildReceiptText(tx);
+  await shareReceiptMessage(buildReceiptText(tx));
+}
+
+// Shared with ride receipts (lib/ride-receipt.ts builds the text/HTML; these
+// two helpers do the platform-specific sharing/printing for both).
+export async function shareReceiptMessage(message: string): Promise<void> {
   // On web, React Native's Share uses the browser's share sheet where one
   // exists; desktop browsers mostly don't have it, so fall back to copying.
   if (Platform.OS === 'web') {
@@ -111,8 +116,10 @@ export class ReceiptCopiedError extends Error {
 }
 
 export async function downloadReceipt(tx: WalletTransaction): Promise<void> {
-  const html = buildReceiptHtml(tx);
+  await downloadReceiptHtml(buildReceiptHtml(tx));
+}
 
+export async function downloadReceiptHtml(html: string): Promise<void> {
   // Web: the browser's print dialog, which offers "Save as PDF".
   if (Platform.OS === 'web') {
     await Print.printAsync({ html });

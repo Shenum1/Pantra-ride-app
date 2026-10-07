@@ -8,6 +8,7 @@ import Toast from 'react-native-toast-message';
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ResponsiveShell } from "@/components/ResponsiveShell";
 import { PendingCheckoutResumer } from "@/components/PendingCheckoutResumer";
+import { PolicyAcceptanceGate } from "@/components/PolicyAcceptanceGate";
 import { LocationProvider } from "@/hooks/useLocationStore";
 import { RideProvider } from "@/hooks/useRideStore";
 import { AuthProvider, useAuth } from "@/hooks/useAuthStore";
@@ -105,9 +106,11 @@ function RootLayoutNav() {
         <Stack.Screen name="wallet" options={{ title: "My Wallet" }} />
         <Stack.Screen name="wallet-add-money" options={{ title: "Add Money" }} />
         <Stack.Screen name="wallet-transaction-details" options={{ title: "Transaction Details" }} />
+        <Stack.Screen name="ride-receipt" options={{ title: "Receipt" }} />
         <Stack.Screen name="backend-test" options={{ title: "Backend Test" }} />
 
       </Stack>
+      <PolicyAcceptanceGate />
       <Toast />
     </ResponsiveShell>
   );

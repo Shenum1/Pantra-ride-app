@@ -22,9 +22,11 @@ import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 import { validatePassword, PASSWORD_POLICY_HINT } from '@/lib/password-policy';
 import { supabase } from '@/lib/supabase';
+import { requiredPolicies } from '@/lib/policy-acceptance';
 
 const { width, height } = Dimensions.get('window');
 const RESEND_COOLDOWN_SECONDS = 60;
+const DRIVER_POLICIES = requiredPolicies(true);
 
 // Registration only creates the account — full legal name, license, vehicle, and
 // document details are collected next in the app/driver-verification/* wizard, the
@@ -88,7 +90,9 @@ export default function DriverSignupScreen() {
     }
 
     try {
-      await acceptTerms();
+      // Cached locally until the account has a session (after the email
+      // code), then recorded server-side by PolicyAcceptanceGate.
+      await acceptTerms(DRIVER_POLICIES, email);
       const { needsEmailConfirmation } = await signup(name, email, phone, password);
       if (needsEmailConfirmation) {
         setStep('verify');
@@ -134,7 +138,14 @@ export default function DriverSignupScreen() {
   };
 
   const handleGoogleSignup = async () => {
+    // Google signup needs the same explicit agreement as email signup.
+    if (!acceptedTerms) {
+      Toast.show({ type: 'error', text1: 'Error', text2: 'Please accept the Terms and Conditions and Privacy Policy to continue', position: 'top' });
+      return;
+    }
+
     try {
+      await acceptTerms(DRIVER_POLICIES);
       await loginWithGoogle();
       router.replace('/driver-verification/credentials' as any);
     } catch (error: any) {
@@ -339,7 +350,7 @@ export default function DriverSignupScreen() {
                   >
                     Terms and Conditions
                   </Text>
-                  {' '}and{' '}
+                  {' '}(including the driver terms) and{' '}
                   <Text
                     style={styles.termsLink}
                     onPress={(e) => {
