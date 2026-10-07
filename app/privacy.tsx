@@ -1,4 +1,4 @@
-import { Eye, MapPin, MessageSquare, Share, Database, ShieldCheck } from "lucide-react-native";
+import { Eye, MapPin, MessageSquare, Database, ShieldCheck } from "lucide-react-native";
 import React from "react";
 import {
   Pressable,
@@ -83,28 +83,13 @@ export default function PrivacyScreen() {
     });
   };
 
-  const handleDataDownload = () => {
-    Alert.alert(
-      'Download Your Data',
-      'We will prepare your data and send you a download link via email.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Request Download', onPress: () => Alert.alert('Request Sent', 'You will receive an email with your data download link within 24 hours.') },
-      ]
-    );
+  // Self-service data export and account deletion aren't built yet (DEVLOG
+  // 2026-10-06, items 5-6), so these requests go to support instead of
+  // pretending to run.
+  const handleDataRequest = () => {
+    router.push('/support');
   };
-  
-  const handleDeleteData = () => {
-    Alert.alert(
-      'Delete Personal Data',
-      'This will permanently delete all your personal data. This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => Alert.alert('Data Deleted', 'Your personal data has been permanently deleted.') },
-      ]
-    );
-  };
-  
+
   const handlePrivacyPolicy = () => {
     router.push('/privacy-policy');
   };
@@ -178,14 +163,6 @@ export default function PrivacyScreen() {
             
             <Pressable 
               style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={handleDataDownload}
-            >
-              <Share size={20} color={colors.primary} />
-              <Text style={[styles.actionButtonText, { color: colors.text }]}>Download My Data</Text>
-            </Pressable>
-            
-            <Pressable 
-              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={handlePrivacyPolicy}
             >
               <Eye size={20} color={colors.primary} />
@@ -193,11 +170,11 @@ export default function PrivacyScreen() {
             </Pressable>
             
             <Pressable 
-              style={[styles.dangerButton, { backgroundColor: colors.danger + '10', borderColor: colors.danger }]}
-              onPress={handleDeleteData}
+              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={handleDataRequest}
             >
-              <Database size={20} color={colors.danger} />
-              <Text style={[styles.dangerButtonText, { color: colors.danger }]}>Delete All My Data</Text>
+              <Database size={20} color={colors.primary} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>Request My Data or Account Deletion</Text>
             </Pressable>
           </View>
           
@@ -277,19 +254,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   actionButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 12,
-  },
-  dangerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 12,
-  },
-  dangerButtonText: {
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 12,

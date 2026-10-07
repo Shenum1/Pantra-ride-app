@@ -16,6 +16,9 @@
 --   supabase-schema-pricing-config.sql            (fee/priority columns returned
 --                                                  by get_pending_rides_for_driver)
 --   supabase-schema-ratings.sql                   (drivers.totalRatings)
+--   supabase-schema-rider-account.sql             (rider_preferences — rider
+--                                                  photo hidden when Profile
+--                                                  Visibility is off)
 --   supabase-schema-surge-config.sql              (surge counts RPC is only
 --                                                  useful once it exists)
 --
@@ -370,7 +373,8 @@ as $$
          r."userId",
          u."displayName",
          case when r."status" in ('accepted', 'in-progress') then u."phoneNumber" end,
-         u."photoURL",
+         -- Hidden when the rider turned off Profile Visibility (app/privacy.tsx).
+         case when coalesce(p."profileVisibility", true) then u."photoURL" end,
          u."rating",
          r."passengerName",
          case when r."status" in ('accepted', 'in-progress') then r."passengerPhone" end,
@@ -378,6 +382,7 @@ as $$
   from public.rides r
   join public.drivers me on me."id" = r."driverId"
   left join public.users u on u."uid" = r."userId"
+  left join public.rider_preferences p on p."userId" = r."userId"
   where r."id" = p_ride_id
     and auth.uid() is not null
     and me."userId" = auth.uid();

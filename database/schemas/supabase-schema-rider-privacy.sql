@@ -20,9 +20,10 @@ comment on column public.rider_preferences."dataCollection" is
 -- 2. Profile Visibility, enforced server-side. Riders' public.users rows are
 --    only readable by their owner (supabase-schema.sql), so a driver can't
 --    read a rider's photo directly. This is the one sanctioned path: a
---    driver gets the photo of riders whose ride they can see (pending
---    marketplace rides, or rides assigned to them) — and NULL when the rider
---    turned Profile Visibility off.
+--    driver gets the photo of riders whose ride has been assigned to them
+--    (never for pending requests — no rider details are revealed before a
+--    driver accepts, see supabase-schema-security-hardening.sql) — and NULL
+--    when the rider turned Profile Visibility off.
 create or replace function public.get_rider_photos_for_driver(p_rider_ids uuid[])
 returns table ("uid" uuid, "photoURL" text)
 language sql
@@ -39,10 +40,7 @@ as $$
       select 1
       from public.rides r
       where r."userId" = u."uid"
-        and (
-          r."status" = 'pending'
-          or r."driverId" in (select d."id" from public.drivers d where d."userId" = auth.uid())
-        )
+        and r."driverId" in (select d."id" from public.drivers d where d."userId" = auth.uid())
     )
     and exists (select 1 from public.drivers d where d."userId" = auth.uid());
 $$;

@@ -2,7 +2,10 @@ import { supabase } from './supabase';
 import { buildRideReceipt, ReceiptPerspective, RideReceipt, RideReceiptParties, RideReceiptSource } from './ride-receipt';
 
 // Loads everything a ride receipt needs. RLS already limits rides/tips reads
-// to the ride's own rider or driver. The name/plate/tip lookups are
+// to the ride's own rider or driver. Riders can't read drivers rows and
+// drivers can't read riders' users rows directly
+// (supabase-schema-security-hardening.sql), so the other party's name/plate
+// come from the RPCs that expose only the assigned party. These lookups are
 // best-effort: a receipt without them is still a valid receipt, so their
 // failures are swallowed rather than blocking it.
 
@@ -10,14 +13,19 @@ async function loadParties(ride: any, perspective: ReceiptPerspective): Promise<
   try {
     if (perspective === 'rider') {
       if (!ride.driverId) return {};
-      const { data } = await supabase.from('drivers').select('name, vehicle').eq('id', ride.driverId).maybeSingle();
-      return { driverName: data?.name ?? null, vehiclePlate: data?.vehicle?.licensePlate ?? null };
+      const { data } = await supabase.rpc('get_ride_driver', { p_ride_id: ride.id });
+      const driver = Array.isArray(data) ? data[0] : data;
+      return {
+        driverName: driver?.name ?? null,
+        vehiclePlate: driver?.vehiclePlateNumber ?? driver?.vehicle?.licensePlate ?? null,
+      };
     }
     // A ride booked for someone else names the actual passenger on the row.
     if (ride.passengerName) return { riderName: ride.passengerName };
     if (!ride.userId) return {};
-    const { data } = await supabase.from('users').select('displayName').eq('uid', ride.userId).maybeSingle();
-    return { riderName: data?.displayName ?? null };
+    const { data } = await supabase.rpc('get_ride_rider_for_driver', { p_ride_id: ride.id });
+    const rider = Array.isArray(data) ? data[0] : data;
+    return { riderName: rider?.riderName ?? null };
   } catch {
     return {};
   }
