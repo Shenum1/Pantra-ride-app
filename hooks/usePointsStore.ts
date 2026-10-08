@@ -32,8 +32,8 @@ export const [PointsProvider, usePoints] = createContextHook(() => {
     }
   }, []);
 
-  const claimReward = useCallback(async (userId: string, taskId: string, points: number) => {
-    await RewardsService.claimTaskReward(userId, taskId, points);
+  const claimReward = useCallback(async (userId: string, taskId: string) => {
+    const points = await RewardsService.claimTaskReward(taskId);
     setBalance(prev => prev + points);
     setCompletedTaskIds(prev => [...prev, taskId]);
     const history = await RewardsService.getPointsHistory(userId);

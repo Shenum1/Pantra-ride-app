@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { trpcClient } from './trpc';
 
 export interface RewardTask {
   id: string;
@@ -28,7 +29,6 @@ export interface PointsTransaction {
 }
 
 const POINTS_TO_NGN = 16; // 500 pts = ₦8,000 → 1 pt = ₦16
-const POINTS_EXPIRY_DAYS = 90;
 
 export const RewardsService = {
   POINTS_TO_NGN,
@@ -59,38 +59,10 @@ export const RewardsService = {
     return (data ?? []).map((r: any) => r.taskId as string);
   },
 
-  async claimTaskReward(userId: string, taskId: string, points: number): Promise<void> {
-    // Check not already claimed
-    const { data: existing } = await supabase
-      .from('user_task_completions')
-      .select('id')
-      .eq('userId', userId)
-      .eq('taskId', taskId)
-      .maybeSingle();
-
-    if (existing) throw new Error('You have already claimed this reward');
-
-    // Insert completion record
-    const { error: completionError } = await supabase
-      .from('user_task_completions')
-      .insert({ userId, taskId, pointsEarned: points });
-    if (completionError) throw new Error(completionError.message);
-
-    // Insert earn transaction (expires in 90 days)
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + POINTS_EXPIRY_DAYS);
-
-    const { error: txError } = await supabase
-      .from('points_transactions')
-      .insert({
-        userId,
-        amount: points,
-        type: 'task_reward',
-        referenceId: taskId,
-        description: `Task reward — ${points} points`,
-        expiresAt: expiresAt.toISOString(),
-      });
-    if (txError) throw new Error(txError.message);
+  /** Claims a video/share task. The server decides the points and enforces all limits. */
+  async claimTaskReward(taskId: string): Promise<number> {
+    const { pointsEarned } = await trpcClient.rewards.claimTask.mutate({ taskId });
+    return pointsEarned;
   },
 
   async getPointsBalance(userId: string): Promise<number> {

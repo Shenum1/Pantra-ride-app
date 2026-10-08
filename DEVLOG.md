@@ -103,6 +103,13 @@ _Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to
 
 > Entries from 2026-08-01 to 2026-10-06 were written on 2026-10-06 from the git history (the log had not been updated since 2026-07-31). Commit hashes are listed so details can be checked with `git show <hash>`.
 
+### 2026-10-08 — Rewards points locked down (pending: apply migration, ship backend)
+
+- **The problem.** Any signed-in user could write their own points rows (any amount, any type) or delete their history, and the app did exactly that for video/share task rewards, trusting the phone for the amount and the already-claimed check. Separately, the balance view ignored row rules and was readable by anyone holding the public anon key: every user ID with its points balance.
+- **The fix.** Migration `20261008000800_points_lockdown.sql`: app sessions can only read their own points rows; the balance view applies the caller's row rules and is closed to anon; task rewards go through `claim_reward_task()`, callable only by the backend, which takes the amount from `reward_tasks` and enforces active / valid-until / per-user / total limits under a row lock. New route `rewards.claimTask`; the app calls it instead of inserting. Tested against a local database as each role.
+- **Not changed.** The client still cannot prove a video was watched or an app was shared; only limits and amounts are now enforced server-side. Spending points on a ride is unsupported (no server code applies points to a fare; the old client-side redemption is rejected by the database). The Earn tab still says points are "ride credit" — product decision pending.
+- **Release order.** Deploy the backend (new route) first, then apply the migration; old app builds will fail to claim task rewards after it (ad rewards are unaffected).
+
 ### 2026-10-08 — Database migrations tracked in git
 
 Schema changes now go through the Supabase CLI instead of the SQL editor (`supabase/README.md`).
