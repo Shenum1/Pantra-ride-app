@@ -48,7 +48,7 @@ describe("agent key auth", () => {
     // 503 if AGENT_ADMIN_SECRET_KEY is unset in this environment, 401 if set —
     // never 404 (unmounted) and never 200 (unprotected).
     expect([401, 503]).toContain(res.status);
-  });
+  }, 30_000); // importing the whole backend is slow when test files run in parallel
 
   it("compares keys of different lengths without throwing", () => {
     expect(agentKeyMatches("x", SECRET)).toBe(false);
