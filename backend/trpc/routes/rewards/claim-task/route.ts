@@ -2,10 +2,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { authedProcedure } from "../../../create-context";
 
-const CLAIM_ERRORS: Record<string, { code: "NOT_FOUND" | "CONFLICT"; message: string }> = {
+const CLAIM_ERRORS: Record<string, { code: "NOT_FOUND" | "CONFLICT" | "PRECONDITION_FAILED"; message: string }> = {
   TASK_UNAVAILABLE: { code: "NOT_FOUND", message: "This task is no longer available." },
   TASK_ALREADY_CLAIMED: { code: "CONFLICT", message: "You have already claimed this reward" },
   TASK_FULLY_CLAIMED: { code: "CONFLICT", message: "This reward has been fully claimed." },
+  TASK_NOT_WATCHED: { code: "PRECONDITION_FAILED", message: "Watch the video for the full time before claiming." },
 };
 
 // The only path that credits points for a video/share task. The amount comes

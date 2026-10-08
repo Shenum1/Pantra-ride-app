@@ -59,6 +59,11 @@ export const RewardsService = {
     return (data ?? []).map((r: any) => r.taskId as string);
   },
 
+  /** Starts the server-side watch clock. Returns the seconds still to wait. */
+  async startTask(taskId: string): Promise<{ requiredSeconds: number; remainingSeconds: number }> {
+    return trpcClient.rewards.startTask.mutate({ taskId });
+  },
+
   /** Claims a video/share task. The server decides the points and enforces all limits. */
   async claimTaskReward(taskId: string): Promise<number> {
     const { pointsEarned } = await trpcClient.rewards.claimTask.mutate({ taskId });
