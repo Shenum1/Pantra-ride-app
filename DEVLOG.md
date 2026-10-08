@@ -4,7 +4,7 @@
 
 **App:** Pantra Ride App  
 **Platform:** Android / iOS / Web (Expo React Native)  
-**Market:** Nigeria (NGN pricing, Paystack/Flutterwave payments)  
+**Market:** Nigeria (NGN pricing, Flutterwave payments)  
 **Purpose:** Two-sided rideshare marketplace — riders book trips, drivers fulfil them. Includes an admin panel for operations management.  
 **GitHub:** https://github.com/Shenum1/Pantra-ride-app  
 **Branch:** `main`
@@ -17,9 +17,9 @@
 | Language | TypeScript 5.9.2 |
 | State | Zustand 5.0.2 |
 | Auth & DB | Supabase (PostgreSQL + RLS) |
-| Real-time | Firebase / Firestore |
+| Real-time | Supabase Realtime |
 | Maps | Google Maps API |
-| Payments | Paystack, Flutterwave |
+| Payments | Flutterwave (Paystack code kept, not configured) |
 | Backend API | tRPC 11.5 + React Query 5.90 |
 | Notifications | Expo Notifications |
 | Location | expo-location (foreground + background) |
@@ -29,50 +29,386 @@
 
 ## Feature Status
 
+_Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to end · ❌ removed_
+
+### Accounts
+
 | Feature | Status | Notes |
 |---|---|---|
-| Rider signup | ✅ Working | Supabase auth, `app/signup.tsx` |
-| Rider login | ✅ Working | Fixed post-login navigation (goes directly to home tab) |
-| Rider logout | ✅ Working | Fixed post-logout navigation (goes directly to role-selection) |
-| Driver signup | ✅ Working | `app/driver-signup.tsx`, inserts into `drivers` table |
-| Driver login | ✅ Working | `app/driver-login.tsx`, navigates to `/(driver-tabs)/dashboard` |
-| Driver logout | ✅ Working | AsyncStorage session persistence + reliable logout (`hooks/useDriverAuthStore.ts`) |
-| Admin panel (in-app, `(admin-tabs)`) | ✅ Working | `(admin-tabs)/_layout.tsx` requires `useAdminAuth()` (shows `AdminLogin` if not authenticated); login is real Supabase auth + `users.role === 'admin'` check (`lib/admin-auth-service.ts`). `dashboard.tsx`/`users.tsx` now show real counts/lists from `admin.overview`/`admin.users` tRPC routes, which use `SUPABASE_SERVICE_ROLE_KEY` to bypass RLS. Requires that key to be set in `.env` and at least one `users` row with `role='admin'` |
-| Admin web panel (`admin-web/`, Vite) | ✅ Working | Standalone Vite app, superseding the in-app admin tabs per `docs/ADMIN_WEB_PANEL_SPEC.md` — Dashboard/Users/Verification/Rides/Payouts pages calling the same tRPC admin routes directly via `fetch` (`admin-web/src/lib/api.ts`). Was fully broken end-to-end until this session's fixes: dead Rork tunnel URL, unregistered `admin.rides`/`admin.payouts` routes, wrong `create-context` import depth in those route files, missing `SUPABASE_SERVICE_ROLE_KEY`, missing `web.output: "server"` (see 2026-07-31 entry), and a Supabase Node.js WebSocket crash on every admin request (`backend/lib/supabase-admin.ts`) — all now fixed. Not yet re-verified end-to-end after the latest restart |
-| Splash / cold-open | ✅ Working | 2.6s minimum, 5s timeout fallback for driver auth |
-| GPS — rider | ✅ Working | Real permission request + live position via `useLocationStore`; needs real-device confirmation |
-| GPS — driver | ✅ Working | `useDriverStore.updateLocation()` → `FirebaseDriverService.updateDriverLocation()` writes live location to Supabase `drivers.location`; needs real-device confirmation |
-| Real-time driver → rider tracking | ✅ Working | `app/ride-progress.tsx` subscribes to `RideMatchingService.subscribeToRideUpdates`/`subscribeToDriverLocation`; driver position/ETA/stage now come from Supabase, not timers (local-only fallback rides still simulate) |
-| Ride booking (search) | ✅ Working | `app/search.tsx` uses shared `lib/fare-calculator.ts` / `lib/pricing-config.ts`; no duplicate pricing logic remains |
-| Ride confirmation | ✅ Working | Real Supabase insert into `rides` (`useRideStore.requestRide`); driver app picks up the pending ride via `subscribeToRideRequests` and is notified locally |
-| Ride progress / tracking | ✅ Working | Driver location, ETA, and ride-stage now driven by real `rides`/`drivers` row updates; `local-ride-*` fallback rides (no Supabase row) still use the timer simulation |
-| Ride rating | ✅ Working | `useRatingsStore` persists to Supabase `ratings` table via `lib/rating-service.ts`'s `submit_rating` RPC for real users (`test-rider` keeps AsyncStorage); `app/ride-progress.tsx` now navigates to `/rate-driver` with `rideId`/`driverId`/`driverName` after `completeRide()`. `supabase-schema-ratings.sql` migration confirmed run |
-| Fare calculation | ✅ Working | Bolt-style 3-tier NGN pricing (Standard/Comfort/XL) with base+km+min formula |
-| Payments — Paystack | 🔄 Partial | `lib/paystack-service.ts` now calls secure backend tRPC routes (`payments.paystack.*`) using a server-only `PAYSTACK_SECRET_KEY`; dead `components/PaystackPayment.tsx` mock removed. Test keys only — needs live keys + on-device verification of the full flow including wallet credit |
-| Payments — Flutterwave | 🔄 Partial | `lib/flutterwave-service.ts` now calls secure backend tRPC routes (`payments.flutterwave.*`) using a server-only `FLUTTERWAVE_SECRET_KEY`. Real **test** keys now configured in `.env` (were placeholders) — still needs on-device verification of the full flow including `payment-callback.tsx`'s wallet credit |
-| Wallet (rider) | ✅ Working | `hooks/useWalletStore.ts` persists to Supabase (`wallets`/`wallet_transactions`/`wallet_bank_accounts`, see `supabase-schema-wallet.sql`) for real users via `lib/wallet-service.ts`; `test-rider` test account keeps its AsyncStorage mock. Migration confirmed run |
-| Wallet (driver) | ✅ Working | Earnings read from Supabase `rides` table; stats grid shows real `totalRides` + avg/trip; bank account add screen; payout requests tracked in `driver_payouts` (manual processing) |
-| Push notifications | 🔄 Partial | Rider lifecycle notifications (driver assigned/arrived/started/completed) are local — fire correctly via `app/ride-progress.tsx`. Driver new-ride-request push is now **remote**: `useRideStore.requestRide` calls `trpc.notifications.notifyDrivers` server-side → Expo Push API → all online drivers receive push even when app is backgrounded. Was actually unreachable this whole session until `web.output: "server"` was fixed (2026-07-31) — API routes weren't being served at all; the fire-and-forget call also had no `.catch()`, so its failure surfaced as an uncaught error during ride booking (now fixed). **Requires:** (1) run `supabase-schema-push-tokens.sql`, (2) `eas init` to get projectId for token registration. Not yet re-verified end-to-end after the API-route fix |
-| In-app messaging | ✅ Working | `lib/messaging-service.ts` — real Supabase tables + realtime subscriptions. Now bidirectional: drivers message riders from `driver-active-trip.tsx` (existing), and riders can now message drivers from `ride-progress.tsx` (new "Message" button); both `messages.tsx`/`driver-message.tsx` chat screens render timestamps correctly |
-| Maps — Google Maps | 🔄 Partial | `lib/google-maps-service.ts`. Places + Directions APIs confirmed working with the configured key. **Static Maps API and Geocoding API return `403 not activated`** for this key/project — `components/Map.tsx`'s web map (falls back to a static image since `react-native-maps` doesn't support web) doesn't render, and reverse-geocoding (weather city name) is affected. Needs those two APIs enabled in Google Cloud Console — no code fix needed |
-| Discover places | ✅ Working | `app/(tabs)/discover.tsx` fetches real nearby places via `GoogleMapsService.getNearbyPlaces()` (Google Places Nearby Search) for the selected category, using the rider's real GPS location, with real ratings/photos/distance/price/open-status. The old hardcoded `mockPlaces` fallback (20 fake Abuja venues) was removed (2026-07-30) now that the real API key works — zero-result/error cases just show an empty list |
-| Ride matching | ✅ Working (pull-based) | A new `pending` ride is picked up by nearby online drivers via `FirebaseDriverService.subscribeToRideRequests` (with a local notification); driver accepts via `acceptRide`. `RideMatchingService.matchRideWithDriver()` (auto-assign) is still unused and would conflict with this pull-based flow if called |
-| Driver verification | ✅ Working | `app/driver-documents.tsx` (driver upload screen, linked from driver profile) and `app/(admin-tabs)/verification.tsx` (admin review screen with new "Verify" tab) now call the real `DriverVerificationService`/new `admin.driverDocuments`/`admin.reviewDocument` tRPC routes. `supabase-schema-driver-documents.sql` migration and private "documents" storage bucket confirmed in place |
-| Promotions / promo codes | ✅ Working | `usePromotionsStore` validates against Supabase `promotions` table; `maxDiscountNGN` cap enforced in fare calculation; `user_promo_uses` prevents reuse. Migration confirmed run |
-| Rewards / Points system | 🔄 Partial | Task-based points (YouTube videos, social share); 500 pts = ₦8,000 ride credit; 90-day expiry; redeemable at checkout. `lib/rewards-service.ts`, `hooks/usePointsStore.ts`, `app/task-detail.tsx`. Migration confirmed run. YouTube task URL not yet provided — no task rows seeded in `reward_tasks` yet |
-| Driver earnings | ✅ Working | `getDriverEarnings`/`getDriverStats` already query Supabase `rides` table (despite class name). Fixed `wallet.tsx` to use computed `stats.todayEarnings/weekEarnings/monthEarnings` instead of stale JSONB; withdrawal cap now uses `totalEarnings − completedPayouts` |
-| Saved places | ✅ Working | `hooks/useSavedLocationsStore.ts` persists to Supabase `saved_locations` table (see `supabase-schema-saved-locations.sql`, migration run) for real accounts via `lib/saved-locations-service.ts`, including the home/work upsert behavior; `test-rider` keeps its AsyncStorage + mock fallback |
-| Weather widget | ✅ Working | `useWeatherStore.ts` calls the real Open-Meteo forecast API with the user's actual coordinates, plus `GoogleMapsService.getCityName()` for the real city name |
-| Dark / light theme | ✅ Working | `hooks/useThemeStore.ts`, system / manual toggle |
-| Phone login | 🔄 Partial | `signInWithOtp`/`verifyOtp` wired in `useAuthStore`; +234 prefix in `phone-login.tsx`. **Needs Twilio configured in Supabase Dashboard before SMS goes live** |
-| Schedule a ride | ✅ Working | Real `DateTimePicker` + `scheduleRide()` store call + local reminder notification; `scheduled_for` column migration run ✓ |
-| Driver withdrawal | ✅ Working | Manual payout: `driver_bank_accounts` + `driver_payouts` tables live in Supabase ✓; driver adds bank account → submits withdrawal → admin pays out manually |
-| Global route protection | ✅ Working | `(tabs)` already had `AuthGuard`; `(driver-tabs)/_layout.tsx` now wraps in `<AuthGuard requireDriver>`, and `(admin-tabs)/_layout.tsx` now checks `useAdminAuth()` and shows `AdminLogin` when not authenticated. `AdminAuthProvider` added to root `_layout.tsx` so `useAdminAuth()` is available app-wide |
-| Production env vars | 🔄 Partial | Local `.env` recreated from scratch this session (had gone missing entirely — never committed, git-ignored). Real values now set: Supabase URL/anon/service-role key, Google Maps key (Places/Directions working; Static Maps + Geocoding APIs still need enabling — see Maps row), Flutterwave test keys. **Paystack is still the placeholder** (`sk_test_xxxxxxxxxxxxx`). Firebase no longer needed (replaced by Supabase stub). `EXPO_PUBLIC_RORK_API_BASE_URL` no longer needed for local dev (auto-detected by `lib/trpc.ts`, see 2026-07-29 entry) — only matters for real production builds |
+| Rider signup & login | ✅ | Email + password, with email verification (`app/verify-email.tsx`). |
+| Google sign-in | ✅ | Native and web. Google accounts must add a phone number before booking (`app/collect-phone.tsx`). |
+| Phone (SMS) login | ❌ | Removed 2026-08-27, replaced by Google sign-in + phone collection. |
+| Driver signup & login | ✅ | An existing rider can also become a driver on the same account. |
+| Driver verification | ✅ | Two-step wizard (credentials, vehicle) + documents → automated checks → admin approval in admin-web. |
+| Route protection | ✅ | `AuthGuard` on rider and driver tabs. |
+
+### Rides
+
+| Feature | Status | Notes |
+|---|---|---|
+| Booking & fares | ✅ | Fare is calculated on the server and locked — the app can't change it. Covers booking/service/zone/waiting/cancellation/priority fees, surge and fare negotiation. |
+| Book for someone else | ✅ | |
+| Scheduled rides | ✅ | |
+| Ride matching | ✅ | Online drivers see nearby pending rides and accept one. |
+| Live tracking & messaging | 🔄 | Supabase realtime (Firebase is no longer used). **Not working on production (2026-10-08 snapshot):** chat tables have no read rules, and no table is published to realtime, so no live updates arrive. Fixed by pending migrations `chat_read_access` and `realtime_publication`. |
+| Ratings | ✅ | |
+| GPS (rider & driver) | 🔄 | Works; still needs confirming on real devices. |
+
+### Money
+
+| Feature | Status | Notes |
+|---|---|---|
+| Payment provider | 🔄 | **Flutterwave only** (test mode). Paystack code is kept but not configured. Every payment is tracked (payment intents + signed webhooks + reconciliation). |
+| Rider wallet | ✅ | Top up by card, then pay rides and tips from it. No withdrawals. Receipts can be downloaded/shared. |
+| Ride payment | ✅ | **Wallet or cash.** Cards are only used to top up the wallet, never charged per ride. |
+| Tips | ✅ | Paid from the wallet; 100% goes to the driver. |
+| Commission | ✅ | 90% driver / 10% Pantra, fixed on each ride when it settles. Rate is editable in admin and only affects later rides. |
+| Cash-ride commission | ✅ | On cash rides drivers owe Pantra its share. Above a limit they can't accept cash rides. Admin records payments on the Commission page. |
+| Driver payouts | 🔄 | Automatic Flutterwave transfers are built but **blocked by Flutterwave IP whitelisting**, so payouts are paid manually: admin pays outside Pantra, then marks it "Complete manually". Bank account numbers are encrypted. |
+| Refunds | 🔄 | Admin-initiated, with eligibility checks and reconciliation (admin-web Refunds page). Not yet verified end to end. |
+| Promotions | ✅ | |
+| Rewards (Coin Dome) | 🔄 | Watch-an-ad rewards (mobile only) and tasks. |
+
+### Admin & operations
+
+| Feature | Status | Notes |
+|---|---|---|
+| Admin web panel | ✅ | `admin-web/` (own Vercel project): Overview, Riders, Drivers, Trips, Verification, Payments, Payouts, Refunds, Commission, Pricing, Promotions, Support, Content, Agent queue. The old in-app admin tabs were removed. |
+| Support tickets | ✅ | Riders open tickets in the app; admins reply in admin-web. |
+| AI admin agent API | ✅ | `/api/v1/agent-admin`. Read tools run immediately; write tools wait for an admin to approve them in the Agent queue. |
+| Background videos | ✅ | Login/signup videos are managed from admin-web's Content page. |
+| Push notifications | 🔄 | Remote push to drivers for new ride requests; rider trip updates are local notifications. |
+| Maps, Discover, Weather | 🔄 | Google Places/Directions work, with a custom map style. Static Maps & Geocoding APIs may still need enabling in Google Cloud. |
+
+### Platform
+
+| Feature | Status | Notes |
+|---|---|---|
+| Hosting | ✅ | Web app + API on Vercel (Node 22). admin-web is a separate Vercel project. |
+| Mobile builds & updates | ✅ | EAS Build (development / preview / production) and EAS Update. Runtime version = the app `version`, so **bump `version` in `app.json` after any native change**. |
+| CI/CD | 🔄 | GitHub Actions: `ci.yml` and `admin-web-ci.yml` run on every PR; EAS update/build/submit are run manually. GitHub secrets, environments and branch protection still need confirming in GitHub. |
+| Environment variables | ✅ | Local `.env`; `EXPO_PUBLIC_*` values also stored in EAS (keep the two in sync); server secrets in Vercel. |
+| Database migrations | 🔄 | Supabase CLI migrations in `supabase/migrations/`, starting from a snapshot of production (2026-10-08). Tested on a local Docker database; CI checks they apply from scratch. How-to: `supabase/README.md`. `database/schemas/` is history only. Pending: mark the baseline as applied on production. |
+
+### Known open issues
+
+- **Review existing admin accounts.** The users role lockdown IS on production (confirmed 2026-10-08), so users can no longer make themselves admin. Still to do: run the review query at the bottom of `supabase-schema-users-role-lockdown.sql` to check nobody did before the fix.
+- **Wave 1 is not on production yet.** Production has every SQL file up to 2026-10-05 and none of the 2026-10-07 ones. They're now migrations; release steps are in `supabase/README.md`.
+- **Chat and live updates don't work on production** (see Live tracking & messaging above). Fixed by two pending migrations that go out with wave 1.
+- **Secrets that don't belong in EAS.** `FLUTTERWAVE_SECRET_KEY` (preview) and `SUPABASE_SERVICE_ROLE_KEY` (production) are server-only and should be removed from EAS.
 
 ---
 
 ## Activity Log
+
+> Entries from 2026-08-01 to 2026-10-06 were written on 2026-10-06 from the git history (the log had not been updated since 2026-07-31). Commit hashes are listed so details can be checked with `git show <hash>`.
+
+### 2026-10-08 — Database migrations tracked in git
+
+Schema changes now go through the Supabase CLI instead of the SQL editor (`supabase/README.md`).
+
+- **Production snapshot.** Linked the repo to the Pantra Ride project and dumped production's schema (read-only, structure only). Compared against every file in `database/schemas/`: production has every file up to 2026-10-05, including the users role lockdown, and none of the five 2026-10-07 wave 1 files. Superseded function versions and policies matched the later files that replaced them, so nothing unexpected was found.
+- **Baseline.** `supabase/migrations/20261008000000_baseline.sql` = that snapshot, plus Pantra's signup trigger and driver-document storage policies. Rebuilt locally from scratch, it reproduces production exactly.
+- **Wave 1 as migrations:** security hardening, backend hardening, policy acceptances, rider privacy. The plaintext bank-number drop is held back until the encryption backfill has run.
+- **Two new migrations** for problems the snapshot showed: production has no read rules on `conversations`/`messages` (chat can't load), and its realtime publication contains no tables (the app's live subscriptions to rides, drivers and chat never receive anything).
+- **Checks.** All migrations + `supabase/seed.sql` apply to a fresh local database. After applying them, every wave 1 file fully matches. `supabase db lint` reports no errors. New CI workflow `.github/workflows/db-migrations.yml` repeats this on PRs that touch `supabase/`.
+- Supabase CLI 2.120.0 added as a dev dependency (`bunx supabase`). Local database needs Docker Desktop.
+
+### 2026-10-07 — Wave 1 merged: security fixes, receipts, terms records, privacy controls
+
+Built by four agents on separate branches, reviewed, and merged into `main` (merge commits up to `cbb8e22`). All 676 unit + integration tests pass; `tsc` clean. **Nothing below has been run against the real database or tried on a device yet.**
+
+- **Database access (security items 1–3):** riders can no longer read the `drivers` table directly. Nearby drivers come from `get_nearby_drivers` and the assigned driver from `get_ride_driver` (phone only during the ride). Only verified drivers see pending rides, through `get_pending_rides_for_driver`, with no rider name/phone/photo until they accept via `accept_ride`, which is atomic so two drivers can't claim the same ride. Messages: participants only, recipient can only mark read. Rider map now polls driver location every 4 s.
+- **Backend (security items 4–6):** `notifyDrivers` requires the ride owner; `/api/google-maps` requires login and only forwards the endpoints the app uses. Rider bank numbers encrypted; payouts no longer fall back to the plaintext driver account number. New `admin_access_log` records admin views of bank details and rider/driver personal data.
+- **To-do #10 and #15:** ride receipts (`app/ride-receipt.tsx`, PDF + share) for riders and drivers. Versioned terms acceptance stored server-side in `policy_acceptances`, Google signup now requires the checkbox, and a blocking prompt asks for re-acceptance when `constants/legal-versions.ts` changes. Every existing user will see the prompt once.
+- **To-do #8:** Google UMP ad consent before any ad loads; personalised ads only when the toggle is on (off by default); iOS tracking prompt only when a rider turns personalised ads on. Location Sharing off = the app never reads the rider's GPS. Profile photo hidden from drivers when Profile Visibility is off. "Data Collection" toggle removed (nothing to control). New dependency `expo-tracking-transparency` → **needs `bun install` and a new native build.**
+- **Interim:** the fake "Download My Data" / "Delete All My Data" buttons are replaced with "Request My Data or Account Deletion", which opens support (real flows come with to-do #5–6).
+
+**Run in Supabase, in this order** (all re-runnable):
+1. `supabase-schema-users-role-lockdown.sql` (still pending from 2026-10-06)
+2. `supabase-schema-security-hardening.sql` — **release the matching app build at the same time**; older builds lose the driver map, ride requests and accept.
+3. `supabase-schema-backend-hardening.sql`
+4. Run `bun scripts/backfill-bank-account-encryption.ts --dry-run`, then without `--dry-run` (needs `EXPO_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `BANK_ACCOUNT_ENCRYPTION_KEY` — same key as production). Continue only if it exits 0.
+5. Deploy the backend.
+6. Back up, then `supabase-schema-bank-accounts-drop-plaintext.sql` (refuses if any row is still unencrypted).
+7. `supabase-schema-policy-acceptances.sql`
+8. `supabase-schema-rider-privacy.sql`
+
+**Owner to-do from this wave:** restrict the Google Maps API key to the Pantra app/website in Google Cloud console (it's embedded in the app), and publish a consent message in AdMob → Privacy & messaging (otherwise Google shows no consent form).
+
+### 2026-10-06 — To do today: features the legal documents assume
+
+The new legal drafts in `docs/legal/` describe these features as working. Today they are missing, placeholders, or only half built. Each one must be finished (or the matching clause removed) before the documents are published.
+
+| # | Feature | What happens today | Evidence |
+|---|---|---|---|
+| 1 | Cancellation fees | ₦200 / ₦500 is recorded on the ride but never charged to the rider or paid to the driver. The driver app still shows it as earnings. | `lib/cancellation-calculator.ts`, `supabase-schema-platform-commission-config.sql:93-96`, `lib/firebase-driver-service.ts:445-448` |
+| 2 | Reward points at checkout | Points are deducted and a lower "You will pay" is shown, but the server fare is not reduced. | `app/ride-checkout.tsx:36-68` |
+| 3 | Emergency (SOS) call | Shows "Calling 911..." and calls nobody. Should dial 112 (Nigeria). | `app/safety.tsx:66-75` |
+| 4 | Trusted contacts, trip sharing, Safety Center | Placeholder pop-ups; the toggles are saved but do nothing. | `app/safety.tsx:77-82` |
+| 5 | Delete account | "Delete All My Data" shows a success message and deletes nothing. No deletion flow exists anywhere. | `app/privacy.tsx:76-83`, `supabase-schema-fk-deletion-hardening.sql:9-13` |
+| 6 | Download my data | Message only. | `app/privacy.tsx:64-73` |
+| 7 | Rider change password | Says "updated successfully" without changing it. | `app/login-security.tsx:70-84` |
+| 8 | Privacy toggles | Location sharing, data collection, personalised ads and profile visibility are saved but nothing reads them. AdMob has no consent prompt or non-personalised mode. | `app/privacy.tsx`, `components/AdBanner.tsx`, `hooks/useRewardedAd.ts` |
+| 9 | Communication preferences | Toggles are not saved. | `app/communication-preferences.tsx:53-56` |
+| 10 | Ride receipts | No ride receipt in the app; no email receipts at all (only wallet-transaction receipts exist). | `app/expense-rides.tsx:77`, `lib/transaction-receipt.ts` |
+| 11 | Suspend rider / driver accounts | No suspension. Drivers can only be REJECTED; riders can't be restricted. | `backend/services/admin/driver-verification.ts` |
+| 12 | Document expiry dates | Expiry checks exist but the app never collects expiry dates, so they never fire. | `lib/driver-verification-state-machine.ts:140-157` |
+| 13 | Lost property | No way to report it. Add a "Lost item" support ticket category and a driver-side flow. | `supabase-schema-support-tickets.sql` |
+| 14 | Background location | Declared in `app.json` but not implemented. Either implement it for drivers or remove the declaration. Also remove the unused microphone permission. | `app.json:29-77`, `lib/location-tracking-service.ts:27` |
+| 15 | Recording terms acceptance | Only a local flag on the phone, with no version. Needs a server record (user, policy, version, time). Google signup skips the checkbox. | `hooks/useTermsStore.ts:25-27`, `app/signup.tsx:166-173` |
+| 16 | Policy links | The About screen's legal links are placeholders; driver screens have no policy links; the in-app Terms/Privacy text must be replaced with `docs/legal/`. | `app/about.tsx:44-58`, `app/terms-and-conditions.tsx`, `app/privacy-policy.tsx` |
+| 17 | Shared rides | Only a 20% discount; riders are never actually matched together. | `backend/trpc/routes/rides/create/route.ts:174-177`, `app/share-ride.tsx` |
+| 18 | Booking / zone / priority fees | Code comments say these are Pantra revenue, but the driver's earnings = full fare − commission, so the driver keeps them. Decide and fix one or the other. | `supabase-schema-cash-commission-ledger.sql:158` |
+
+**Security issues found during the same audit** (fix before launch):
+- Anyone, even logged out, can read every column of `drivers` (email, phone, live location, date of birth, licence number, VIN, push token): `supabase-schema.sql:97-98`.
+- Any account with a `drivers` row, verified or not, can read all pending rides including passenger name and phone: `supabase-schema-driver-pending-rides.sql`.
+- `messages` allows any update, and `messages`/`conversations` allow any insert: `supabase-schema.sql:184-204`.
+- `notifications.notifyDrivers` and `/api/google-maps` need no login: `backend/trpc/routes/notifications/notify-drivers/route.ts:6`, `backend/hono.ts:24`.
+- Rider bank account numbers are stored in plaintext (`wallet_bank_accounts`), and the old plaintext `driver_bank_accounts.accountNumber` column is still there.
+- Admin viewing of bank details and personal data is not logged.
+
+### 2026-10-06 — Security fix: users could make themselves admin
+
+- **Problem:** admin access is decided by the `user_roles` table, and three paths let any user put an `admin` row there for themselves:
+  1. Updating their own `users.role` to `admin` (the profile update rule doesn't restrict columns), which the `sync_user_roles` trigger copied into `user_roles`.
+  2. Inserting their profile row with `role = 'admin'` (the signup insert rule accepted anything).
+  3. Signing up with `role: 'admin'` in the signup metadata, which `handle_new_user` copied into `users.role`.
+- **Fix:** new migration `supabase-schema-users-role-lockdown.sql`:
+  - `sync_user_roles` only syncs `rider`/`driver` — `users.role` can never grant admin.
+  - Requests from the app can only set `role` to `rider` or `driver` (the Google driver signup's `rider` → `driver` change still works).
+  - `handle_new_user` ignores any signup role other than `rider`/`driver`.
+  - A user can only insert their own profile row.
+- **Making someone admin now** (Supabase SQL editor only — the app can't):
+  ```sql
+  update users set role = 'admin' where email = '<email>';
+  insert into user_roles ("userId", role) select uid, 'admin' from users where email = '<email>';
+  ```
+  Both are needed: admin-web's login screen checks `users.role`, the backend checks `user_roles`.
+- Rider → driver switching is unaffected (become-driver runs on the backend; app signups may still set `rider`/`driver`).
+- **Action required:** run the migration in Supabase, then run the admin-review query at the bottom of the file and remove any admin you don't recognise.
+
+---
+
+### 2026-10-06 — Payments survive the app being closed during checkout
+
+- Android often closes the app in the background while the Flutterwave checkout is open, and the payment screen's progress was lost.
+- The app now saves the pending checkout before opening it (`lib/pending-checkout.ts`) and finishes confirming it on the next launch (`components/PendingCheckoutResumer.tsx`).
+
+Commit: `501cefa`
+
+---
+
+### 2026-10-05 — AI admin agent API with human approval
+
+- New API at `/api/v1/agent-admin` (`backend/agent-admin/`) so an AI agent can help with admin work.
+- Read tools run immediately. Write tools (support replies, driver verification, payouts, pricing, promotions, app videos) are only **queued** — an admin must approve each one on admin-web's new **Agent queue** page. The agent cannot approve its own actions.
+- Admin logic moved into shared services (`backend/services/admin/*`) used by both admin-web and the agent.
+- Needs `AGENT_ADMIN_SECRET_KEY` — set only in the Vercel main-app project.
+
+Commit: `c2074ac`
+
+---
+
+### 2026-10-05 — Phone number required before booking
+
+- Google sign-ins never collected a phone number, so drivers couldn't call the rider at pickup. Booking now stops and asks for one (`app/collect-phone.tsx`).
+
+Commit: `0e0fc55`
+
+---
+
+### 2026-10-04 — EAS updates weren't reaching phones (fixed)
+
+- **Problem:** updates published from GitHub Actions never showed up in the app.
+- **Cause:** the workflow ran `eas update` without `--environment`, and the CI runner has no `.env`. The update was built without the Supabase URL and API base URL, so the app crashed on launch and expo-updates silently fell back to the version built into the APK.
+- **Fix:** `.github/workflows/eas-update.yml` now passes `--environment <channel>`, and a correct update was republished to `preview`.
+- **Rules from now on:**
+  - Publish with `eas update --branch <channel> --environment <channel>`.
+  - When adding an `EXPO_PUBLIC_*` variable to `.env`, add it to EAS too (`eas env:create`).
+  - After a native change (new native package or plugin, permissions, Expo SDK upgrade), bump `version` in `app.json` and make a new build.
+  - After publishing, fully close and reopen the app twice (first launch downloads, second applies).
+
+Commit: `243e460`
+
+---
+
+### 2026-10-04 — Rider wallet: withdrawals removed and balance locked down
+
+- Riders can no longer withdraw to a bank account; the withdraw and bank-account screens were removed. (The old flow never actually sent money.)
+- **Security fix:** riders could previously change their own wallet balance. Every balance change now goes through `add_wallet_transaction`, and a rider's own session can only *debit*.
+- Migration: `supabase-schema-rider-wallet-lockdown.sql` — must be run in Supabase.
+
+Commit: `0f12ffc`
+
+---
+
+### 2026-10-04 — Web Google sign-in, receipts, map and nav polish
+
+- Google sign-in on web (`app/auth-callback.tsx`) — `78be985`
+- Wallet transaction receipts can be downloaded and shared (`lib/transaction-receipt.ts`) — `cfd7c9d`
+- Rating display formatting, custom map style, bottom tab bar tweaks — `8793149`, `aed10e5`
+
+---
+
+### 2026-10-02 — Flutterwave becomes the only payment provider; cash-ride commission
+
+- **Flutterwave** now handles wallet top-ups and driver payouts (`backend/lib/flutterwave-checkout.ts`, `backend/lib/flutterwave-payout-provider.ts`). Paystack code is kept but not configured.
+- **Card-free rides:** saved cards and the "add payment method" screen were removed. Rides are paid by wallet or cash; cards are only used to top up the wallet.
+- **Cash-ride commission:** on cash rides the driver keeps the whole fare, so they owe Pantra its commission. A ledger tracks what each driver owes; drivers over the limit can't accept cash rides. Admins record payments on the new **Commission** page (`backend/lib/cash-commission.ts`).
+- **Payouts:** Flutterwave transfers are blocked by IP whitelisting on the Flutterwave account, so all payouts go to the manual-review queue (admin pays outside Pantra, then "Complete manually").
+
+Commit: `865524b`
+
+---
+
+### 2026-10-01 — Support tickets, "become a driver", driver tab clean-up
+
+- Riders can open and follow support tickets in the app (`app/my-tickets.tsx`, `app/ticket-detail.tsx`); admins reply in admin-web.
+- A rider can register as a driver from their existing account (`become-driver` route) and goes through the normal verification wizard. Roles now live in a `user_roles` table so one account can hold several.
+- Driver tabs, profile, achievements and goals screens simplified.
+
+Commit: `41989ae` (`77c7c26` / `0e99806` were a temporary location-error debug change, since reverted)
+
+---
+
+### 2026-09-28 — Map style and navigation bar
+
+- Custom Google map style (`constants/map-style.ts`) and a redesigned rider tab bar.
+
+Commit: `94ac4d0`
+
+---
+
+### 2026-09-22 → 2026-09-24 — Login, verification and role selection
+
+- Rider email verification screen (`app/verify-email.tsx`) — `5ece2e0`
+- Driver verification wizard cut to two steps: credentials and vehicle (`app/driver-verification/`) — `50b74ec`, `b7be84f`
+- Driver signup fixes, including a leftover-session bug that made new signups fail database permission checks — `2154d57`, `4cc3d70`
+- Role-selection screen redesigned ("Welcome to Pantra" → Rider / Driver) — `c7c856e`
+
+---
+
+### 2026-09-21 — Refunds and admin password reset
+
+- Refund system: an admin checks eligibility and issues the refund; refunds have their own records and reconciliation (`backend/lib/refund-processor.ts`, admin-web **Refunds** page).
+- admin-web "forgot password" / reset-password pages.
+- Lint config fixed for the Node scripts in `scripts/`.
+
+Commit: `a0ba650`
+
+---
+
+### 2026-09-16 — Driver payouts: automatic and manual
+
+- Drivers request payouts through a backend route (`driver/payouts/request`) instead of writing to the database directly.
+- A payout is either sent automatically by provider transfer or handled by an admin (move to manual review, complete manually, mark failed, retry). Includes payout reconciliation and a Nigerian bank list.
+- Migration: `supabase-schema-driver-payouts-automation.sql`
+
+Commit: `61353d8`
+
+---
+
+### 2026-09-15 — Payment audit: every payment is tracked
+
+- Each top-up is tracked from start to finish (`payment_intents`, `payment_events`).
+- Paystack/Flutterwave webhooks added, with signature checks; repeated webhooks are ignored, so nothing is credited twice.
+- Admin reconciliation finds mismatches between Pantra and the provider and flags them for review — it never moves money on its own.
+- A finished or cancelled ride's status can no longer be changed (closed a double-payout bug).
+- Migrations: payment intents, payment events, payment reconciliation, rides terminal-status lock, fare source, drivers earnings legacy lock.
+
+Commit: `1a52517`
+
+---
+
+### 2026-09-11 — Financial audit: fares and money locked down
+
+- Fares are calculated on the server when a ride is created (`backend/trpc/routes/rides/create`) and can't be changed by the app afterwards.
+- All money amounts use exact two-decimal values (`NUMERIC(12,2)`) with consistent rounding.
+- Driver bank account numbers are encrypted (AES-256-GCM); an admin reveals one only when paying. Existing rows: `scripts/backfill-bank-account-encryption.mjs`.
+- Safer deletion rules between related tables.
+- Full write-up: `docs/PAYMENT_FINANCIAL_ARCHITECTURE_AUDIT.md`
+
+Commit: `6de706a`
+
+---
+
+### 2026-09-10 — Admin-editable background videos
+
+- Background videos on the welcome, login and signup screens are managed from admin-web's **Content** page (`app_video_config` table) — `d37f411`
+- Android `versionCode` bumped to 10 — `8f55b64`
+
+---
+
+### 2026-09-03 — In-app admin removed; verification and rewards tweaks
+
+- In-app admin tabs deleted — **admin-web is now the only admin tool** — `657861b`
+- Driver verification no longer requires phone verification (email still required) — `7c984e2`
+- Ad rewards section renamed **Coin Dome**; on web it says "available in the mobile app" — `56d6382`
+
+---
+
+### 2026-08-27 — Google sign-in, Vercel deployment fixes, admin-web restyle
+
+- Google sign-in added (native). Phone-OTP login removed and replaced by a phone-collection screen — `f734619`
+- Vercel deployment fixed: Node pinned to 22.x; `api/index.ts` loads `expo-server`'s CommonJS build because its ESM build fails on Vercel; admin-web given its own Vercel config — `bbc5a44`, `e32a00f`, `9256c93`, `5c2bd60`, `1a8e343`
+- admin-web restyled with shared components (tables, filters, modals, status labels) — `1446dc5`
+
+---
+
+### 2026-08-26 — admin-web redesign; CI/CD workflows
+
+- admin-web rebuilt with new pages: Overview, Drivers, Riders, Trips, Payments, Pricing, Promotions, Support — all wired to backend routes.
+- GitHub Actions added: `ci.yml` (typecheck, lint, tests, Expo check, secret scan), `admin-web-ci.yml`, and manual `eas-update` / `eas-build` / `eas-submit` workflows.
+
+Commit: `1d6c7d5`
+
+---
+
+### 2026-08-24 — Tips; mock data removed
+
+- Riders can tip a driver from their wallet after a ride (`app/tip-driver.tsx`). Tips go 100% to the driver and show in driver earnings — `912a2a6`, `896ef4e`
+- Remaining mock data and the old standalone admin prototype (`admin/`) removed — see `docs/PRODUCTION_MOCK_DATA_AUDIT.md` — `912a2a6`
+
+---
+
+### 2026-08-23 — Driver verification v2, password reset, ad rewards
+
+One large commit (`118aebb`):
+
+- New driver verification: multi-step wizard, document upload, automated checks (OCR / authenticity providers in `backend/services/verification/`), and admin decision screens.
+- Forgot-password flow.
+- Watch-an-ad rewards (AdMob).
+- A ride can only be completed once its payment is confirmed (`rides/confirm-payment`), and commission is saved on each ride when it settles.
+- Rider account details and privacy preferences saved to Supabase.
+
+---
+
+### 2026-08-12 — Skeleton loading and OTA updates
+
+- Skeleton loading states across most screens; fixed duplicate family members; removed dollar-sign icons (the app is NGN-only); EAS Update (OTA) configured.
+
+Commit: `725e520`
+
+---
+
+### 2026-08-06 — Book for someone else; vehicle images
+
+- Riders can book a ride for another person; vehicle images per ride type; EAS build profiles set up.
+
+Commit: `bb12862`
+
+---
+
+### 2026-08-01 → 2026-08-02 — Pricing pipeline and payment methods
+
+- Pricing moved into one pipeline (`lib/fare-calculator.ts`): booking/service fees, zone fees, waiting charges, cancellation fees, surge and fare negotiation, plus an admin fare breakdown and unit tests — `8426ec6`, `ee631f3`
+- Payment methods stored in Supabase instead of mock data — `8ebc445`
+- Removed the fake default 5.0 rating new drivers were given — `4a3a40d`
+- Empty-state and ride-store loading fixes; mock data removed from driver documents — `5035c6c`, `7d1d1e3`, `1a29fa9`
+
+---
 
 ### 2026-07-31 — Web responsive shell; RLS was silently blocking drivers from ever seeing pending rides
 
@@ -826,62 +1162,55 @@ Formula: `max( (base + km×perKm + min×perMin) × surge, minFare )`
 
 ## Pending Work
 
-### Immediate (blockers before first test build)
-
-1. **Run push token migration** — Supabase Dashboard → SQL Editor → run `supabase-schema-push-tokens.sql` (adds `pushToken` column to `users` and `drivers`)
-
-2. **EAS init + build configure** — in terminal inside `expo/`:
-   ```
-   npm install -g eas-cli
-   eas login
-   eas init          # creates projectId, writes it to app.json
-   eas build:configure
-   ```
-   Then run `eas build --profile preview --platform android` to get a real APK for device testing
-
-3. **Push to GitHub** — run `git push` from your terminal
+_Last reviewed 2026-10-06._
 
 ### Before production launch
 
-4. **Phone login OTP** — Twilio credentials not yet available. When ready: Supabase Dashboard → Authentication → Providers → Phone → enable + Account SID + Auth Token + Messaging Service SID
+1. **Run `supabase-schema-users-role-lockdown.sql`** and review existing admin accounts — closes the admin self-promotion hole. Security blocker.
+2. **Confirm migrations are applied** in the production Supabase project (rider wallet lockdown, user roles, cash commission, payouts automation, refunds, push tokens).
+3. **Switch Flutterwave to live keys** (Vercel + EAS) and register the live webhook: `https://<production domain>/api/webhooks/flutterwave`.
+4. **Decide on driver payouts** — whitelist the backend's outbound IP with Flutterwave (Vercel has no fixed IP by default), or keep paying manually from the admin queue.
+5. **Email confirmation** — make sure Supabase "Confirm email" is on, with custom SMTP so emails aren't rate-limited.
+6. **Remove server secrets from EAS** — `FLUTTERWAVE_SECRET_KEY` (preview), `SUPABASE_SERVICE_ROLE_KEY` (production).
+7. **GitHub settings** — add `EXPO_TOKEN` and `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` secrets, a `production-submit` environment with required reviewers, and branch protection on `main`.
+8. **Test end to end on real devices** — book → driver accepts → live tracking → complete → rate; wallet top-up; cash ride commission; payout; refund.
+9. **Reward task content** — add the YouTube task row in `reward_tasks` once the video URL is available.
 
-5. **Payment live keys** — Paystack is on test keys only; Flutterwave keys are unset. Replace in `.env` with live keys before production launch
+### Legal documents dependencies
 
-6. **Re-enable email confirmation** — Supabase Dashboard → Authentication → Providers → Email → turn "Confirm email" back ON → then add custom SMTP under Authentication → Settings → SMTP so confirmation emails don't hit the rate limit
-
-7. **End-to-end ride loop test** — rider books → driver receives remote push → driver opens app → accepts → rider sees real driver location + ETA + stage transitions → completes → rating submitted to Supabase
-
-8. **Add YouTube reward task** — insert a row in Supabase Dashboard → Table Editor → `reward_tasks`. **YouTube URL not yet provided.** When you have it:
-   - `type`: `youtube_video`
-   - `title`: e.g. "Watch: Introducing Pantra Ride"
-   - `url`: your YouTube link
-   - `pointsReward`: `500`
-   - `minWatchSeconds`: `120`
-   - `isActive`: `true`
+- **Finish the features the legal drafts assume** — the 18 items in the 2026-10-06 "To do today" entry above (cancellation fee collection, reward points, SOS 112, trusted contacts, account deletion, data download, password change, privacy toggles, receipts, suspension, expiry dates, lost property, background location, acceptance records, policy links, shared rides, fee split).
+- **Fix the security issues** listed in the same entry (public `drivers` read, pending-ride passenger data, open `messages` policies, unauthenticated endpoints, plaintext bank numbers).
+- **Answer the open questions** in `docs/legal/legal-business-decisions.md`, then have a lawyer review `docs/legal/` before publishing.
 
 ### Store submission
 
-9. **Apple Developer Program** — enroll at developer.apple.com ($99/year) if not already done; needed for App Store submission and iOS push certificates
-10. **Google Play Console** — register at play.google.com/console ($25 one-time); create the app with package `com.pantra.rides`
-11. **Store assets** — screenshots (6.7" iPhone + Pixel), app descriptions, privacy policy URL (already in app under Terms & Privacy screens)
+10. **Google Play** — create the app (`com.pantra.rides`) in Play Console; submit the production `.aab` with `eas submit` (needs the service-account key).
+11. **Apple** — join the Apple Developer Program; no iOS build or iOS submit config exists yet.
+12. **Store assets** — screenshots, descriptions, privacy policy URL.
 
 ---
 
 ## Key File Map
 
-| What you want to change | File |
+| What you want to change | Where |
 |---|---|
-| Splash screen / cold-open logic | `app/index.tsx` |
-| Rider auth (login, signup, session) | `hooks/useAuthStore.ts`, `lib/auth-service.ts` |
-| Driver auth | `hooks/useDriverAuthStore.ts`, `lib/driver-auth-service.ts` |
-| Fare / pricing | `hooks/useRideStore.ts`, `app/search.tsx`, `lib/payment-service.ts` |
-| Payment gateways | `lib/paystack-service.ts`, `lib/flutterwave-service.ts` |
-| Maps | `components/Map.tsx`, `lib/google-maps-service.ts` |
-| Driver real-time location | `lib/location-tracking-service.ts`, `lib/firebase-driver-service.ts` |
-| Ride matching | `lib/ride-matching-service.ts` |
-| Notifications | `lib/notification-service.ts` |
-| Rider account / settings | `app/(tabs)/account.tsx` |
-| Driver profile / settings | `app/(driver-tabs)/profile.tsx` |
-| App entry / providers | `app/_layout.tsx` |
-| Colors / theme | `constants/colors.ts`, `hooks/useThemeStore.ts` |
-| TypeScript interfaces | `types/index.ts` |
+| App entry, providers, splash | `app/_layout.tsx`, `app/index.tsx` |
+| Rider auth | `hooks/useAuthStore.ts`, `lib/auth-service.ts`, `lib/google-auth-service.ts` |
+| Driver auth & verification | `hooks/useDriverAuthStore.ts`, `lib/driver-auth-service.ts`, `app/driver-verification/`, `backend/services/verification/` |
+| Fares & pricing | `lib/fare-calculator.ts`, `lib/pricing-config.ts`; server-side fare: `backend/trpc/routes/rides/create/route.ts` |
+| Ride booking & tracking | `hooks/useRideStore.ts`, `app/search.tsx`, `lib/ride-matching-service.ts`, `lib/firebase-driver-service.ts` (Supabase-backed despite the name) |
+| Payments (top-ups, webhooks) | `backend/lib/flutterwave-checkout.ts`, `backend/lib/payment-processor.ts`, webhooks in `backend/hono.ts` |
+| Wallet | `lib/wallet-service.ts`, `hooks/useWalletStore.ts`, `add_wallet_transaction` in `database/schemas/` |
+| Driver payouts | `backend/lib/payout-processor.ts`, `backend/lib/flutterwave-payout-provider.ts` |
+| Refunds | `backend/lib/refund-processor.ts` |
+| Cash-ride commission | `backend/lib/cash-commission.ts` |
+| Maps & location | `components/Map.tsx`, `lib/google-maps-service.ts`, `lib/location-tracking-service.ts` |
+| Notifications | `lib/notification-service.ts`, `backend/trpc/lib/push-notify.ts` |
+| Backend API routes | `backend/trpc/app-router.ts`, `backend/trpc/routes/` |
+| Admin web panel | `admin-web/src/pages/`; shared admin logic `backend/services/admin/` |
+| AI admin agent API | `backend/agent-admin/` |
+| Database schema | `database/schemas/*.sql` (run by hand in Supabase) |
+| Builds, OTA, CI | `app.json`, `app.config.js`, `eas.json`, `.github/workflows/` |
+| Web/API hosting | `vercel.json`, `api/index.ts` |
+| Colors & theme | `constants/colors.ts`, `hooks/useThemeStore.ts` |
+| Shared types | `types/index.ts` |
