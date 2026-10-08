@@ -1,0 +1,11 @@
+# Reviewed 2026-10-08: none of these are real secrets.
+# eas.json: Supabase anon key (public by design) and Google Maps key (embedded in the app).
+# payment-providers.test.ts: fake test key. PAYMENT_GATEWAY_SETUP.md: sk_live_xxxx placeholder.
+118aebb7d738442dbb8f3784f1c9b16a0b37c025:testing/unit/payment-providers.test.ts:stripe-access-token:15
+5e482c0d230ed6ae23d3f9c5e15b6c0453236770:PAYMENT_GATEWAY_SETUP.md:stripe-access-token:62
+9f74db0b1a84215257d1f32863fed250a3bdca3f:eas.json:gcp-api-key:19
+9f74db0b1a84215257d1f32863fed250a3bdca3f:eas.json:gcp-api-key:42
+9f74db0b1a84215257d1f32863fed250a3bdca3f:eas.json:gcp-api-key:65
+9f74db0b1a84215257d1f32863fed250a3bdca3f:eas.json:jwt:29
+9f74db0b1a84215257d1f32863fed250a3bdca3f:eas.json:jwt:52
+9f74db0b1a84215257d1f32863fed250a3bdca3f:eas.json:jwt:75
