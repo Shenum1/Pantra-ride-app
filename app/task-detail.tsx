@@ -90,7 +90,7 @@ export default function TaskDetailScreen() {
 
     setIsClaiming(true);
     try {
-      await claimReward(user.id, task.id, task.pointsReward);
+      await claimReward(user.id, task.id);
       Toast.show({
         type: 'success',
         text1: `+${task.pointsReward} points earned!`,
