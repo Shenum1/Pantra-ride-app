@@ -239,11 +239,16 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       const ride = rideRequests.find(r => r.id === rideId);
       if (!ride) return;
 
-      await FirebaseDriverService.acceptRide(rideId, driverProfile.id);
+      // The pending-list entry carries no passenger identity/contact details;
+      // the database only hands them to the driver who wins the accept.
+      const accepted = await FirebaseDriverService.acceptRide(rideId, driverProfile.id);
       setCurrentRide({
         ...ride,
         status: 'confirmed',
         price: ride.price,
+        passenger: accepted.passenger,
+        passengerName: accepted.passengerName,
+        passengerPhone: accepted.passengerPhone,
       });
       setRideRequests(prev => prev.filter(r => r.id !== rideId));
 

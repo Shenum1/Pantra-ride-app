@@ -1,0 +1,43 @@
+name: Database migrations
+
+# Builds a fresh local Supabase database from supabase/migrations (plus
+# supabase/seed.sql) and fails if any migration doesn't apply. Never touches
+# production: pushing migrations there is a manual step (see supabase/README.md).
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/db-migrations.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - '.github/workflows/db-migrations.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: db-migrations-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    name: Migrations apply from scratch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.120.0
+
+      # Only the database plus the auth, storage and realtime services: the
+      # baseline needs their schemas (auth.users, storage.objects, the
+      # supabase_realtime publication). Same command as local setup.
+      - name: Start database and apply migrations
+        run: supabase start -x imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+
+      - name: Lint database functions
+        run: supabase db lint --local --level error

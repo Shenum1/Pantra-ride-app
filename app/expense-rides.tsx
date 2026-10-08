@@ -10,11 +10,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import { useRide } from '@/hooks/useRideStore';
 import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 
 interface ExpenseRideProps {
+  rideId?: string;
   date: string;
   from: string;
   to: string;
@@ -23,9 +24,13 @@ interface ExpenseRideProps {
   receipt?: boolean;
 }
 
-const ExpenseRide: React.FC<ExpenseRideProps> = ({ date, from, to, amount, category, receipt = false }) => {
+const ExpenseRide: React.FC<ExpenseRideProps> = ({ rideId, date, from, to, amount, category, receipt = false }) => {
   const { colors } = useTheme();
-  
+
+  const openReceipt = () => {
+    if (rideId) router.push({ pathname: '/ride-receipt', params: { rideId, as: 'rider' } });
+  };
+
   return (
     <View style={[styles.rideCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={styles.rideHeader}>
@@ -37,7 +42,7 @@ const ExpenseRide: React.FC<ExpenseRideProps> = ({ date, from, to, amount, categ
         <View style={styles.rideAmount}>
           <Text style={[styles.amountText, { color: colors.text }]}>₦{amount.toFixed(2)}</Text>
           {receipt && (
-            <Pressable style={styles.receiptButton}>
+            <Pressable style={styles.receiptButton} onPress={openReceipt} accessibilityLabel="View receipt" hitSlop={8}>
               <Receipt size={16} color={colors.primary} />
             </Pressable>
           )}
@@ -72,9 +77,10 @@ export default function ExpenseRidesScreen() {
   const expenseRides: ExpenseRideProps[] = pastRides
     .filter((ride) => ride.status === 'completed')
     .map((ride) => ({
+      rideId: ride.id,
       date: ride.createdAt ? ride.createdAt.toLocaleDateString() : '',
       from: ride.pickupAddress || 'Pickup', to: ride.dropoffAddress || 'Destination',
-      amount: ride.price ?? 0, category: 'Ride', receipt: false,
+      amount: ride.price ?? 0, category: 'Ride', receipt: !!ride.id,
     }));
   
   const totalExpenses = expenseRides.reduce((sum, ride) => sum + ride.amount, 0);
@@ -173,7 +179,8 @@ export default function ExpenseRidesScreen() {
             ) : (
               expenseRides.map((ride, index) => (
                 <ExpenseRide
-                  key={index}
+                  key={ride.rideId ?? index}
+                  rideId={ride.rideId}
                   date={ride.date}
                   from={ride.from}
                   to={ride.to}

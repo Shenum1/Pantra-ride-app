@@ -147,7 +147,9 @@ export default function SignupScreen() {
 
     try {
       console.log('Signup: Starting signup process...');
-      await acceptTerms();
+      // Cached locally until the account has a session (after the email
+      // code), then recorded server-side by PolicyAcceptanceGate.
+      await acceptTerms(['terms', 'privacy'], email);
       await signup(name, email, phone, password, profileImage);
       console.log('Signup: Account created, awaiting email verification');
       router.replace({ pathname: '/verify-email', params: { email: email.trim().toLowerCase() } });
@@ -164,7 +166,19 @@ export default function SignupScreen() {
   };
 
   const handleGoogleSignup = async () => {
+    // Google signup needs the same explicit agreement as email signup.
+    if (!acceptedTerms) {
+      Toast.show({
+        type: 'error',
+        text1: 'Terms Not Accepted',
+        text2: 'Please accept the Terms and Privacy Policy',
+        position: 'top',
+      });
+      return;
+    }
+
     try {
+      await acceptTerms(['terms', 'privacy']);
       const { hasPhone } = await loginWithGoogle();
       router.replace(hasPhone ? '/(tabs)/home' : '/collect-phone');
     } catch (error) {

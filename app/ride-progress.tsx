@@ -265,11 +265,13 @@ export default function RideProgressScreen() {
       }
     };
 
-    const subscribeDriverLocation = (driverId: string) => {
+    // Riders can't read the drivers table directly; the assigned driver's
+    // position comes from get_ride_driver for this ride (polled).
+    const subscribeDriverLocation = () => {
       if (driverLocationUnsubscribe) {
         driverLocationUnsubscribe();
       }
-      driverLocationUnsubscribe = RideMatchingService.subscribeToDriverLocation(driverId, handleDriverLocation);
+      driverLocationUnsubscribe = FirebaseDriverService.subscribeToRideDriverLocation(currentRideId, handleDriverLocation);
     };
 
     const handleRideUpdate = async (ride: { status?: string; driverId?: string | null }) => {
@@ -323,24 +325,16 @@ export default function RideProgressScreen() {
 
       if (driverId && driverId !== knownDriverId) {
         knownDriverId = driverId;
-        const profile = await FirebaseDriverService.getDriver(driverId);
+        // Public fields of the driver on THIS rider's ride (phone included
+        // only while the ride is active) — see get_ride_driver.
+        const profile = await FirebaseDriverService.getRideDriver(currentRideId);
         if (isCancelled) return;
 
         // No fabricated fallback — a just-assigned driver whose device hasn't sent a
         // GPS ping yet simply has no marker until a real one arrives.
         const driverLoc: Location | undefined = profile?.location;
         const mappedDriver: Driver = profile
-          ? {
-              id: profile.id,
-              name: profile.name,
-              rating: profile.rating,
-              location: driverLoc,
-              carType: profile.vehicle?.type ?? 'Standard',
-              carModel: `${profile.vehicle?.make ?? ''} ${profile.vehicle?.model ?? ''}`.trim(),
-              licensePlate: profile.vehicle?.licensePlate ?? '',
-              eta: 3,
-              phone: profile.phone,
-            }
+          ? { ...profile, eta: 3 }
           : {
               id: driverId,
               name: 'Your driver',
@@ -378,7 +372,7 @@ export default function RideProgressScreen() {
           void NotificationService.notifyRideStarted(user?.id ?? '');
         }
 
-        subscribeDriverLocation(driverId);
+        subscribeDriverLocation();
         return;
       }
 
@@ -402,7 +396,7 @@ export default function RideProgressScreen() {
     });
 
     if (knownDriverId) {
-      subscribeDriverLocation(knownDriverId);
+      subscribeDriverLocation();
     }
 
     const refetchRide = () => {

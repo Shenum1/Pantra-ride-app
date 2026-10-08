@@ -116,7 +116,7 @@ function mapToPlace(result: NearbyPlaceResult, categoryId: string, userLocation:
 
 export default function DiscoverScreen() {
   const { colors } = useTheme();
-  const { userLocation, locationError, retryLocation, setDropoffLocation, setDropoffAddress, clearRoute } = useLocation();
+  const { userLocation, locationError, isLocationSharingOff, retryLocation, setDropoffLocation, setDropoffAddress, clearRoute } = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('restaurants');
   const [bookingPlace, setBookingPlace] = useState<string | null>(null);
@@ -385,8 +385,10 @@ export default function DiscoverScreen() {
               <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
                 Nearby places need your location to load.
               </Text>
-              <Pressable onPress={() => void retryLocation()}>
-                <Text style={[styles.emptySubtitle, { color: colors.primary, fontWeight: '700', marginTop: 8 }]}>Retry</Text>
+              <Pressable onPress={() => (isLocationSharingOff ? router.push('/privacy') : void retryLocation())}>
+                <Text style={[styles.emptySubtitle, { color: colors.primary, fontWeight: '700', marginTop: 8 }]}>
+                  {isLocationSharingOff ? 'Privacy settings' : 'Retry'}
+                </Text>
               </Pressable>
             </View>
           ) : filteredPlaces.length === 0 ? (

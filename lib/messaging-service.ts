@@ -38,7 +38,13 @@ export class MessagingService {
     driverPhone?: string;
     rideId?: string;
   }): Promise<string> {
-    const conversationId = `${data.userId}_${data.driverId}_${data.rideId || Date.now()}`;
+    // The database only lets a rider/driver open a conversation tied to a ride
+    // that pairs the two of them (supabase-schema-security-hardening.sql), so
+    // fail early with a readable error instead of an RLS rejection.
+    if (!data.rideId || !data.userId || !data.driverId) {
+      throw new Error('A conversation can only be started for a ride with an assigned driver.');
+    }
+    const conversationId = `${data.userId}_${data.driverId}_${data.rideId}`;
 
     const { data: existing } = await supabase
       .from('conversations')

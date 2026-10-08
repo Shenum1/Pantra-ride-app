@@ -18,7 +18,7 @@ import WeatherCard from "@/components/WeatherCard";
 export default function HomeScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
-  const { isLoading, userLocation, locationError, retryLocation } = useLocation();
+  const { isLoading, userLocation, locationError, isLocationSharingOff, retryLocation } = useLocation();
   const { currentRide, isHydratingRide } = useRide();
   const { fetchWeather } = useWeather();
   const [initialMapRegion, setInitialMapRegion] = useState<Location | undefined>(undefined);
@@ -142,8 +142,13 @@ export default function HomeScreen() {
       {!isLoading && !userLocation && locationError && (
         <View style={[styles.locationErrorBanner, { top: insets.top + 84, backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.locationErrorText, { color: colors.textSecondary }]}>{locationError}</Text>
-          <Pressable onPress={() => void retryLocation()} testID="retry-location-button">
-            <Text style={[styles.locationErrorRetry, { color: colors.primary }]}>Retry</Text>
+          <Pressable
+            onPress={() => (isLocationSharingOff ? router.push("/privacy") : void retryLocation())}
+            testID="retry-location-button"
+          >
+            <Text style={[styles.locationErrorRetry, { color: colors.primary }]}>
+              {isLocationSharingOff ? "Settings" : "Retry"}
+            </Text>
           </Pressable>
         </View>
       )}

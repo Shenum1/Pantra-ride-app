@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Driver, DriverProfile, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
+import { Driver, DriverProfile, PassengerInfo, RideRequestForDriver, DriverEarnings, DriverStats } from '@/types';
 import { calculateDriverPayout, calculateWaitingCharge } from './fare-calculator';
 
 // The driver owes more than the cash commission limit, so the database
@@ -40,6 +40,76 @@ function coord(location: any, key: 'latitude' | 'longitude'): number {
   const shortKey = key === 'latitude' ? 'lat' : 'lng';
   const value = location?.[key] ?? location?.[shortKey];
   return typeof value === 'number' ? value : 0;
+}
+
+// Public driver fields returned by the get_nearby_drivers / get_ride_driver
+// RPCs (supabase-schema-security-hardening.sql). `phone` is only ever set by
+// get_ride_driver, for the driver on the caller's own active ride.
+interface PublicDriverRow {
+  id: string;
+  name: string | null;
+  profileImage: string | null;
+  rating: number | null;
+  location: { latitude?: number; longitude?: number; lat?: number; lng?: number } | null;
+  vehicle: { make?: string; model?: string; licensePlate?: string; type?: string; color?: string } | null;
+  vehiclePlateNumber: string | null;
+  distanceKm?: number | null;
+  phone?: string | null;
+}
+
+function mapPublicDriver(d: PublicDriverRow): Omit<Driver, 'eta' | 'phone'> {
+  return {
+    id: d.id,
+    name: d.name || '',
+    rating: d.rating ?? null,
+    location: d.location
+      ? { latitude: coord(d.location, 'latitude'), longitude: coord(d.location, 'longitude') }
+      : undefined,
+    carType: d.vehicle?.type || 'Standard',
+    carModel: `${d.vehicle?.make || ''} ${d.vehicle?.model || ''}`.trim(),
+    licensePlate: d.vehicle?.licensePlate || d.vehiclePlateNumber || '',
+  };
+}
+
+// Returned by the accept_ride / get_ride_rider_for_driver RPCs — only ever to
+// the driver assigned to that ride.
+interface RideRiderRow {
+  rideId: string;
+  userId: string | null;
+  riderName: string | null;
+  riderPhone: string | null;
+  riderPhoto: string | null;
+  riderRating: number | null;
+  passengerName: string | null;
+  passengerPhone: string | null;
+  rideStatus: string | null;
+}
+
+export interface AcceptedRideDetails {
+  passenger: PassengerInfo;
+  passengerName?: string;
+  passengerPhone?: string;
+}
+
+function buildAcceptedRideDetails(row: RideRiderRow | undefined): AcceptedRideDetails {
+  // A ride booked for someone else carries a passengerName/passengerPhone
+  // override on the ride row — that's who's physically in the car and who
+  // Call/display should show. bookerName/bookerPhone (the account holder)
+  // are kept separately since only the booker has an app account that
+  // in-app messaging can actually reach.
+  return {
+    passengerName: row?.passengerName ?? undefined,
+    passengerPhone: row?.passengerPhone ?? undefined,
+    passenger: {
+      id: row?.userId ?? '',
+      name: row?.passengerName || row?.riderName || 'Passenger',
+      rating: row?.riderRating ?? null,
+      photo: row?.riderPhoto ?? undefined,
+      phone: row?.passengerPhone || row?.riderPhone || '',
+      bookerName: row?.riderName || undefined,
+      bookerPhone: row?.riderPhone || undefined,
+    },
+  };
 }
 
 export class FirebaseDriverService {
@@ -119,69 +189,85 @@ export class FirebaseDriverService {
     if (error) throw new Error(error.message);
   }
 
+  // Riders can't read the drivers table (supabase-schema-security-hardening.sql);
+  // get_nearby_drivers returns only public fields of online, VERIFIED drivers
+  // within the radius — never a phone number.
   static async getNearbyDrivers(latitude: number, longitude: number, radiusKm = 10): Promise<Driver[]> {
-    const { data, error } = await supabase
-      .from('drivers')
-      .select('*')
-      .eq('isOnline', true)
-      .eq('isVerified', true);
+    const { data, error } = await supabase.rpc('get_nearby_drivers', {
+      p_latitude: latitude,
+      p_longitude: longitude,
+      p_radius_km: radiusKm,
+    });
 
+    if (error) console.error('getNearbyDrivers failed:', error.message);
     if (error || !data) return [];
 
-    return data
-      .filter((d: any) => {
-        if (!d.location) return false;
-        return calculateDistance(latitude, longitude, d.location.latitude, d.location.longitude) <= radiusKm;
-      })
-      .map((d: any) => {
-        const distance = calculateDistance(latitude, longitude, d.location.latitude, d.location.longitude);
+    return (data as PublicDriverRow[])
+      .filter((d) => !!d.location)
+      .map((d) => {
+        const distance = typeof d.distanceKm === 'number'
+          ? d.distanceKm
+          : calculateDistance(latitude, longitude, coord(d.location, 'latitude'), coord(d.location, 'longitude'));
         return {
-          id: d.id,
-          name: d.name || '',
-          rating: d.rating ?? null,
-          location: { latitude: d.location.latitude, longitude: d.location.longitude },
-          carType: d.vehicle?.type || 'Standard',
-          carModel: `${d.vehicle?.make || ''} ${d.vehicle?.model || ''}`,
-          licensePlate: d.vehicle?.licensePlate || '',
+          ...mapPublicDriver(d),
           eta: Math.ceil((distance / 30) * 60),
-          phone: d.phone || '',
+          phone: '',
         };
       })
-      .sort((a: any, b: any) => a.eta - b.eta);
+      .sort((a, b) => a.eta - b.eta);
   }
 
-  private static async getDeclinedRideIds(driverId: string): Promise<Set<string>> {
-    const { data, error } = await supabase
-      .from('ride_declines')
-      .select('rideId')
-      .eq('driverId', driverId);
-
-    if (error) {
-      console.error('getDeclinedRideIds failed:', error.message);
-      return new Set();
-    }
-    return new Set((data ?? []).map((d: { rideId: string }) => d.rideId));
+  // The driver assigned to one of the signed-in rider's own rides. Phone and
+  // live location come back only while that ride is accepted/in-progress.
+  static async getRideDriver(rideId: string): Promise<Driver | null> {
+    const { data, error } = await supabase.rpc('get_ride_driver', { p_ride_id: rideId });
+    if (error) console.error('getRideDriver failed:', error.message);
+    const row = (data as PublicDriverRow[] | null)?.[0];
+    if (error || !row) return null;
+    return { ...mapPublicDriver(row), eta: 3, phone: row.phone ?? '' };
   }
 
+  // Live position of the driver assigned to the rider's ride. Riders can't
+  // subscribe to the drivers table any more (no SELECT on it), so this polls
+  // get_ride_driver — drivers send a GPS ping about every 5s.
+  static subscribeToRideDriverLocation(
+    rideId: string,
+    callback: (location: { lat: number; lng: number }) => void,
+    intervalMs = 4000
+  ): () => void {
+    let stopped = false;
+    const poll = async () => {
+      const driver = await this.getRideDriver(rideId);
+      if (stopped || !driver?.location) return;
+      callback({ lat: driver.location.latitude, lng: driver.location.longitude });
+    };
+    void poll();
+    const timer = setInterval(() => { void poll(); }, intervalMs);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }
+
+  // Pending rides come from get_pending_rides_for_driver, which only answers a
+  // VERIFIED driver, already excludes rides this driver declined, and never
+  // includes the passenger's/rider's name or phone (those are revealed by
+  // acceptRide, to the accepting driver only).
   static async getPendingRideRequests(driverId: string): Promise<RideRequestForDriver[]> {
     const driver = await this.getDriver(driverId);
     if (!driver?.location) return [];
 
-    const { data: rides, error } = await supabase
-      .from('rides')
-      .select('*, users:userId(displayName, phoneNumber, rating, photoURL)')
-      .eq('status', 'pending')
-      .order('createdAt', { ascending: false })
-      .limit(20);
+    const { data: rides, error } = await supabase.rpc('get_pending_rides_for_driver', { p_limit: 20 });
 
     if (error) console.error('getPendingRideRequests failed:', error.message);
     if (error || !rides) return [];
 
-    const declinedIds = await this.getDeclinedRideIds(driverId);
-    const visibleRides = rides.filter((r: { id: string }) => !declinedIds.has(r.id));
-    return this.mapRidesToRequests(visibleRides, driver);
+    return this.mapRidesToRequests(rides as any[], driver);
   }
 
+  // Drivers can't subscribe to pending rows of `rides` any more (no SELECT on
+  // them), so they listen to pending_ride_signals — a rideId-only mirror of
+  // which rides are pending — and re-fetch the list through the RPC.
   static subscribeToRideRequests(
     driverId: string,
     callback: (requests: RideRequestForDriver[]) => void
@@ -190,21 +276,9 @@ export class FirebaseDriverService {
       .channel(`pending-rides-${driverId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'rides', filter: 'status=eq.pending' },
+        { event: '*', schema: 'public', table: 'pending_ride_signals' },
         async () => {
-          const driver = await this.getDriver(driverId);
-          if (!driver?.location) { callback([]); return; }
-
-          const { data: rides } = await supabase
-            .from('rides')
-            .select('*, users:userId(displayName, phoneNumber, rating, photoURL)')
-            .eq('status', 'pending')
-            .order('createdAt', { ascending: false })
-            .limit(20);
-
-          const declinedIds = await this.getDeclinedRideIds(driverId);
-          const visibleRides = (rides ?? []).filter((r: { id: string }) => !declinedIds.has(r.id));
-          callback(this.mapRidesToRequests(visibleRides, driver));
+          callback(await this.getPendingRideRequests(driverId));
         }
       )
       .subscribe();
@@ -228,12 +302,9 @@ export class FirebaseDriverService {
         driver.location.latitude, driver.location.longitude, pickupLat, pickupLng
       );
 
-      const booker = ride.users || {};
-      // A ride booked for someone else carries a passengerName/passengerPhone
-      // override on the ride row — that's who's physically in the car and
-      // who Call/display should show. bookerName/bookerPhone (the account
-      // holder) are kept separately since only the booker has an app account
-      // that in-app messaging can actually reach.
+      // Who the passenger is (name/phone/photo/account id) is deliberately not
+      // known yet — the database only reveals it to the driver who accepts
+      // (see acceptRide / buildPassengerInfo). Only the rider's rating is shown.
       results.push({
         id: ride.id,
         pickupLocation: { latitude: pickupLat, longitude: pickupLng },
@@ -242,19 +313,13 @@ export class FirebaseDriverService {
         dropoffAddress: ride.dropoffAddress || '',
         rideType: ride.rideType || 'standard',
         price: ride.fare || 0,
-        passengerName: ride.passengerName ?? undefined,
-        passengerPhone: ride.passengerPhone ?? undefined,
         distance: ride.distance || 0,
         duration: ride.duration || 0,
         status: 'pending',
         passenger: {
-          id: ride.userId,
-          name: ride.passengerName || booker.displayName || 'Passenger',
-          rating: booker.rating ?? null,
-          photo: booker.photoURL,
-          phone: ride.passengerPhone || booker.phoneNumber || '',
-          bookerName: booker.displayName || undefined,
-          bookerPhone: booker.phoneNumber || undefined,
+          id: '',
+          name: 'Passenger',
+          rating: ride.riderRating ?? null,
         },
         estimatedEarnings: calculateDriverPayout(ride.fare || 0, ride.bookingFee || 0, ride.serviceFee || 0, ride.zoneFee || 0, ride.waitingCharge || 0, ride.priorityFee || 0).netAmount,
         // rides.create stores plain 'cash'/'wallet'; anything else (a ride
@@ -278,13 +343,11 @@ export class FirebaseDriverService {
     });
   }
 
-  static async acceptRide(rideId: string, driverId: string): Promise<void> {
-    const updates: any = { driverId, status: 'accepted', acceptedAt: new Date().toISOString() };
-
-    const { error } = await supabase
-      .from('rides')
-      .update(updates)
-      .eq('id', rideId);
+  // accept_ride atomically claims the ride for the signed-in (VERIFIED) driver
+  // and is the first point the rider's/passenger's contact details are
+  // revealed — to this driver only.
+  static async acceptRide(rideId: string, driverId: string): Promise<AcceptedRideDetails> {
+    const { data, error } = await supabase.rpc('accept_ride', { p_ride_id: rideId });
     if (error) {
       // Raised by the rides_cash_dispatch_guard database check
       // (supabase-schema-cash-commission-settlement.sql) when this driver
@@ -292,9 +355,23 @@ export class FirebaseDriverService {
       if (error.message?.includes('CASH_RIDES_PAUSED')) {
         throw new CashRidesPausedError();
       }
+      if (error.message?.includes('RIDE_NOT_AVAILABLE')) {
+        throw new Error('This ride was already taken or cancelled.');
+      }
       throw new Error(error.message);
     }
     await this.setDriverOnlineStatus(driverId, false);
+    return buildAcceptedRideDetails((data as RideRiderRow[] | null)?.[0]);
+  }
+
+  // Re-reads the rider/passenger details of a ride assigned to the signed-in
+  // driver (phones only while the ride is active).
+  static async getRideRiderDetails(rideId: string): Promise<AcceptedRideDetails | null> {
+    const { data, error } = await supabase.rpc('get_ride_rider_for_driver', { p_ride_id: rideId });
+    if (error) console.error('getRideRiderDetails failed:', error.message);
+    const row = (data as RideRiderRow[] | null)?.[0];
+    if (error || !row) return null;
+    return buildAcceptedRideDetails(row);
   }
 
   static async declineRide(rideId: string, driverId: string): Promise<void> {

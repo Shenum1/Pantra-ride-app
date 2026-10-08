@@ -71,8 +71,19 @@ export default function RoleSelectionScreen() {
           </View>
 
           <View style={styles.footer}>
+            {/* Informational only — the actual agreement is the required
+                checkbox at signup (email or Google) or the acceptance prompt
+                in components/PolicyAcceptanceGate.tsx. */}
             <Text style={styles.footerText}>
-              By continuing, you agree to our Terms of Service and Privacy Policy
+              You&apos;ll be asked to accept our{' '}
+              <Text style={styles.footerLink} onPress={() => router.push('/terms-and-conditions')}>
+                Terms and Conditions
+              </Text>
+              {' '}and{' '}
+              <Text style={styles.footerLink} onPress={() => router.push('/privacy-policy')}>
+                Privacy Policy
+              </Text>
+              {' '}when you create an account.
             </Text>
           </View>
         </View>
@@ -171,5 +182,10 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  footerLink: {
+    color: Colors.light.white,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

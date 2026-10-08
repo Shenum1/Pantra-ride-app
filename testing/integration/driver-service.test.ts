@@ -6,11 +6,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // the service hasn't called in a long time, so none of its assertions were
 // actually exercising real code.
 const fromMock = vi.fn();
+const rpcMock = vi.fn();
 vi.mock('@/lib/supabase', () => ({
-  supabase: { from: (...args: any[]) => fromMock(...args) },
+  supabase: {
+    from: (...args: any[]) => fromMock(...args),
+    rpc: (...args: any[]) => rpcMock(...args),
+  },
 }));
 
-import { FirebaseDriverService } from '@/lib/firebase-driver-service';
+import { CashRidesPausedError, FirebaseDriverService } from '@/lib/firebase-driver-service';
 import { PLATFORM_COMMISSION_RATE, DRIVER_PAYOUT_RATE } from '@/lib/pricing-config';
 
 // Minimal chainable query-builder stand-in. Every one of select/eq/in/order/
@@ -39,6 +43,7 @@ function makeBuilder(result: { data?: any; error?: any }) {
 describe('FirebaseDriverService — Supabase-backed (10/90 commission)', () => {
   beforeEach(() => {
     fromMock.mockReset();
+    rpcMock.mockReset();
   });
 
   describe('calculateDistance — pure utility', () => {
@@ -73,16 +78,99 @@ describe('FirebaseDriverService — Supabase-backed (10/90 commission)', () => {
   });
 
   describe('acceptRide', () => {
-    it('assigns driverId and sets status=accepted', async () => {
-      const rideBuilder = makeBuilder({ data: null, error: null });
+    // Acceptance goes through the accept_ride RPC (supabase-schema-security-
+    // hardening.sql) — drivers no longer have a direct UPDATE path on pending
+    // rides, and only the accepting driver ever receives the rider's contact
+    // details.
+    it('claims the ride via accept_ride and returns the passenger details', async () => {
+      rpcMock.mockResolvedValue({
+        data: [{
+          rideId: 'ride-001', userId: 'user-001', riderName: 'Ada', riderPhone: '+2348000000000',
+          riderPhoto: null, riderRating: 4.8, passengerName: null, passengerPhone: null, rideStatus: 'accepted',
+        }],
+        error: null,
+      });
       const driverBuilder = makeBuilder({ data: null, error: null });
-      fromMock.mockImplementation((table: string) => (table === 'rides' ? rideBuilder : driverBuilder));
+      fromMock.mockReturnValue(driverBuilder);
 
-      await FirebaseDriverService.acceptRide('ride-001', 'drv-001');
+      const accepted = await FirebaseDriverService.acceptRide('ride-001', 'drv-001');
 
-      expect(rideBuilder.update).toHaveBeenCalledWith(
-        expect.objectContaining({ driverId: 'drv-001', status: 'accepted' })
-      );
+      expect(rpcMock).toHaveBeenCalledWith('accept_ride', { p_ride_id: 'ride-001' });
+      expect(fromMock).not.toHaveBeenCalledWith('rides');
+      expect(driverBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ isOnline: false }));
+      expect(accepted.passenger).toMatchObject({ id: 'user-001', name: 'Ada', phone: '+2348000000000', rating: 4.8 });
+    });
+
+    it('prefers the booked-for passenger name/phone, keeping the booker for messaging', async () => {
+      rpcMock.mockResolvedValue({
+        data: [{
+          rideId: 'ride-001', userId: 'user-001', riderName: 'Ada', riderPhone: '+2348000000000',
+          riderPhoto: null, riderRating: null, passengerName: 'Grandma', passengerPhone: '+2348111111111', rideStatus: 'accepted',
+        }],
+        error: null,
+      });
+      fromMock.mockReturnValue(makeBuilder({ data: null, error: null }));
+
+      const accepted = await FirebaseDriverService.acceptRide('ride-001', 'drv-001');
+
+      expect(accepted.passenger).toMatchObject({
+        name: 'Grandma', phone: '+2348111111111', bookerName: 'Ada', bookerPhone: '+2348000000000',
+      });
+    });
+
+    it('maps CASH_RIDES_PAUSED to CashRidesPausedError and does not go offline', async () => {
+      rpcMock.mockResolvedValue({ data: null, error: { message: 'CASH_RIDES_PAUSED: owes too much' } });
+      const driverBuilder = makeBuilder({ data: null, error: null });
+      fromMock.mockReturnValue(driverBuilder);
+
+      await expect(FirebaseDriverService.acceptRide('ride-001', 'drv-001')).rejects.toBeInstanceOf(CashRidesPausedError);
+      expect(driverBuilder.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPendingRideRequests', () => {
+    it('reads pending rides only through the RPC and never exposes passenger contact', async () => {
+      fromMock.mockReturnValue(makeBuilder({
+        data: { id: 'drv-001', location: { latitude: 6.5244, longitude: 3.3792 } },
+        error: null,
+      }));
+      rpcMock.mockResolvedValue({
+        data: [{
+          id: 'ride-009', pickupLocation: { latitude: 6.53, longitude: 3.38 }, dropoffLocation: { latitude: 6.6, longitude: 3.4 },
+          pickupAddress: 'A', dropoffAddress: 'B', rideType: 'standard', fare: 2000, bookingFee: 0, serviceFee: 0,
+          zoneFee: 0, waitingCharge: 0, priorityFee: 0, distance: 5, duration: 10, paymentMethod: 'cash',
+          isPriority: false, createdAt: new Date().toISOString(), riderRating: 4.5,
+        }],
+        error: null,
+      });
+
+      const requests = await FirebaseDriverService.getPendingRideRequests('drv-001');
+
+      expect(rpcMock).toHaveBeenCalledWith('get_pending_rides_for_driver', { p_limit: 20 });
+      expect(fromMock).not.toHaveBeenCalledWith('rides');
+      expect(requests).toHaveLength(1);
+      expect(requests[0].passenger).toEqual({ id: '', name: 'Passenger', rating: 4.5 });
+      expect(requests[0].passengerPhone).toBeUndefined();
+    });
+  });
+
+  describe('getNearbyDrivers', () => {
+    it('uses the get_nearby_drivers RPC and never returns a phone number', async () => {
+      rpcMock.mockResolvedValue({
+        data: [{
+          id: 'drv-002', name: 'Bayo', profileImage: null, rating: 4.9,
+          location: { latitude: 6.53, longitude: 3.38 },
+          vehicle: { make: 'Toyota', model: 'Corolla', licensePlate: 'LAG-123', type: 'standard' },
+          vehiclePlateNumber: 'LAG-123', distanceKm: 1.5, phone: '+2348999999999',
+        }],
+        error: null,
+      });
+
+      const drivers = await FirebaseDriverService.getNearbyDrivers(6.5244, 3.3792, 10);
+
+      expect(fromMock).not.toHaveBeenCalledWith('drivers');
+      expect(drivers).toHaveLength(1);
+      expect(drivers[0]).toMatchObject({ id: 'drv-002', carModel: 'Toyota Corolla', licensePlate: 'LAG-123', phone: '' });
     });
   });
 
