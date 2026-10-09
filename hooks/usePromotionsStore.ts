@@ -87,23 +87,13 @@ export const [PromotionsProvider, usePromotions] = createContextHook(() => {
     };
   }, [user]);
 
-  const markPromoAsUsed = useCallback(async (code: string, rideId?: string) => {
-    const userId = user?.id;
-    if (!userId || userId === 'test-rider' || !activePromotion) return;
-
-    try {
-      await supabase
-        .from('user_promo_uses')
-        .insert({ userId, promoId: activePromotion.id, rideId: rideId ?? null });
-
-      await supabase.rpc('increment_promo_use', { promo_id: activePromotion.id });
-    } catch (e) {
-      console.error('Error marking promo as used:', e);
-    } finally {
-      setActivePromoCode(null);
-      setActivePromotion(null);
-    }
-  }, [user, activePromotion]);
+  // Promo usage is recorded by the server when the ride is created (rides.create); the phone
+  // can no longer write it, and recording it here as well counted every promo ride twice.
+  // This only clears the promo from the screen once it has been used.
+  const markPromoAsUsed = useCallback(async (_code: string, _rideId?: string) => {
+    setActivePromoCode(null);
+    setActivePromotion(null);
+  }, []);
 
   const clearActivePromo = useCallback(() => {
     setActivePromoCode(null);

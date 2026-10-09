@@ -42,9 +42,11 @@ describe('rides.create with points', () => {
 describe('paying for the rest of the fare', () => {
   it('the wallet is debited fare minus the points part, never below zero', () => {
     expect(confirmPayment).toContain('pointsValueNGN');
+    // (the amounts are exercised for real in confirm-payment.test.ts)
     expect(confirmPayment).toContain(
-      'p_amount: -Math.max(0, Math.round(((ride.fare ?? 0) - (ride.pointsValueNGN ?? 0)) * 100) / 100),'
+      'const amountDue = Math.max(0, Math.round(((ride.fare ?? 0) - (ride.pointsValueNGN ?? 0)) * 100) / 100);'
     );
+    expect(confirmPayment).toContain('p_amount: -amountDue,');
   });
 });
 
