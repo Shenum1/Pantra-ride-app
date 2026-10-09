@@ -5,6 +5,7 @@ import {
   PanResponder,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -21,6 +22,8 @@ import VehicleImage from '@/assets/vehicles/VehicleImage';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
 import { useAuth } from '@/hooks/useAuthStore';
+import { usePoints } from '@/hooks/usePointsStore';
+import { calculatePointsCover } from '@/lib/points-config';
 import { Location } from '@/types';
 
 const COLLAPSED_OFFSET = 188;
@@ -63,6 +66,8 @@ export default function RideConfirmationScreen() {
     calculateRoute,
     clearRoute,
   } = useLocation();
+  const { balance: pointsBalance, loadPoints } = usePoints();
+  const [usePointsToggle, setUsePointsToggle] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const routeRequestRef = useRef<string | null>(null);
   const sheetOffset = useRef<Animated.Value>(new Animated.Value(COLLAPSED_OFFSET)).current;
@@ -96,6 +101,16 @@ export default function RideConfirmationScreen() {
     routeRequestRef.current = routeKey;
     void calculateRoute(pickupLocation, dropoffLocation);
   }, [calculateRoute, dropoffLocation, isCalculatingRoute, pickupLocation, routeInfo, router]);
+
+  useEffect(() => {
+    if (user?.id && !user.id.startsWith('test-')) void loadPoints(user.id);
+  }, [user?.id, loadPoints]);
+
+  // An estimate for display only: rides.create decides the real amount on the server.
+  const pointsCover = useMemo(
+    () => calculatePointsCover(estimatedPrice, pointsBalance),
+    [estimatedPrice, pointsBalance]
+  );
 
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 8,
@@ -189,7 +204,8 @@ export default function RideConfirmationScreen() {
     try {
       const ride = await requestRide(
         bookingFor === 'other' ? trimmedName : undefined,
-        bookingFor === 'other' ? trimmedPhone : undefined
+        bookingFor === 'other' ? trimmedPhone : undefined,
+        usePointsToggle && pointsCover.pointsUsed > 0
       );
       if (!ride) {
         Alert.alert('Sign in required', 'Please sign in to book a ride.');
@@ -339,6 +355,20 @@ export default function RideConfirmationScreen() {
                 <Text style={styles.surgeBadgeText}>
                   Prices are higher due to high demand ({surgeMultiplier.toFixed(1)}×)
                 </Text>
+              </View>
+            )}
+
+            {pointsCover.pointsUsed > 0 && (
+              <View style={styles.pointsCard} testID="ride-points-card">
+                <View style={styles.pointsText}>
+                  <Text style={styles.pointsTitle}>Pay with points</Text>
+                  <Text style={styles.pointsSub}>
+                    {usePointsToggle
+                      ? `Using ${pointsCover.pointsUsed} points (₦${pointsCover.valueNGN.toLocaleString()}). You pay about ₦${Math.max(0, estimatedPrice - pointsCover.valueNGN).toFixed(0)}.`
+                      : `You have ${pointsBalance} points. Up to half the fare can be paid with points.`}
+                  </Text>
+                </View>
+                <Switch value={usePointsToggle} onValueChange={setUsePointsToggle} testID="ride-points-switch" />
               </View>
             )}
 
@@ -611,6 +641,28 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 22,
     fontWeight: '800',
+  },
+  pointsCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: 'rgba(15,23,42,0.96)',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  pointsText: {
+    flex: 1,
+  },
+  pointsTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  pointsSub: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginTop: 2,
   },
   routeCard: {
     backgroundColor: 'rgba(15,23,42,0.78)',

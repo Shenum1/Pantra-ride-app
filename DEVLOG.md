@@ -103,6 +103,22 @@ _Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to
 
 > Entries from 2026-08-01 to 2026-10-06 were written on 2026-10-06 from the git history (the log had not been updated since 2026-07-31). Commit hashes are listed so details can be checked with `git show <hash>`.
 
+### 2026-10-09 — Reward points can pay up to half of a ride (pending: review, apply migration, ship backend + app)
+
+Rules set by the owner: 1 point = ₦16; points cover at most 50% of a fare, in whole points; Pantra funds the points part (drivers are paid as before); points are returned if the ride is cancelled or fully refunded.
+
+- **Server decides.** The app only asks "use my points" (`rides.create`, `usePoints`). The server reads the rider's balance from the ledger, applies `calculatePointsCover` (`lib/points-config.ts`), reserves the points (`reserve_ride_points`, serialised per rider) and stores `pointsUsed` / `pointsValueNGN` on the ride. If the ride can't be created the points are returned. Riders can't edit those columns.
+- **Wallet ride:** the wallet is debited fare − points value (`rides.confirmPayment`); driver earnings are unchanged.
+- **Cash ride:** the driver collects fare − points value in cash (driver trip screen says "Collect cash"); on completion Pantra credits the driver the points value in `driver_commission_ledger` (`points_credit`), so cash collected + ledger balance = fare − commission.
+- **Returns.** Cancelling a ride returns its points through a database trigger; a **full** refund of a completed ride returns them from the refund processor. A **partial refund returns none** — there is no rule yet for splitting points (owner decision needed).
+- **Receipts** show "Paid with points" and "You paid". The old client-side spending code and the unused `ride-checkout` screen are removed.
+- **Tests.** 27 real-database tests (pgTAP, `supabase/tests/database/points.test.sql`, run by `bunx supabase test db` and by CI) cover lockdown, task claims, the watch timer, reserve/cap/idempotency/cancel, cash and wallet settlement and refunds. Unit tests cover the calculation (including a property test) and receipts.
+- **Balance rule (fixed after independent review).** Earned points expire after 90 days but spent rows never did, so a spend whose source points expired later would swallow future earnings. Migration `…001100_points_balance_fifo`: `points_balance()` treats points as lots; a spend uses the earliest-expiring valid lots first, used-up points never expire again, and the balance is never negative. The app balance view, `reserve_ride_points` and `rides.create` all use it.  Cancellation fees still aren't charged to riders (open issue above).
+- **Review findings fixed:** failed return of reserved points is now logged; the driver screen shows "Checking…" instead of the full fare when the points part can't be read (it never guesses 0); wallet debit rounded to kobo.
+- **Returned points (owner decisions 2026-10-09, migration `…001200_points_return_rules`).** Returned points keep their original expiry; if that is under 7 days away (or past), they last exactly 7 days from the return. A refund returns points in proportion to the cumulative wallet refund against the original wallet payment, rounded down to whole points (`refund_ride_points(ride, refunded, original)`; cancellation = all). Points that came from several earned batches go back to the same batches. Driver trip screen: after the first 3 failed reads of the cash amount it shows "Unknown" and a "Tap to retry" button (background retries continue).
+- **Open:** no reconciliation report yet for points reserved by rides that don't exist (rare: server crash between reserving points and creating the ride).
+- **Release order.** Deploy backend, apply migrations `…000800`, `…000900`, `…001000`, `…001100`, `…001200` (in that order), release the new app build. Old app builds can't claim task rewards or use points after the migration; ad rewards keep working.
+
 ### 2026-10-08 — Rewards points locked down (pending: apply migration, ship backend)
 
 - **The problem.** Any signed-in user could write their own points rows (any amount, any type) or delete their history, and the app did exactly that for video/share task rewards, trusting the phone for the amount and the already-claimed check. Separately, the balance view ignored row rules and was readable by anyone holding the public anon key: every user ID with its points balance.
@@ -151,7 +167,7 @@ The new legal drafts in `docs/legal/` describe these features as working. Today 
 | # | Feature | What happens today | Evidence |
 |---|---|---|---|
 | 1 | Cancellation fees | ₦200 / ₦500 is recorded on the ride but never charged to the rider or paid to the driver. The driver app still shows it as earnings. | `lib/cancellation-calculator.ts`, `supabase-schema-platform-commission-config.sql:93-96`, `lib/firebase-driver-service.ts:445-448` |
-| 2 | Reward points at checkout | Points are deducted and a lower "You will pay" is shown, but the server fare is not reduced. | `app/ride-checkout.tsx:36-68` |
+| 2 | Reward points at checkout | **Fixed 2026-10-09:** the unused client-side checkout screen is removed; points now pay up to half of a fare, decided and applied by the server (`rides.create`, migration `…001000_points_pay_rides`). | `lib/points-config.ts` |
 | 3 | Emergency (SOS) call | Shows "Calling 911..." and calls nobody. Should dial 112 (Nigeria). | `app/safety.tsx:66-75` |
 | 4 | Trusted contacts, trip sharing, Safety Center | Placeholder pop-ups; the toggles are saved but do nothing. | `app/safety.tsx:77-82` |
 | 5 | Delete account | "Delete All My Data" shows a success message and deletes nothing. No deletion flow exists anywhere. | `app/privacy.tsx:76-83`, `supabase-schema-fk-deletion-hardening.sql:9-13` |

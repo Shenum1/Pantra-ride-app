@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { trpcClient } from './trpc';
+import { POINTS_TO_NGN } from './points-config';
 
 export interface RewardTask {
   id: string;
@@ -28,7 +29,6 @@ export interface PointsTransaction {
   createdAt: string;
 }
 
-const POINTS_TO_NGN = 16; // 500 pts = ₦8,000 → 1 pt = ₦16
 
 export const RewardsService = {
   POINTS_TO_NGN,
@@ -89,22 +89,5 @@ export const RewardsService = {
       .limit(50);
     if (error) throw new Error(error.message);
     return (data ?? []) as PointsTransaction[];
-  },
-
-  async redeemPoints(userId: string, points: number, rideId: string): Promise<void> {
-    const balance = await RewardsService.getPointsBalance(userId);
-    if (balance < points) throw new Error('Insufficient points balance');
-
-    const { error } = await supabase
-      .from('points_transactions')
-      .insert({
-        userId,
-        amount: -points,
-        type: 'ride_redemption',
-        referenceId: rideId,
-        description: `Ride payment — ${points} points (₦${RewardsService.pointsToNGN(points).toLocaleString()})`,
-        expiresAt: null,
-      });
-    if (error) throw new Error(error.message);
   },
 };

@@ -22,7 +22,7 @@ export default driverProcedure
 
     const { data: ride, error: rideError } = await db
       .from("rides")
-      .select("id, userId, driverId, fare, paymentMethod, status, paymentStatus")
+      .select("id, userId, driverId, fare, pointsValueNGN, paymentMethod, status, paymentStatus")
       .eq("id", input.rideId)
       .single();
 
@@ -61,7 +61,8 @@ export default driverProcedure
       const { error: debitError } = await db.rpc("add_wallet_transaction", {
         p_user_id: ride.userId,
         p_type: "ride_payment",
-        p_amount: -(ride.fare ?? 0),
+        // Reward points paid part of the fare (Pantra covers it), so the wallet only pays the rest.
+        p_amount: -Math.max(0, Math.round(((ride.fare ?? 0) - (ride.pointsValueNGN ?? 0)) * 100) / 100),
         p_description: "Ride payment",
         p_status: "completed",
         p_ride_id: ride.id,

@@ -35,6 +35,9 @@ export interface RideReceiptSource {
   waitingCharge?: number | string | null;
   cancellationFee?: number | string | null;
   promoCode?: string | null;
+  // Reward points the rider paid part of the fare with (set by the server).
+  pointsUsed?: number | string | null;
+  pointsValueNGN?: number | string | null;
   paymentMethod?: string | null;
   paymentStatus?: string | null;
   platformCommissionAmount?: number | string | null;
@@ -62,6 +65,9 @@ export interface RideReceipt {
   details: [string, string][];
   charges: ReceiptCharge[];
   total: number;
+  // Part of the total paid with reward points (trip receipts only); 0 when none.
+  pointsUsed: number;
+  pointsPaid: number;
   tip: number;
   // Driver receipts only, and only when the ride row has the settlement snapshot.
   commission: number | null;
@@ -182,6 +188,8 @@ export function buildRideReceipt(
     details,
     charges,
     total,
+    pointsUsed: kind === 'trip' ? Math.max(0, Math.round(num(ride.pointsUsed))) : 0,
+    pointsPaid: kind === 'trip' ? Math.min(total, Math.max(0, num(ride.pointsValueNGN))) : 0,
     tip: tipAmount > 0 ? tipAmount : 0,
     commission: perspective === 'driver' ? optionalNum(ride.platformCommissionAmount) : null,
     driverEarnings: perspective === 'driver' ? optionalNum(ride.driverEarningsAmount) : null,
@@ -192,6 +200,12 @@ export function buildRideReceipt(
 // (driver only) the commission split. Shared by the screen, text and PDF.
 export function receiptTotalRows(receipt: RideReceipt): [string, string][] {
   const rows: [string, string][] = [[receipt.kind === 'trip' ? 'Total' : 'Total charged', naira(receipt.total)]];
+  // What the rider actually pays in cash or from the wallet once points are applied.
+  const riderPays = receipt.perspective === 'rider' ? receipt.total - receipt.pointsPaid : receipt.total;
+  if (receipt.pointsPaid > 0) {
+    rows.push([`Paid with points (${receipt.pointsUsed} pts)`, `-${naira(receipt.pointsPaid)}`]);
+    if (receipt.perspective === 'rider') rows.push(['You paid', naira(riderPays)]);
+  }
   if (receipt.tip > 0) {
     rows.push([receipt.perspective === 'driver' ? 'Tip (100% yours)' : 'Tip', naira(receipt.tip)]);
   }
@@ -199,7 +213,7 @@ export function receiptTotalRows(receipt: RideReceipt): [string, string][] {
     rows.push(['Pantra commission', `-${naira(receipt.commission)}`]);
     rows.push(['Your earnings', naira(receipt.driverEarnings + receipt.tip)]);
   } else if (receipt.tip > 0) {
-    rows.push(['Total incl. tip', naira(receipt.total + receipt.tip)]);
+    rows.push(['Total incl. tip', naira(riderPays + receipt.tip)]);
   }
   return rows;
 }

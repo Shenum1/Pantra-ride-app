@@ -124,6 +124,10 @@ export interface RideRequest {
   driverLocation?: Location;
   cancelReason?: RideCancellationReason;
   cancelReasonDetails?: string;
+  // Reward points the rider used on this ride (set by the server). pointsValueNGN is
+  // the part of the fare they paid with points; they pay the rest in cash or wallet.
+  pointsUsed?: number;
+  pointsValueNGN?: number;
 }
 
 export type DriverVerificationStatus =

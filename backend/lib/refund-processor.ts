@@ -218,6 +218,40 @@ async function computeAndAttachDriverImpact(supabaseAdmin: SupabaseClient, refun
   }
 }
 
+// A refunded ride gives back the reward points the rider paid part of it with, in
+// proportion to the share of the ride's wallet payment refunded so far (rounded down to
+// whole points, cumulative across several partial refunds; all of it for a full refund).
+// The database does the arithmetic and is idempotent, so calling this again is harmless.
+// Best effort: the refund itself is already complete, so a failure is logged for an
+// admin to fix, never thrown.
+async function returnRidePointsForRefund(supabaseAdmin: SupabaseClient, refund: RefundRow): Promise<void> {
+  if (!refund.rideId) return;
+
+  const { data: done, error: sumError } = await supabaseAdmin
+    .from("refund_intents")
+    .select("amount, originalAmount")
+    .eq("rideId", refund.rideId)
+    .eq("originalPaymentType", "ride_wallet_payment")
+    .eq("status", "completed");
+
+  if (sumError || !done || done.length === 0) {
+    console.error(`refund ${refund.id}: refunded ride ${refund.rideId} but could not work out its points to return: ${sumError?.message ?? "no completed refunds found"}`);
+    return;
+  }
+
+  const refunded = done.reduce((sum, r) => sum + Number(r.amount), 0);
+  const original = Number(done[0].originalAmount);
+
+  const { error: pointsError } = await supabaseAdmin.rpc("refund_ride_points", {
+    p_ride_id: refund.rideId,
+    p_refunded: Math.round(refunded * 100) / 100,
+    p_original: original,
+  });
+  if (pointsError) {
+    console.error(`refund ${refund.id}: refunded ride ${refund.rideId} but could not return its points: ${pointsError.message}`);
+  }
+}
+
 async function executeWalletCreditRefund(supabaseAdmin: SupabaseClient, refund: RefundRow): Promise<void> {
   await setRefundStatus(supabaseAdmin, refund.id, "processing");
 
@@ -242,6 +276,8 @@ async function executeWalletCreditRefund(supabaseAdmin: SupabaseClient, refund: 
   await computeAndAttachDriverImpact(supabaseAdmin, refund);
   await supabaseAdmin.from("refund_intents").update({ walletTransactionId: txn?.id ?? null }).eq("id", refund.id);
   await setRefundStatus(supabaseAdmin, refund.id, "completed");
+
+  await returnRidePointsForRefund(supabaseAdmin, refund);
 }
 
 async function executeWalletTopupRefund(supabaseAdmin: SupabaseClient, refund: RefundRow): Promise<void> {

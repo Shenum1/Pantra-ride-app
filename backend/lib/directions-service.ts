@@ -45,8 +45,8 @@ export interface ServerDirectionsResult {
 // propagate as a plain error — the ride is never created, matching every
 // other "expected, retryable failure" in this route (e.g. its own insert
 // error) — rather than silently substituting an estimate for money purposes.
-// Both existing call sites (app/ride-confirmation.tsx, app/ride-checkout.tsx)
-// already wrap requestRide() in try/catch and show a "please try again"
+// The booking screen (app/ride-confirmation.tsx)
+// already wraps requestRide() in try/catch and show a "please try again"
 // alert, so this surfaces correctly with no client-side changes needed.
 export class DirectionsUnavailableError extends Error {
   constructor(message = 'Unable to calculate the route for this trip right now. Please try again.') {

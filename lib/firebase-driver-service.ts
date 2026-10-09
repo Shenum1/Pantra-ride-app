@@ -343,6 +343,23 @@ export class FirebaseDriverService {
     });
   }
 
+  // How much of an assigned ride the rider paid with reward points. The driver
+  // collects (fare - this) in cash on a cash ride, so a wrong answer would make
+  // the driver over-collect: this returns null when it can't be read (never 0
+  // as a guess) and the caller must treat null as "unknown".
+  static async getRidePointsValue(rideId: string): Promise<number | null> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data, error } = await supabase.from('rides').select('pointsValueNGN').eq('id', rideId).maybeSingle();
+      if (!error && data) {
+        const value = Number((data as { pointsValueNGN?: number | string | null }).pointsValueNGN ?? 0);
+        if (Number.isFinite(value)) return value;
+      }
+      if (error) console.error('getRidePointsValue failed:', error.message);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return null;
+  }
+
   // accept_ride atomically claims the ride for the signed-in (VERIFIED) driver
   // and is the first point the rider's/passenger's contact details are
   // revealed — to this driver only.

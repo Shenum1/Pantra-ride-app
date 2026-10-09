@@ -653,7 +653,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
     return mergedRide;
   }, []);
 
-  const requestRide = useCallback(async (passengerName?: string, passengerPhone?: string) => {
+  const requestRide = useCallback(async (passengerName?: string, passengerPhone?: string, usePoints?: boolean) => {
     if (!pickupLocation || !dropoffLocation || !user) {
       return null;
     }
@@ -688,6 +688,7 @@ export const [RideProvider, useRide] = createContextHook(() => {
       passengerName: passengerName || undefined,
       passengerPhone: passengerPhone || undefined,
       zoneFee: estimatedZoneFee || undefined,
+      usePoints: usePoints === true,
     });
 
     const rideId: string = created.id;
@@ -733,6 +734,8 @@ export const [RideProvider, useRide] = createContextHook(() => {
       sharedWith: isSharedRide ? sharedWith : undefined,
       passengerName: passengerName || undefined,
       passengerPhone: passengerPhone || undefined,
+      pointsUsed: created.pointsUsed ?? 0,
+      pointsValueNGN: created.pointsValueNGN ?? 0,
     };
 
     console.log('Created new ride request:', newRide);

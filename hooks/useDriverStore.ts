@@ -20,6 +20,9 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
   const [cashCommission, setCashCommission] = useState<CashCommissionStatus | null>(null);
   const cashRidesPausedRef = useRef(false);
   const [currentRide, setCurrentRide] = useState<RideRequestForDriver | null>(null);
+  // True once the first 3 reads of the ride's points part have failed: the trip screen then offers a manual retry
+  // (the background retries keep running either way).
+  const [pointsLookupFailed, setPointsLookupFailed] = useState(false);
   const [earnings, setEarnings] = useState<DriverEarnings[]>([]);
   const [stats, setStats] = useState<DriverStats>({
     totalRides: 0,
@@ -242,8 +245,13 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       // The pending-list entry carries no passenger identity/contact details;
       // the database only hands them to the driver who wins the accept.
       const accepted = await FirebaseDriverService.acceptRide(rideId, driverProfile.id);
+      // null = couldn't be read. The trip screen then shows the amount to collect as
+      // unknown (never the full fare) and we keep trying in the background.
+      const pointsValueNGN = await FirebaseDriverService.getRidePointsValue(rideId);
+      setPointsLookupFailed(pointsValueNGN === null);
       setCurrentRide({
         ...ride,
+        pointsValueNGN: pointsValueNGN ?? undefined,
         status: 'confirmed',
         price: ride.price,
         passenger: accepted.passenger,
@@ -251,6 +259,20 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
         passengerPhone: accepted.passengerPhone,
       });
       setRideRequests(prev => prev.filter(r => r.id !== rideId));
+
+      if (pointsValueNGN === null) {
+        void (async () => {
+          for (let attempt = 0; attempt < 10; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            const value = await FirebaseDriverService.getRidePointsValue(rideId);
+            if (value !== null) {
+              setCurrentRide(prev => (prev && prev.id === rideId ? { ...prev, pointsValueNGN: value } : prev));
+              setPointsLookupFailed(false);
+              return;
+            }
+          }
+        })();
+      }
 
       console.log('Ride accepted:', rideId);
     } catch (error) {
@@ -276,6 +298,17 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       console.error('Error declining ride:', error);
     }
   }, [driverProfile]);
+
+  // The driver's manual "Tap to retry" for the amount to collect. Hides itself on success.
+  const retryPointsLookup = useCallback(async () => {
+    const rideId = currentRide?.id;
+    if (!rideId) return;
+    const value = await FirebaseDriverService.getRidePointsValue(rideId);
+    if (value !== null) {
+      setCurrentRide(prev => (prev && prev.id === rideId ? { ...prev, pointsValueNGN: value } : prev));
+      setPointsLookupFailed(false);
+    }
+  }, [currentRide?.id]);
 
   const updateRideStatus = useCallback(async (status: 'in_progress' | 'completed' | 'cancelled') => {
     try {
@@ -375,6 +408,8 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     cashCommission,
     refreshCashCommission,
     currentRide,
+    pointsLookupFailed,
+    retryPointsLookup,
     earnings,
     stats,
     isLoading,
@@ -392,6 +427,8 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     cashCommission,
     refreshCashCommission,
     currentRide,
+    pointsLookupFailed,
+    retryPointsLookup,
     earnings,
     stats,
     isLoading,

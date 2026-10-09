@@ -41,3 +41,8 @@ jobs:
 
       - name: Lint database functions
         run: supabase db lint --local --level error
+
+      # Real-database tests (pgTAP, supabase/tests/database): points lockdown,
+      # task claims, paying rides with points, driver settlement.
+      - name: Database tests
+        run: supabase test db
