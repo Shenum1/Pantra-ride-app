@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Calendar, Plane, Shield } from 'lucide-react-native';
+import { Shield } from 'lucide-react-native';
 import Button from '@/components/Button';
 import Colors from '@/constants/colors';
 
@@ -33,36 +33,12 @@ export default function WelcomeScreen() {
         </View>
 
         <View style={styles.textContent}>
-          <Text style={styles.title}>Scheduled Rides — made for your convenience</Text>
+          <Text style={styles.title}>Rides made for your convenience</Text>
           <Text style={styles.description}>
-            There&apos;s no need to stress whether you&apos;ll get a ride, plan ahead of time and enjoy the peace of mind.
+            Book a ride in a few taps, see the fare up front, and follow your driver all the way to your door.
           </Text>
 
           <View style={styles.features}>
-            <View style={styles.feature}>
-              <View style={styles.featureIcon}>
-                <Calendar size={24} color={Colors.light.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureTitle}>Ideal for any occasion</Text>
-                <Text style={styles.featureDescription}>
-                  Dinner reservations? Doctor&apos;s appointment? Schedule a ride and arrive on time.
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.feature}>
-              <View style={styles.featureIcon}>
-                <Plane size={24} color={Colors.light.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureTitle}>Peace of mind anywhere you go</Text>
-                <Text style={styles.featureDescription}>
-                  Traveling abroad? Book rides up to 90 days in advance!
-                </Text>
-              </View>
-            </View>
-
             <View style={styles.feature}>
               <View style={styles.featureIcon}>
                 <Shield size={24} color={Colors.light.primary} />
@@ -82,7 +58,7 @@ export default function WelcomeScreen() {
         <Button
           title="Get Started"
           onPress={() => router.push('/role-selection')}
-          style={styles.scheduleButton}
+          style={styles.startButton}
         />
       </View>
     </SafeAreaView>
@@ -180,7 +156,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
-  scheduleButton: {
+  startButton: {
     width: '100%',
   },
 });
