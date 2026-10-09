@@ -762,10 +762,13 @@ export default function RideProgressScreen() {
                       <Text style={styles.secondaryButtonText}>Message</Text>
                     </Pressable>
                   ) : null}
-                  <Pressable style={styles.secondaryButton} onPress={handleCancelRide} testID="ride-progress-cancel-button">
-                    <Navigation2 size={16} color="#0F172A" />
-                    <Text style={styles.secondaryButtonText}>Cancel ride</Text>
-                  </Pressable>
+                  {/* Once the trip has started only the driver can end it early; the database ignores a rider's cancel from then on. */}
+                  {stage !== 'trip_in_progress' ? (
+                    <Pressable style={styles.secondaryButton} onPress={handleCancelRide} testID="ride-progress-cancel-button">
+                      <Navigation2 size={16} color="#0F172A" />
+                      <Text style={styles.secondaryButtonText}>Cancel ride</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               </View>
             ) : null}

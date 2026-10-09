@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { driverProcedure } from "../../../create-context";
 
@@ -38,6 +39,13 @@ export default driverProcedure
       return { status: false as const, message: "This ride has already been settled." };
     }
 
+    // Payment is only ever confirmed for a trip that is actually under way. Without this a
+    // driver could accept a ride, confirm payment (a wallet debit) and complete it without
+    // driving it. The database enforces the same rule (rides_enforce_status_machine).
+    if (ride.status !== "in-progress") {
+      return { status: false as const, message: "The trip has not started yet, so payment cannot be confirmed." };
+    }
+
     if (ride.paymentStatus === "paid") {
       return { status: true as const, message: "Already paid." };
     }
@@ -57,12 +65,16 @@ export default driverProcedure
       isWallet = method?.type === "wallet";
     }
 
+    // What this call took from the rider's wallet, so it can be given back if the ride can't be marked paid.
+    let debitedAmount = 0;
+
     if (isWallet) {
+      // Reward points paid part of the fare (Pantra covers it), so the wallet only pays the rest.
+      const amountDue = Math.max(0, Math.round(((ride.fare ?? 0) - (ride.pointsValueNGN ?? 0)) * 100) / 100);
       const { error: debitError } = await db.rpc("add_wallet_transaction", {
         p_user_id: ride.userId,
         p_type: "ride_payment",
-        // Reward points paid part of the fare (Pantra covers it), so the wallet only pays the rest.
-        p_amount: -Math.max(0, Math.round(((ride.fare ?? 0) - (ride.pointsValueNGN ?? 0)) * 100) / 100),
+        p_amount: -amountDue,
         p_description: "Ride payment",
         p_status: "completed",
         p_ride_id: ride.id,
@@ -77,6 +89,7 @@ export default driverProcedure
           : debitError.message;
         return { status: false as const, message };
       }
+      debitedAmount = amountDue;
     }
     // Cash rides: the driver confirming completion is treated as payment
     // received (the rider paid the driver directly, in person) — there is
@@ -96,6 +109,28 @@ export default driverProcedure
       .eq("id", ride.id);
 
     if (updateError) {
+      // The wallet was already debited but the ride can't be marked paid (for example it was cancelled
+      // at the same moment). Give the money back so the rider isn't charged for a payment that did not
+      // go through; a retry debits again. A fresh reference each time so two reversals never dedupe.
+      if (debitedAmount > 0) {
+        const { error: reversalError } = await db.rpc("add_wallet_transaction", {
+          p_user_id: ride.userId,
+          p_type: "refund",
+          p_amount: debitedAmount,
+          p_description: "Ride payment reversed: it could not be completed",
+          p_status: "completed",
+          p_ride_id: ride.id,
+          p_payment_method_id: null,
+          p_reference: `ride-payment-reversal:${ride.id}:${randomUUID()}`,
+          p_metadata: { reason: "payment_confirmation_failed", error: updateError.message },
+        });
+        if (reversalError) {
+          // Loud on purpose: the rider is out this money until someone returns it.
+          console.error(
+            `rides.confirmPayment: ride ${ride.id} could not be marked paid AND the wallet debit of ${debitedAmount} for user ${ride.userId} could NOT be reversed: ${reversalError.message}`
+          );
+        }
+      }
       return { status: false as const, message: updateError.message };
     }
 
