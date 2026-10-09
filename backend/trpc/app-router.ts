@@ -90,6 +90,7 @@ import driverVerificationBecomeDriverRoute from "./routes/driver-verification/be
 import claimAdRewardRoute from "./routes/rewards/claim-ad-reward/route";
 import getAdRewardStatusRoute from "./routes/rewards/get-ad-reward-status/route";
 import claimTaskRoute from "./routes/rewards/claim-task/route";
+import startTaskRoute from "./routes/rewards/start-task/route";
 import tipsCreateRoute from "./routes/payments/tips/create/route";
 import tipsGetForRideRoute from "./routes/payments/tips/get-for-ride/route";
 
@@ -259,6 +260,7 @@ export const appRouter = createTRPCRouter({
   rewards: createTRPCRouter({
     claimAdReward: claimAdRewardRoute,
     claimTask: claimTaskRoute,
+    startTask: startTaskRoute,
     getAdRewardStatus: getAdRewardStatusRoute,
   }),
 });

@@ -4,6 +4,8 @@ import { getServerDirections } from "../../../../lib/directions-service";
 import { calculateFareBreakdown, applyRideDiscounts } from "../../../../../lib/fare-calculator";
 import { calculateSurgeMultiplier, SurgeConfig } from "../../../../../lib/surge-calculator";
 import { calculateTrafficMultiplier, TrafficRule } from "../../../../../lib/traffic-multiplier";
+import { calculatePointsCover } from "../../../../../lib/points-config";
+import { randomUUID } from "node:crypto";
 import { TIER_RATES, TierId, TierRatesTable, ZONE_FEES, SHARED_RIDE_DISCOUNT_MULTIPLIER } from "../../../../../lib/pricing-config";
 
 // The single write path for creating a ride. Financial/distance fields are
@@ -35,6 +37,9 @@ export const rideCreateInputSchema = z.object({
   sharedWith: z.array(z.string()).optional(),
   paymentMethod: z.string().default("cash"),
   promoCode: z.string().optional(),
+  // Ask to pay part of the fare with reward points. The server decides how many
+  // (whole points, up to half the fare, never more than the balance).
+  usePoints: z.boolean().default(false),
   scheduledTime: z.string().datetime().optional(),
   passengerName: z.string().optional(),
   passengerPhone: z.string().optional(),
@@ -204,7 +209,34 @@ export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ct
 
   const fare = discountedMetered + breakdown.bookingFee + breakdown.serviceFee + zoneFee + priorityFee;
 
+  // Points: balance and cover are computed here from the ledger, never taken from the client.
+  const rideId = randomUUID();
+  let pointsUsed = 0;
+  let pointsValueNGN = 0;
+  if (input.usePoints) {
+    // points_balance applies the expiry / first-expiring-first rules, in the database.
+    const { data: balanceData, error: balanceError } = await db.rpc("points_balance", { p_user_id: ctx.userId });
+    if (balanceError) throw new Error(`Could not read your points balance: ${balanceError.message}`);
+    const balance = Math.max(0, Number(balanceData ?? 0));
+    ({ pointsUsed, valueNGN: pointsValueNGN } = calculatePointsCover(fare, balance));
+
+    if (pointsUsed > 0) {
+      const { error: reserveError } = await db.rpc("reserve_ride_points", {
+        p_user_id: ctx.userId,
+        p_ride_id: rideId,
+        p_points: pointsUsed,
+      });
+      if (reserveError) {
+        if (reserveError.message.includes("INSUFFICIENT_POINTS")) {
+          throw new Error("Your points balance changed. Please try booking again.");
+        }
+        throw new Error(reserveError.message);
+      }
+    }
+  }
+
   const insertPayload = {
+    id: rideId,
     userId: ctx.userId,
     pickupLocation: {
       lat: input.pickupLocation.latitude,
@@ -227,6 +259,8 @@ export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ct
     paymentStatus: "unpaid",
     fareSource: directions.fareSource,
     fare,
+    pointsUsed,
+    pointsValueNGN,
     baseFare: breakdown.base,
     minFare: tierRates[input.rideType as TierId].minFare,
     maxFare: fare,
@@ -251,7 +285,19 @@ export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ct
   };
 
   const { data: created, error } = await db.from("rides").insert(insertPayload).select("*").single();
-  if (error) throw new Error(error.message);
+  if (error) {
+    // The points were reserved for a ride that never got created: give them back.
+    if (pointsUsed > 0) {
+      const { error: returnError } = await db.rpc("refund_ride_points", { p_ride_id: rideId });
+      if (returnError) {
+        // Loud on purpose: the rider is out these points until someone returns them.
+        console.error(
+          `rides.create: ride ${rideId} was not created but its ${pointsUsed} points for user ${ctx.userId} could NOT be returned: ${returnError.message}`
+        );
+      }
+    }
+    throw new Error(error.message);
+  }
 
   if (promoId) {
     await db.from("user_promo_uses").insert({ userId: ctx.userId, promoId, rideId: created.id });

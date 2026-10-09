@@ -36,6 +36,7 @@ export default function TaskDetailScreen() {
 
   const isCompleted = task ? completedTaskIds.includes(task.id) : false;
   const minSeconds = task?.minWatchSeconds ?? 120;
+  const [required, setRequired] = useState(minSeconds);
 
   useEffect(() => {
     return () => {
@@ -43,13 +44,22 @@ export default function TaskDetailScreen() {
     };
   }, []);
 
-  const startTimer = () => {
+  // requiredSeconds / remainingSeconds come from the server's clock (rewards.startTask),
+  // so a rider who comes back later resumes where the server says they are.
+  const startTimer = (requiredSeconds: number, remainingSeconds: number) => {
     const now = Date.now();
+    const alreadyWaited = Math.max(0, requiredSeconds - remainingSeconds);
     setStartedAt(now);
+    setRequired(requiredSeconds);
+    setElapsed(alreadyWaited);
+    if (remainingSeconds <= 0) {
+      setCanClaim(true);
+      return;
+    }
     timerRef.current = setInterval(() => {
-      const secs = Math.floor((Date.now() - now) / 1000);
+      const secs = alreadyWaited + Math.floor((Date.now() - now) / 1000);
       setElapsed(secs);
-      if (secs >= minSeconds) {
+      if (secs >= requiredSeconds) {
         setCanClaim(true);
         if (timerRef.current) clearInterval(timerRef.current);
       }
@@ -62,10 +72,11 @@ export default function TaskDetailScreen() {
       return;
     }
     try {
+      const { requiredSeconds, remainingSeconds } = await RewardsService.startTask(task.id);
       await Linking.openURL(task.url);
-      startTimer();
+      startTimer(requiredSeconds, remainingSeconds);
     } catch {
-      Alert.alert('Error', 'Could not open the video link.');
+      Alert.alert('Error', 'Could not start the task. Check your connection and try again.');
     }
   };
 
@@ -114,7 +125,7 @@ export default function TaskDetailScreen() {
     );
   }
 
-  const remaining = Math.max(0, minSeconds - elapsed);
+  const remaining = Math.max(0, required - elapsed);
   const timerLabel = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;
 
   return (

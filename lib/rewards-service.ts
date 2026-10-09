@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { trpcClient } from './trpc';
+import { POINTS_TO_NGN } from './points-config';
 
 export interface RewardTask {
   id: string;
@@ -28,7 +29,6 @@ export interface PointsTransaction {
   createdAt: string;
 }
 
-const POINTS_TO_NGN = 16; // 500 pts = ₦8,000 → 1 pt = ₦16
 
 export const RewardsService = {
   POINTS_TO_NGN,
@@ -59,6 +59,11 @@ export const RewardsService = {
     return (data ?? []).map((r: any) => r.taskId as string);
   },
 
+  /** Starts the server-side watch clock. Returns the seconds still to wait. */
+  async startTask(taskId: string): Promise<{ requiredSeconds: number; remainingSeconds: number }> {
+    return trpcClient.rewards.startTask.mutate({ taskId });
+  },
+
   /** Claims a video/share task. The server decides the points and enforces all limits. */
   async claimTaskReward(taskId: string): Promise<number> {
     const { pointsEarned } = await trpcClient.rewards.claimTask.mutate({ taskId });
@@ -84,22 +89,5 @@ export const RewardsService = {
       .limit(50);
     if (error) throw new Error(error.message);
     return (data ?? []) as PointsTransaction[];
-  },
-
-  async redeemPoints(userId: string, points: number, rideId: string): Promise<void> {
-    const balance = await RewardsService.getPointsBalance(userId);
-    if (balance < points) throw new Error('Insufficient points balance');
-
-    const { error } = await supabase
-      .from('points_transactions')
-      .insert({
-        userId,
-        amount: -points,
-        type: 'ride_redemption',
-        referenceId: rideId,
-        description: `Ride payment — ${points} points (₦${RewardsService.pointsToNGN(points).toLocaleString()})`,
-        expiresAt: null,
-      });
-    if (error) throw new Error(error.message);
   },
 };

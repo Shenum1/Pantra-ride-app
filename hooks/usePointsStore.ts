@@ -40,13 +40,6 @@ export const [PointsProvider, usePoints] = createContextHook(() => {
     setTransactions(history);
   }, []);
 
-  const redeemForRide = useCallback(async (userId: string, points: number, rideId: string) => {
-    await RewardsService.redeemPoints(userId, points, rideId);
-    setBalance(prev => prev - points);
-    const history = await RewardsService.getPointsHistory(userId);
-    setTransactions(history);
-  }, []);
-
   const loadAdRewardStatus = useCallback(async () => {
     try {
       const status = await trpcClient.rewards.getAdRewardStatus.query();
@@ -78,7 +71,6 @@ export const [PointsProvider, usePoints] = createContextHook(() => {
     adRewardsRemainingToday,
     loadPoints,
     claimReward,
-    redeemForRide,
     loadAdRewardStatus,
     claimAdReward,
   };

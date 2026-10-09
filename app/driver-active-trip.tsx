@@ -36,7 +36,7 @@ import { Location } from '@/types';
 type DriverTripStatus = 'heading_to_pickup' | 'at_pickup' | 'in_progress';
 
 export default function DriverActiveTrip() {
-  const { currentRide, updateRideStatus, updateLocation } = useDriverStore();
+  const { currentRide, updateRideStatus, updateLocation, pointsLookupFailed, retryPointsLookup } = useDriverStore();
   const { driver } = useDriverAuth();
   const [driverLocation, setDriverLocation] = useState<Location | null>(null);
   const [driverLocationError, setDriverLocationError] = useState<string | null>(null);
@@ -547,10 +547,23 @@ export default function DriverActiveTrip() {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
-            <Text style={styles.statLabel}>Fare</Text>
-            <Text style={styles.statValue}>₦{(currentRide.price || 0).toFixed(0)}</Text>
+            {/* Cash ride paid partly with rider points: the driver collects only the rest; Pantra credits the points part.
+                While the points part is unknown (lookup failed) we show "Checking" rather than the full fare. */}
+            <Text style={styles.statLabel}>{currentRide.paysWith === 'cash' && (currentRide.pointsValueNGN === undefined || currentRide.pointsValueNGN > 0) ? 'Collect cash' : 'Fare'}</Text>
+            <Text style={styles.statValue}>
+              {currentRide.paysWith === 'cash' && currentRide.pointsValueNGN === undefined
+                ? (pointsLookupFailed ? 'Unknown' : 'Checking…')
+                : `₦${Math.max(0, (currentRide.price || 0) - (currentRide.paysWith === 'cash' ? (currentRide.pointsValueNGN ?? 0) : 0)).toFixed(0)}`}
+            </Text>
           </View>
         </View>
+
+        {/* Shown only after the first 3 attempts to read how much cash to collect have failed. */}
+        {currentRide.paysWith === 'cash' && currentRide.pointsValueNGN === undefined && pointsLookupFailed && (
+          <Pressable onPress={() => void retryPointsLookup()} style={styles.pointsRetry} testID="driver-points-retry">
+            <Text style={styles.pointsRetryText}>Couldn&apos;t load the cash amount. Tap to retry.</Text>
+          </Pressable>
+        )}
 
         <View style={styles.liveStatusCard}>
           <MapPin size={16} color={Colors.light.primary} />
@@ -710,6 +723,21 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#0F172A',
     padding: 16,
+  },
+  pointsRetry: {
+    alignSelf: 'stretch',
+    marginHorizontal: 16,
+    marginTop: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 149, 0, 0.15)',
+  },
+  pointsRetryText: {
+    color: '#FF9500',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   statItem: {
     flex: 1,
