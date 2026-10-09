@@ -369,11 +369,6 @@ export default function AccountScreen() {
             title="Communication preferences"
             onPress={() => router.push('/communication-preferences')}
           />
-          <MenuItem
-            icon={<Calendar size={20} color={colors.text} />}
-            title="Calendars"
-            onPress={() => router.push('/calendars')}
-          />
         </View>
 
         <Text style={[styles.sectionTitle, { color: colors.text, backgroundColor: colors.background }]}>Legal</Text>

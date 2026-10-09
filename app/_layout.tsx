@@ -72,7 +72,6 @@ function RootLayoutNav() {
         <Stack.Screen name="search" options={{ title: "Set destination" }} />
         <Stack.Screen name="ride-confirmation" options={{ title: "Ride Details" }} />
         <Stack.Screen name="ride-progress" options={{ title: "Your Ride", headerShown: false }} />
-        <Stack.Screen name="schedule-ride" options={{ title: "Schedule Ride" }} />
         <Stack.Screen name="payment-methods" options={{ title: "Payment Methods" }} />
         <Stack.Screen name="saved-locations" options={{ title: "Saved Places" }} />
         <Stack.Screen name="add-location" options={{ title: "Add Location" }} />
@@ -101,7 +100,6 @@ function RootLayoutNav() {
         <Stack.Screen name="about" options={{ title: "About" }} />
         <Stack.Screen name="language" options={{ title: "Language" }} />
         <Stack.Screen name="communication-preferences" options={{ title: "Communication" }} />
-        <Stack.Screen name="calendars" options={{ title: "Calendars" }} />
         <Stack.Screen name="enter-promo-code" options={{ title: "Enter Promo Code" }} />
         <Stack.Screen name="my-rides" options={{ title: "My Rides" }} />
         <Stack.Screen name="wallet" options={{ title: "My Wallet" }} />

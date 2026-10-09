@@ -1,6 +1,7 @@
 {
   "buildCommand": "bunx expo export -p web",
   "outputDirectory": "dist/client",
+  "regions": ["dub1"],
   "functions": {
     "api/index.ts": {
       "runtime": "@vercel/node@5.1.8",

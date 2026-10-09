@@ -103,6 +103,13 @@ _Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to
 
 > Entries from 2026-08-01 to 2026-10-06 were written on 2026-10-06 from the git history (the log had not been updated since 2026-07-31). Commit hashes are listed so details can be checked with `git show <hash>`.
 
+### 2026-10-09 — Scheduled rides hidden for launch; backend moved to the Dublin region
+
+- **Why.** Scheduled rides did not work: the server stored `scheduledTime` but nothing dispatched the ride at that time, every online driver was pushed the request at once, drivers saw it as an immediate request (the driver app never reads `scheduledTime`) and could accept and start navigating immediately, and the rider app told the rider "Your scheduled ride has been locked in" with no driver assigned.
+- **Done (owner decision).** `rides.create` refuses a booking with a `scheduledTime` ("Scheduled rides are not available yet"); the schedule screen and its route are removed; the welcome copy no longer promises scheduling; and the Account → **Calendars** screen was removed because it was entirely mock (hard-coded "Google Calendar connected, last synced 2 hours ago", buttons that only showed pop-ups).
+- **To build it properly later:** keep a scheduled ride hidden from drivers until about 30 minutes before pickup, do not notify at booking, show the rider an honest message, run a scheduled job (Vercel Cron is enough) that notifies drivers when a ride enters the window, and decide what happens if nobody accepts in time.
+- **Region.** `vercel.json` now sets `"regions": ["dub1"]` so the backend runs in Dublin next to the Supabase database (AWS eu-west-1) instead of Vercel's default US East. Check Project Settings → Functions → Region in the Vercel dashboard after the first deploy; the dashboard may need to agree.
+
 ### 2026-10-09 — Direct-write audit: holes found and closed (pending: review, apply migration `…001300`)
 
 Audit of every table the phones can write to, with each attack tried against a copy of production's schema. Row security is on for all 52 tables; self-admin, self-verification, plate/licence edits, wallet credit, earnings edits and fare edits were already blocked. What worked, and the fix (migration `…001300_harden_direct_writes`, tests in `supabase/tests/database/direct_writes.test.sql`):

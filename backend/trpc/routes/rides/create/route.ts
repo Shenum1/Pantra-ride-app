@@ -1,3 +1,4 @@
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { authedProcedure } from "../../../create-context";
 import { getServerDirections } from "../../../../lib/directions-service";
@@ -85,6 +86,13 @@ const VALID_ZONE_FEES = new Set<number>([
 
 export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ctx, input }) => {
   const db = ctx.supabaseAdmin;
+
+  // Scheduled rides are not available yet: nothing would dispatch the ride at its time, and drivers would see
+  // it as an immediate request. The field stays in the input so older app builds get a clear message
+  // instead of a validation error. (Owner decision 2026-10-09: hidden for launch.)
+  if (input.scheduledTime) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Scheduled rides are not available yet. Please book your ride for now." });
+  }
 
   const [tierRow, surgeRow, trafficRows, priorityRow, onlineDriversRes, pendingRidesRes] = await Promise.all([
     db.from("pricing_tier_config").select("id, base, perKm, perMin, minFare, bookingFee, serviceFee").eq("id", input.rideType).maybeSingle(),
