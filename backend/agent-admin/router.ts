@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../lib/supabase-admin";
-import { defaultVerifyAdmin, requireAdminSession, requireAgentKey, type VerifyAdmin } from "./auth";
+import { AGENT_KEY_QUERY_PARAM, defaultVerifyAdmin, requireAdminSession, requireAgentKey, type VerifyAdmin } from "./auth";
 import { agentInputSchema, defaultToolRegistry, getToolDefinitions, RATIONALE_FIELD, type ToolRegistry } from "./registry";
 import { AgentActionConflictError, AgentActionNotFoundError, enqueueAction, getAction, resolveAction } from "./hitl";
 
@@ -42,6 +42,63 @@ export function createAgentAdminRouter(deps: AgentAdminRouterDeps) {
   const router = new Hono<{ Variables: { adminUserId: string } }>();
 
   router.get("/tools", agentAuth, (c) => c.json({ tools: getToolDefinitions(registry) }));
+
+  // Browser-openable, READ-ONLY access: GET /read/<tool>?key=...&limit=5.
+  // Only read tools are reachable here (write tools 404), so a link can never
+  // queue anything. Query values are parsed as JSON when possible (limit=5 ->
+  // 5, status=open -> "open").
+  const linkAuth = requireAgentKey(deps.getSecret, { allowQueryKey: true });
+  const noStore = (c: { header(name: string, value: string): void }) => {
+    c.header("Cache-Control", "no-store");
+    c.header("Referrer-Policy", "no-referrer"); // don't leak the ?key= in Referer headers
+  };
+
+  router.get("/read", linkAuth, (c) => {
+    noStore(c);
+    const base = new URL(c.req.url).origin + c.req.path;
+    return c.json({
+      note: "Read-only tools. Open <url>/<tool>?key=YOUR_KEY&<param>=<value>. Writes are not available here.",
+      tools: getToolDefinitions(registry)
+        .filter((t) => !t.requires_approval)
+        .map((t) => ({ name: t.name, description: t.description, url: `${base}/${t.name}`, parameters: t.input_schema })),
+    });
+  });
+
+  router.get("/read/:name", linkAuth, async (c) => {
+    noStore(c);
+    const db = deps.db;
+    if (!db) return c.json({ error: "Database is not configured (SUPABASE_SERVICE_ROLE_KEY unset)." }, 503);
+
+    const tool = registry.get(c.req.param("name"));
+    if (!tool || tool.kind !== "read") {
+      return c.json({ error: `'${c.req.param("name")}' is not a read-only tool. GET /read lists the available ones.` }, 404);
+    }
+
+    const params = { ...c.req.query() };
+    delete params[AGENT_KEY_QUERY_PARAM];
+    const coerced = Object.fromEntries(
+      Object.entries(params).map(([k, v]) => {
+        try {
+          return [k, JSON.parse(v)];
+        } catch {
+          return [k, v];
+        }
+      })
+    );
+
+    const schema = agentInputSchema(tool);
+    const parsed = schema.safeParse(coerced);
+    // A string param that happens to look like JSON ("123") fails the coerced
+    // attempt; retry with the raw strings before giving up.
+    const result = parsed.success ? parsed : schema.safeParse(params);
+    if (!result.success) return c.json({ error: "Invalid input.", issues: issues(result.error) }, 400);
+
+    try {
+      return c.json({ data: await tool.run(db, result.data) });
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 422);
+    }
+  });
 
   router.post("/tools/:name", agentAuth, async (c) => {
     const db = deps.db;

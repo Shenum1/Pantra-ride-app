@@ -19,7 +19,15 @@ export function agentKeyMatches(provided: string, secret: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-export function requireAgentKey(getSecret: () => string | null = () => getAgentSecret()): MiddlewareHandler {
+export const AGENT_KEY_QUERY_PARAM = "key";
+
+// allowQueryKey additionally accepts ?key=... — ONLY for the browser-openable
+// read-only GET routes, where a browser can't set the header. A key in a URL
+// ends up in history and server logs, so no write route ever uses this.
+export function requireAgentKey(
+  getSecret: () => string | null = () => getAgentSecret(),
+  opts: { allowQueryKey?: boolean } = {}
+): MiddlewareHandler {
   return async (c, next) => {
     const secret = getSecret();
     // Fail closed: an unset or too-short key disables the agent API entirely
@@ -27,9 +35,12 @@ export function requireAgentKey(getSecret: () => string | null = () => getAgentS
     if (!secret) {
       return c.json({ error: "Agent admin API is not configured (AGENT_ADMIN_SECRET_KEY unset or shorter than 32 characters)." }, 503);
     }
-    const provided = c.req.header(AGENT_KEY_HEADER) ?? "";
+    const provided = c.req.header(AGENT_KEY_HEADER) || (opts.allowQueryKey ? (c.req.query(AGENT_KEY_QUERY_PARAM) ?? "") : "");
     if (!provided || !agentKeyMatches(provided, secret)) {
-      return c.json({ error: `Invalid or missing ${AGENT_KEY_HEADER} header.` }, 401);
+      return c.json(
+        { error: `Invalid or missing key. Send the ${AGENT_KEY_HEADER} header${opts.allowQueryKey ? ` or ?${AGENT_KEY_QUERY_PARAM}=` : ""}.` },
+        401
+      );
     }
     await next();
   };
