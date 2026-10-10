@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { driverProcedure } from "../../../../create-context";
+import { enforceRateLimit } from "../../../../../lib/rate-limit";
 import { encryptAccountNumber, accountNumberLast4 } from "../../../../../lib/bank-account-crypto";
 import { resolveBankCode } from "../../../../../lib/nigerian-banks";
 import { createPaystackTransferRecipient } from "../../../../../lib/payout-provider";
@@ -17,6 +18,8 @@ export default driverProcedure
   )
   .mutation(async ({ ctx, input }) => {
     const db = ctx.supabaseAdmin;
+    // Each attempt can call the bank-name lookup, so cap guessing at account numbers.
+    await enforceRateLimit(db, `bank-add:${ctx.driverUserId}`, 10, 3600);
 
     if (input.isDefault) {
       await db.from("driver_bank_accounts").update({ isDefault: false }).eq("driverId", ctx.driverId);

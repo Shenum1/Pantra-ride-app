@@ -63,6 +63,22 @@ export async function handleGoogleMapsProxy(req: Request, deps: GoogleMapsProxyD
     return json({ status: "REQUEST_DENIED", error_message: "Invalid or expired session." }, 401);
   }
 
+  // Every call here is billed by Google, so one signed-in account cannot be allowed to run it in a loop.
+  // Autocomplete is chatty (a call per keystroke), hence a per-minute allowance rather than a small hourly one.
+  // Fails open: a broken counter must not take address search down.
+  try {
+    const { data: allowed, error: limitError } = await supabaseAdmin.rpc("rate_limit_hit", {
+      p_key: `google-maps:${userData.user.id}`,
+      p_limit: 120,
+      p_window_seconds: 60,
+    });
+    if (!limitError && allowed === false) {
+      return json({ status: "OVER_QUERY_LIMIT", error_message: "Too many requests. Please slow down." }, 429);
+    }
+  } catch (e) {
+    console.error("Rate limiter unavailable for the Google Maps proxy, letting the request through:", e);
+  }
+
   const requestUrl = new URL(req.url);
   const rawPath = requestUrl.searchParams.get("path");
   if (!rawPath) {

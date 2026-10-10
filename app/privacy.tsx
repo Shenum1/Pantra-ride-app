@@ -1,5 +1,5 @@
-import { Eye, MapPin, MessageSquare, Database, ShieldCheck } from "lucide-react-native";
-import React from "react";
+import { Eye, MapPin, MessageSquare, Download, Trash2, ShieldCheck } from "lucide-react-native";
+import React, { useState } from "react";
 import {
   Pressable,
   Platform,
@@ -17,6 +17,7 @@ import { useRiderPreferences } from '@/hooks/useRiderPreferences';
 import { usePrivacyStore } from '@/hooks/usePrivacyStore';
 import { showAdPrivacyOptions } from '@/lib/ad-consent';
 import { RiderPreferences } from '@/lib/rider-account-service';
+import { AccountService } from '@/lib/account-service';
 
 interface PrivacyOptionProps {
   icon: React.ReactElement;
@@ -83,11 +84,22 @@ export default function PrivacyScreen() {
     });
   };
 
-  // Self-service data export and account deletion aren't built yet (DEVLOG
-  // 2026-10-06, items 5-6), so these requests go to support instead of
-  // pretending to run.
-  const handleDataRequest = () => {
-    router.push('/support');
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadData = async () => {
+    setDownloading(true);
+    try {
+      await AccountService.downloadMyData();
+    } catch (error) {
+      console.error('Could not download account data:', error);
+      Alert.alert('Could not download your data', 'Please check your connection and try again in a moment.');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    router.push('/delete-account');
   };
 
   const handlePrivacyPolicy = () => {
@@ -169,12 +181,25 @@ export default function PrivacyScreen() {
               <Text style={[styles.actionButtonText, { color: colors.text }]}>Privacy Policy</Text>
             </Pressable>
             
-            <Pressable 
+            <Pressable
+              testID="privacy-download-data"
               style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={handleDataRequest}
+              onPress={handleDownloadData}
+              disabled={downloading}
             >
-              <Database size={20} color={colors.primary} />
-              <Text style={[styles.actionButtonText, { color: colors.text }]}>Request My Data or Account Deletion</Text>
+              <Download size={20} color={colors.primary} />
+              <Text style={[styles.actionButtonText, { color: colors.text }]}>
+                {downloading ? 'Preparing your data…' : 'Download My Data'}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              testID="privacy-delete-account"
+              style={[styles.actionButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={handleDeleteAccount}
+            >
+              <Trash2 size={20} color={colors.danger} />
+              <Text style={[styles.actionButtonText, { color: colors.danger }]}>Delete My Account</Text>
             </Pressable>
           </View>
           

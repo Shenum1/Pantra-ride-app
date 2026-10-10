@@ -1,6 +1,7 @@
 import React, { Component, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { AlertCircle } from 'lucide-react-native';
+import { reportError } from '@/lib/monitoring';
 
 interface Props {
   children: ReactNode;
@@ -30,6 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     console.error('Error caught by boundary:', error, errorInfo);
+    reportError(error, { componentStack: errorInfo.componentStack });
   }
 
   handleReset = (): void => {

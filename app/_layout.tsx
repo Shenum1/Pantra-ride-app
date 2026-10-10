@@ -25,6 +25,7 @@ import { ThemeProvider } from "@/hooks/useThemeStore";
 import { WeatherProvider } from "@/hooks/useWeatherStore";
 import { WalletProvider } from "@/hooks/useWalletStore";
 import { NotificationService } from "@/lib/notification-service";
+import { initMonitoring, wrapRootComponent } from "@/lib/monitoring";
 
 import { trpc, trpcClient } from "@/lib/trpc";
 
@@ -106,6 +107,7 @@ function RootLayoutNav() {
         <Stack.Screen name="wallet-add-money" options={{ title: "Add Money" }} />
         <Stack.Screen name="wallet-transaction-details" options={{ title: "Transaction Details" }} />
         <Stack.Screen name="ride-receipt" options={{ title: "Receipt" }} />
+        <Stack.Screen name="delete-account" options={{ title: "Delete Account" }} />
         <Stack.Screen name="backend-test" options={{ title: "Backend Test" }} />
 
       </Stack>
@@ -115,7 +117,9 @@ function RootLayoutNav() {
   );
 }
 
-export default function RootLayout() {
+initMonitoring();
+
+function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
     
@@ -177,3 +181,5 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default wrapRootComponent(RootLayout);

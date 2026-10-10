@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { authedProcedure } from "../../../create-context";
 import { getServerDirections } from "../../../../lib/directions-service";
+import { enforceRateLimit } from "../../../../lib/rate-limit";
 import { calculateFareBreakdown, applyRideDiscounts } from "../../../../../lib/fare-calculator";
 import { calculateSurgeMultiplier, SurgeConfig } from "../../../../../lib/surge-calculator";
 import { calculateTrafficMultiplier, TrafficRule } from "../../../../../lib/traffic-multiplier";
@@ -93,6 +94,9 @@ export default authedProcedure.input(rideCreateInputSchema).mutation(async ({ ct
   if (input.scheduledTime) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Scheduled rides are not available yet. Please book your ride for now." });
   }
+
+  // A script or a stuck retry loop could otherwise flood drivers with requests and burn the Directions quota.
+  await enforceRateLimit(db, `rides-create:${ctx.userId}`, 10, 600, "You're booking rides too quickly. Please wait a few minutes and try again.");
 
   const [tierRow, surgeRow, trafficRows, priorityRow, onlineDriversRes, pendingRidesRes] = await Promise.all([
     db.from("pricing_tier_config").select("id, base, perKm, perMin, minFare, bookingFee, serviceFee").eq("id", input.rideType).maybeSingle(),

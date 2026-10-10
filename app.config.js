@@ -41,6 +41,14 @@ if (!resolvedPlugins.some((p) => (Array.isArray(p) ? p[0] : p) === "expo-trackin
   resolvedPlugins.push(["expo-tracking-transparency", { userTrackingPermission: TRACKING_USAGE_DESCRIPTION }]);
 }
 
+// Crash reporting (lib/monitoring.ts). Source maps are uploaded at build time only when SENTRY_AUTH_TOKEN,
+// SENTRY_ORG and SENTRY_PROJECT are set on the build; without them the app still reports, just with
+// unreadable (minified) stack traces. Needs a new native build.
+resolvedPlugins.push([
+  "@sentry/react-native/expo",
+  { organization: process.env.SENTRY_ORG, project: process.env.SENTRY_PROJECT },
+]);
+
 module.exports = ({ config }) => ({
   ...config,
   ...appJson.expo,

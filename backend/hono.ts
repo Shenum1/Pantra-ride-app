@@ -11,6 +11,7 @@ import { isFlutterwaveRefundWebhookShape, processFlutterwaveRefundCallback, proc
 import { checkPaymentEnvironmentConsistency } from "./lib/payment-env-check";
 import { agentAdminRouter } from "./agent-admin/router";
 import { handleGoogleMapsProxy } from "./lib/google-maps-proxy";
+import { flushErrorReports, reportServerError } from "./lib/error-reporting";
 
 checkPaymentEnvironmentConsistency();
 
@@ -19,6 +20,19 @@ const app = new Hono();
 
 // Enable CORS for all routes
 app.use("*", cors());
+
+// A serverless function can be frozen the moment it answers, so any failure
+// report still in flight is sent before the response goes out.
+app.use("*", async (_c, next) => {
+  await next();
+  await flushErrorReports();
+});
+
+app.onError((err, c) => {
+  console.error(`Unhandled error on ${c.req.method} ${c.req.path}:`, err);
+  reportServerError(err, { where: `${c.req.method} ${c.req.path}` });
+  return c.text("Internal Server Error", 500);
+});
 
 // Web-only Google Maps proxy: session-authenticated, exact-path allowlist —
 // see backend/lib/google-maps-proxy.ts.
@@ -209,6 +223,13 @@ app.use(
     endpoint: "/api/trpc",
     router: appRouter,
     createContext,
+    // Only real server faults are reported; a wrong password, a bad input or a
+    // rate-limit refusal is the caller's doing, not an outage.
+    onError: ({ error, path }) => {
+      if (error.code === "INTERNAL_SERVER_ERROR") {
+        reportServerError(error.cause ?? error, { where: path ? `trpc ${path}` : "trpc" });
+      }
+    },
   })
 );
 
