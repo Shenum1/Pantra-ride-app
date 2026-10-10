@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { driverProcedure } from "../../../../create-context";
+import { enforceRateLimit } from "../../../../../lib/rate-limit";
 import { initiateAutomaticPayout, moveToManualReview } from "../../../../../lib/payout-processor";
 import { DRIVER_PAYOUT_CONFIG } from "../../../../../../lib/pricing-config";
 
@@ -23,6 +24,7 @@ export default driverProcedure
   )
   .mutation(async ({ ctx, input }) => {
     const db = ctx.supabaseAdmin;
+    await enforceRateLimit(db, `payout-request:${ctx.driverUserId}`, 5, 3600);
 
     const amount = Math.round(input.amount * 100) / 100;
     if (amount < DRIVER_PAYOUT_CONFIG.minAmount) {

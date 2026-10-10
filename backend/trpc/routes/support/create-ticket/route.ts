@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authedProcedure } from "../../../create-context";
+import { enforceRateLimit } from "../../../../lib/rate-limit";
 
 export default authedProcedure
   .input(
@@ -12,6 +13,7 @@ export default authedProcedure
   )
   .mutation(async ({ ctx, input }) => {
     const db = ctx.supabaseAdmin;
+    await enforceRateLimit(db, `support-ticket:${ctx.userId}`, 5, 3600);
 
     const { data: profile, error: profileError } = await db
       .from("users")

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authedProcedure } from "../../../../create-context";
 import { createFlutterwaveCheckout } from "../../../../../lib/flutterwave-checkout";
+import { enforceRateLimit } from "../../../../../lib/rate-limit";
 import { WALLET_TOPUP_CONFIG } from "../../../../../../lib/pricing-config";
 
 // A rider's wallet top-up checkout. Driver commission payments use the same
@@ -17,6 +18,7 @@ export default authedProcedure
     })
   )
   .mutation(async ({ ctx, input }) => {
+    await enforceRateLimit(ctx.supabaseAdmin, `topup-init:${ctx.userId}`, 10, 600);
     const amount = Math.round(input.amount * 100) / 100;
     if (amount < WALLET_TOPUP_CONFIG.minAmount || amount > WALLET_TOPUP_CONFIG.maxAmount) {
       return {

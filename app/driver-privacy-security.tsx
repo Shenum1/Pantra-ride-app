@@ -1,12 +1,26 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
-import { Lock, ShieldCheck, ChevronRight } from 'lucide-react-native';
+import { Lock, ShieldCheck, ChevronRight, Download, Trash2 } from 'lucide-react-native';
 import { useTheme } from '@/hooks/useThemeStore';
+import { AccountService } from '@/lib/account-service';
 
 export default function DriverPrivacySecurityScreen() {
   const { colors } = useTheme();
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadData = async () => {
+    setDownloading(true);
+    try {
+      await AccountService.downloadMyData();
+    } catch (error) {
+      console.error('Could not download account data:', error);
+      Alert.alert('Could not download your data', 'Please check your connection and try again in a moment.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <>
@@ -36,6 +50,43 @@ export default function DriverPrivacySecurityScreen() {
               <Text style={[styles.rowTitle, { color: colors.text }]}>Change Password</Text>
               <Text style={[styles.rowDescription, { color: colors.textSecondary }]}>
                 Reset your password by email verification
+              </Text>
+            </View>
+            <ChevronRight size={20} color={colors.textSecondary} />
+          </Pressable>
+
+          <Pressable
+            testID="driver-download-data"
+            style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={handleDownloadData}
+            disabled={downloading}
+          >
+            <View style={styles.rowIcon}>
+              <Download size={20} color={colors.primary} />
+            </View>
+            <View style={styles.rowContent}>
+              <Text style={[styles.rowTitle, { color: colors.text }]}>
+                {downloading ? 'Preparing your data…' : 'Download My Data'}
+              </Text>
+              <Text style={[styles.rowDescription, { color: colors.textSecondary }]}>
+                Get a copy of the information Pantra holds about you
+              </Text>
+            </View>
+            <ChevronRight size={20} color={colors.textSecondary} />
+          </Pressable>
+
+          <Pressable
+            testID="driver-delete-account"
+            style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push('/delete-account')}
+          >
+            <View style={styles.rowIcon}>
+              <Trash2 size={20} color={colors.danger} />
+            </View>
+            <View style={styles.rowContent}>
+              <Text style={[styles.rowTitle, { color: colors.danger }]}>Delete My Account</Text>
+              <Text style={[styles.rowDescription, { color: colors.textSecondary }]}>
+                Permanently erase your account and personal details
               </Text>
             </View>
             <ChevronRight size={20} color={colors.textSecondary} />

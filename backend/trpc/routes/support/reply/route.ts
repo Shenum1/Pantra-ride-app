@@ -1,10 +1,12 @@
 import { z } from "zod";
 import { authedProcedure } from "../../../create-context";
+import { enforceRateLimit } from "../../../../lib/rate-limit";
 
 export default authedProcedure
   .input(z.object({ ticketId: z.string().uuid(), text: z.string().min(1) }))
   .mutation(async ({ ctx, input }) => {
     const db = ctx.supabaseAdmin;
+    await enforceRateLimit(db, `support-reply:${ctx.userId}`, 30, 3600);
 
     const { data: ticket, error: ticketError } = await db
       .from("support_tickets")

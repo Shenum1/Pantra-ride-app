@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authedProcedure } from "../../../../create-context";
+import { enforceRateLimit } from "../../../../../lib/rate-limit";
 import { TIP_CONFIG, isTipAmountValid } from "../../../../../../lib/pricing-config";
 import { notifyDriverOfTip } from "../../../../lib/push-notify";
 
@@ -19,6 +20,7 @@ export default authedProcedure
     })
   )
   .mutation(async ({ ctx, input }) => {
+    await enforceRateLimit(ctx.supabaseAdmin, `tip-create:${ctx.userId}`, 10, 600);
     if (!isTipAmountValid(input.amount, TIP_CONFIG)) {
       return {
         status: false as const,
