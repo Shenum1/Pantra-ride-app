@@ -8,6 +8,6 @@
 // compared numerically per dot-separated part, so '1.10' is newer than '1.9'.
 export const LEGAL_VERSIONS = {
   terms: '1.0',
-  privacy: '1.0',
+  privacy: '1.1',
   driverTerms: '1.0',
 } as const;
