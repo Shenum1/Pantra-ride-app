@@ -56,7 +56,7 @@ const SECTIONS: Section[] = [
   {
     title: 'Location Information',
     blocks: [
-      p("The Application collects your device's precise location to provide location-based features, improve the Application, and support related services. Drivers' location is also collected in the background while they are online or on a trip, so that riders can see the driver's position and trips can be completed."),
+      p("The Application collects your device's precise location to provide location-based features, improve the Application, and support related services. Drivers' location is collected while they are online or on a trip and the Application is open, so that riders can see the driver's position and trips can be completed. The Application does not request access to your location in the background."),
       li('Geolocation Services: The Service Provider uses location data to provide location-based features, such as matching, navigation and fares.'),
       li('Analytics and Improvements: Aggregated location data may help the Service Provider understand usage patterns and improve performance.'),
       li('Third-Party Services: Location data may be shared with third-party services used to support Application functionality, subject to this privacy policy and applicable law.'),
@@ -154,8 +154,8 @@ const SECTIONS: Section[] = [
   {
     title: 'Children',
     blocks: [
-      p('The Application is not intended for children under 16 years of age, or such higher age as required by applicable law. The Service Provider does not knowingly solicit data from children or market the Application to them.'),
-      p(`Where parental or guardian consent is required under applicable law, the Application is not intended for use without that consent. The Service Provider does not knowingly collect personally identifiable information from children under 16 years of age in violation of applicable law. In the event the Service Provider discovers that a child has provided personal information, the Service Provider will immediately delete this from their servers. If you are a parent or guardian and you are aware that your child has provided the Service Provider with personal information, please contact the Service Provider (${CONTACT_EMAIL}) so that they will be able to take the necessary actions.`),
+      p('The Application is not intended for children under 18 years of age, or such higher age as required by applicable law. The Service Provider does not knowingly solicit data from children or market the Application to them.'),
+      p(`Where parental or guardian consent is required under applicable law, the Application is not intended for use without that consent. The Service Provider does not knowingly collect personally identifiable information from children under 18 years of age in violation of applicable law. In the event the Service Provider discovers that a child has provided personal information, the Service Provider will immediately delete this from their servers. If you are a parent or guardian and you are aware that your child has provided the Service Provider with personal information, please contact the Service Provider (${CONTACT_EMAIL}) so that they will be able to take the necessary actions.`),
     ],
   },
   {

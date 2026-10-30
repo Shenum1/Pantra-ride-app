@@ -99,7 +99,6 @@ function RootLayoutNav() {
         <Stack.Screen name="my-tickets" options={{ title: "My Reports" }} />
         <Stack.Screen name="ticket-detail" options={{ title: "Report Details" }} />
         <Stack.Screen name="about" options={{ title: "About" }} />
-        <Stack.Screen name="language" options={{ title: "Language" }} />
         <Stack.Screen name="communication-preferences" options={{ title: "Communication" }} />
         <Stack.Screen name="enter-promo-code" options={{ title: "Enter Promo Code" }} />
         <Stack.Screen name="my-rides" options={{ title: "My Rides" }} />

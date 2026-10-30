@@ -7,7 +7,6 @@ import {
   Home,
   Briefcase,
   Plus,
-  Globe,
   MessageSquare,
   Calendar,
   LogOut,
@@ -357,12 +356,6 @@ export default function AccountScreen() {
             title="Theme"
             subtitle={getThemeLabel()}
             onPress={handleThemeChange}
-          />
-          <MenuItem
-            icon={<Globe size={20} color={colors.text} />}
-            title="Language"
-            subtitle="English-GB"
-            onPress={() => router.push('/language')}
           />
           <MenuItem
             icon={<MessageSquare size={20} color={colors.text} />}
