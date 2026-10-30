@@ -1,4 +1,4 @@
-import { Info, Users, Award, Globe, Heart, Shield } from "lucide-react-native";
+import { Users, Heart, Shield, Mail } from "lucide-react-native";
 import React from "react";
 import {
   Pressable,
@@ -6,11 +6,14 @@ import {
   StyleSheet,
   Text,
   View,
-  Alert,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
+import Constants from "expo-constants";
+
+const SUPPORT_EMAIL = "pantrateam@gmail.com";
 
 interface InfoSectionProps {
   icon: React.ReactElement;
@@ -41,21 +44,8 @@ const InfoSection: React.FC<InfoSectionProps> = ({ icon, title, description, onP
 export default function AboutScreen() {
   const { colors } = useTheme();
   
-  const handleTermsOfService = () => {
-    Alert.alert('Terms of Service', 'View our terms of service and user agreement.');
-  };
-  
-  const handlePrivacyPolicy = () => {
-    Alert.alert('Privacy Policy', 'Read our privacy policy and data handling practices.');
-  };
-  
-  const handleCommunityGuidelines = () => {
-    Alert.alert('Community Guidelines', 'Learn about our community standards and guidelines.');
-  };
-  
-  const handleOpenSource = () => {
-    Alert.alert('Open Source', 'View open source licenses and attributions.');
-  };
+  const router = useRouter();
+  const appVersion = Constants.expoConfig?.version;
   
   return (
     <>
@@ -71,10 +61,12 @@ export default function AboutScreen() {
         <ScrollView style={styles.content}>
           <View style={styles.headerSection}>
             <View style={[styles.appIcon, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.appIconText, { color: colors.white }]}>R</Text>
+              <Text style={[styles.appIconText, { color: colors.white }]}>P</Text>
             </View>
-            <Text style={[styles.appName, { color: colors.text }]}>RideApp</Text>
-            <Text style={[styles.appVersion, { color: colors.gray }]}>Version 2.1.0</Text>
+            <Text style={[styles.appName, { color: colors.text }]}>Pantra</Text>
+            {appVersion ? (
+              <Text style={[styles.appVersion, { color: colors.gray }]}>Version {appVersion}</Text>
+            ) : null}
             <Text style={[styles.appDescription, { color: colors.gray }]}>
               Your reliable ride-sharing companion
             </Text>
@@ -92,18 +84,6 @@ export default function AboutScreen() {
               title="Our Team"
               description="A passionate team dedicated to improving urban mobility"
             />
-            
-            <InfoSection
-              icon={<Globe size={24} color={colors.primary} />}
-              title="Global Impact"
-              description="Serving millions of riders across 100+ cities worldwide"
-            />
-            
-            <InfoSection
-              icon={<Award size={24} color={colors.primary} />}
-              title="Awards & Recognition"
-              description="Recognized for innovation in transportation technology"
-            />
           </View>
           
           <View style={styles.legalContainer}>
@@ -113,52 +93,28 @@ export default function AboutScreen() {
               icon={<Shield size={20} color={colors.text} />}
               title="Terms of Service"
               description="User agreement and terms of use"
-              onPress={handleTermsOfService}
+              onPress={() => router.push('/terms-and-conditions' as any)}
             />
             
             <InfoSection
               icon={<Shield size={20} color={colors.text} />}
               title="Privacy Policy"
               description="How we protect and use your data"
-              onPress={handlePrivacyPolicy}
-            />
-            
-            <InfoSection
-              icon={<Users size={20} color={colors.text} />}
-              title="Community Guidelines"
-              description="Standards for respectful community interaction"
-              onPress={handleCommunityGuidelines}
-            />
-            
-            <InfoSection
-              icon={<Info size={20} color={colors.text} />}
-              title="Open Source Licenses"
-              description="Third-party libraries and attributions"
-              onPress={handleOpenSource}
+              onPress={() => router.push('/privacy-policy' as any)}
             />
           </View>
           
           <View style={[styles.footerCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.footerTitle, { color: colors.text }]}>Stay Connected</Text>
-            <Text style={[styles.footerText, { color: colors.gray }]}>
-              Follow us on social media for updates, tips, and community stories.
-            </Text>
-            <View style={styles.socialLinks}>
-              <Pressable style={[styles.socialButton, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.socialButtonText, { color: colors.white }]}>Twitter</Text>
-              </Pressable>
-              <Pressable style={[styles.socialButton, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.socialButtonText, { color: colors.white }]}>Facebook</Text>
-              </Pressable>
-              <Pressable style={[styles.socialButton, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.socialButtonText, { color: colors.white }]}>Instagram</Text>
-              </Pressable>
-            </View>
+            <Mail size={24} color={colors.primary} />
+            <Text style={[styles.footerTitle, { color: colors.text }]}>Contact Us</Text>
+            <Pressable onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}>
+              <Text style={[styles.footerText, { color: colors.primary }]}>{SUPPORT_EMAIL}</Text>
+            </Pressable>
           </View>
           
           <View style={styles.copyrightSection}>
             <Text style={[styles.copyrightText, { color: colors.gray }]}>
-              © 2024 RideApp Inc. All rights reserved.
+              © {new Date().getFullYear()} Pantra Dev
             </Text>
           </View>
         </ScrollView>
@@ -256,19 +212,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 16,
-  },
-  socialLinks: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  socialButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  socialButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   copyrightSection: {
     alignItems: 'center',

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pantra",
     "slug": "pantra-ride-app",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pantra",
@@ -39,7 +39,7 @@
       }
     },
     "android": {
-      "versionCode": 11,
+      "versionCode": 14,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -53,12 +53,14 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
         "CAMERA",
-        "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -70,8 +72,8 @@
       [
         "expo-location",
         {
-          "isAndroidForegroundServiceEnabled": true,
-          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
           "isIosBackgroundLocationEnabled": true,
           "locationAlwaysAndWhenInUsePermission": "Pantra needs your location to find nearby drivers and show your trip on the map."
         }
@@ -79,7 +81,7 @@
       [
         "expo-av",
         {
-          "microphonePermission": "Pantra uses the microphone for voice features."
+          "microphonePermission": false
         }
       ],
       [

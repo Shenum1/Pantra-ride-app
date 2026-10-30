@@ -1,5 +1,4 @@
 import * as Location from 'expo-location';
-import { Platform } from 'react-native';
 import { DatabaseService } from './database-service';
 
 export interface LocationUpdate {
@@ -23,13 +22,7 @@ export class LocationTrackingService {
         return false;
       }
 
-      if (Platform.OS !== 'web') {
-        const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-        if (backgroundStatus !== 'granted') {
-          console.log('Background location permission not granted');
-        }
-      }
-
+      // Foreground only: background location is blocked in app.json (no background task exists).
       return true;
     } catch (error) {
       console.error('Error requesting location permissions:', error);

@@ -1,4 +1,4 @@
-import { Shield, Phone, Users, AlertTriangle, MapPin, Clock } from "lucide-react-native";
+import { Phone, AlertTriangle } from "lucide-react-native";
 import React from "react";
 import {
   Pressable,
@@ -7,78 +7,35 @@ import {
   Text,
   View,
   Alert,
-  Switch,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/hooks/useThemeStore";
 import { Stack } from "expo-router";
-import { useRiderPreferences } from '@/hooks/useRiderPreferences';
 
-interface SafetyFeatureProps {
-  icon: React.ReactElement;
-  title: string;
-  description: string;
-  isEnabled?: boolean;
-  onToggle?: (enabled: boolean) => void;
-  onPress?: () => void;
-}
-
-const SafetyFeature: React.FC<SafetyFeatureProps> = ({ 
-  icon, 
-  title, 
-  description, 
-  isEnabled,
-  onToggle,
-  onPress 
-}) => {
-  const { colors } = useTheme();
-  
-  return (
-    <Pressable 
-      style={[styles.featureCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-      onPress={onPress}
-    >
-      <View style={styles.featureIcon}>
-        <Text>{icon}</Text>
-      </View>
-      <View style={styles.featureContent}>
-        <Text style={[styles.featureTitle, { color: colors.text }]}>{title}</Text>
-        <Text style={[styles.featureDescription, { color: colors.gray }]}>{description}</Text>
-      </View>
-      {onToggle && (
-        <Switch
-          value={isEnabled}
-          onValueChange={onToggle}
-          trackColor={{ false: colors.lightGray, true: colors.primary }}
-          thumbColor={colors.white}
-        />
-      )}
-    </Pressable>
-  );
-};
+// Nigeria's national emergency number.
+const EMERGENCY_NUMBER = '112';
 
 export default function SafetyScreen() {
   const { colors } = useTheme();
   
-  const { preferences, updatePreference } = useRiderPreferences();
-  
   const handleEmergencyCall = () => {
     Alert.alert(
       'Emergency Call',
-      'This will call emergency services immediately.',
+      `This will call ${EMERGENCY_NUMBER}, Nigeria's emergency number.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Call 911', style: 'destructive', onPress: () => Alert.alert('Calling 911...') },
+        {
+          text: `Call ${EMERGENCY_NUMBER}`,
+          style: 'destructive',
+          onPress: () => {
+            Linking.openURL(`tel:${EMERGENCY_NUMBER}`).catch(() => {
+              Alert.alert('Could not start the call', `Dial ${EMERGENCY_NUMBER} from your phone app.`);
+            });
+          },
+        },
       ]
     );
-  };
-  
-  const handleTrustedContacts = () => {
-    Alert.alert('Trusted Contacts', 'Manage your emergency contacts here.');
-  };
-  
-  const handleSafetyCenter = () => {
-    Alert.alert('Safety Center', 'Access safety resources and tips.');
   };
   
   return (
@@ -109,48 +66,8 @@ export default function SafetyScreen() {
               <Text style={[styles.emergencyText, { color: colors.white }]}>Emergency Call</Text>
             </Pressable>
             <Text style={[styles.emergencyDescription, { color: colors.danger }]}>
-              Tap to call emergency services immediately
+              Tap to call emergency services (112)
             </Text>
-          </View>
-          
-          <View style={styles.featuresContainer}>
-            <SafetyFeature
-              icon={<MapPin size={24} color={colors.primary} />}
-              title="Share Trip Details"
-              description="Let trusted contacts follow your ride in real-time"
-              isEnabled={preferences.shareTrip}
-              onToggle={(value) => void updatePreference('shareTrip', value)}
-            />
-            
-            <SafetyFeature
-              icon={<Users size={24} color={colors.primary} />}
-              title="Emergency Contacts"
-              description="Quick access to your trusted contacts"
-              isEnabled={preferences.emergencyContactsEnabled}
-              onToggle={(value) => void updatePreference('emergencyContactsEnabled', value)}
-            />
-            
-            <SafetyFeature
-              icon={<Clock size={24} color={colors.primary} />}
-              title="RideCheck"
-              description="Get notified if your trip is taking longer than expected"
-              isEnabled={preferences.rideCheck}
-              onToggle={(value) => void updatePreference('rideCheck', value)}
-            />
-            
-            <SafetyFeature
-              icon={<Users size={24} color={colors.text} />}
-              title="Trusted Contacts"
-              description="Manage your emergency contact list"
-              onPress={handleTrustedContacts}
-            />
-            
-            <SafetyFeature
-              icon={<Shield size={24} color={colors.text} />}
-              title="Safety Center"
-              description="Safety tips, resources, and community guidelines"
-              onPress={handleSafetyCenter}
-            />
           </View>
           
           <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -158,8 +75,8 @@ export default function SafetyScreen() {
             <View style={styles.infoContent}>
               <Text style={[styles.infoTitle, { color: colors.text }]}>Safety Tips</Text>
               <Text style={[styles.infoText, { color: colors.gray }]}>
-                • Always verify your driver and vehicle{'\n'}
-                • Share your trip with trusted contacts{'\n'}
+                • Check the driver&apos;s name, car and plate match the app{'\n'}
+                • Tell someone you trust where you are going{'\n'}
                 • Sit in the back seat{'\n'}
                 • Trust your instincts
               </Text>
@@ -215,32 +132,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     fontWeight: '600',
-  },
-  featuresContainer: {
-    gap: 12,
-    marginBottom: 24,
-  },
-  featureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  featureIcon: {
-    marginRight: 16,
-  },
-  featureContent: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  featureDescription: {
-    fontSize: 14,
-    lineHeight: 18,
   },
   infoCard: {
     flexDirection: 'row',
