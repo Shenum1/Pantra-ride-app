@@ -28,6 +28,8 @@ import { NotificationService } from "@/lib/notification-service";
 import { initMonitoring, wrapRootComponent } from "@/lib/monitoring";
 
 import { trpc, trpcClient } from "@/lib/trpc";
+// Registers the driver background-location task at startup (must be at module scope).
+import "@/lib/driver-background-location";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();

@@ -33,6 +33,9 @@ interface MapProps {
   routeEndLocation?: Location | null;
   customMarkers?: CustomMarker[];
   preferStaticMap?: boolean;
+  // false on driver screens: drivers must see the location disclosure
+  // (hooks/useDriverLocationConsent.tsx) before any system prompt, so the map only checks.
+  askForLocation?: boolean;
 }
 
 const EMPTY_MARKERS: CustomMarker[] = [];
@@ -96,6 +99,7 @@ const Map: React.FC<MapProps> = ({
   routeEndLocation,
   customMarkers,
   preferStaticMap = false,
+  askForLocation = true,
 }) => {
   const { userLocation, pickupLocation, dropoffLocation, routeInfo: sharedRouteInfo } = useLocation();
   const { nearbyDrivers } = useRide();
@@ -266,7 +270,9 @@ const Map: React.FC<MapProps> = ({
 
     const startHeadingTracking = async () => {
       try {
-        const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+        const { status } = askForLocation
+          ? await ExpoLocation.requestForegroundPermissionsAsync()
+          : await ExpoLocation.getForegroundPermissionsAsync();
         if (status !== 'granted') {
           console.log('Location permission not granted for heading tracking');
           return;
@@ -307,7 +313,7 @@ const Map: React.FC<MapProps> = ({
         headingSubscription.current = null;
       }
     };
-  }, [compassEnabled, fullScreen]);
+  }, [askForLocation, compassEnabled, fullScreen]);
 
   const notifyRouteInfoChange = useCallback((info: { distance: number; duration: number } | null) => {
     setRouteInfo(info);

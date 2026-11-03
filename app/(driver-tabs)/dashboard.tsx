@@ -28,6 +28,7 @@ import { router } from 'expo-router';
 
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { useDriverStore } from '@/hooks/useDriverStore';
+import { useDriverLocationConsent } from '@/hooks/useDriverLocationConsent';
 import { useDriverVerification } from '@/hooks/useDriverVerification';
 import { useVideoConfig } from '@/hooks/useVideoConfig';
 import { SkeletonLine, ShimmerGroup } from '@/components/skeletons';
@@ -37,7 +38,8 @@ const { width } = Dimensions.get('window');
 
 export default function DriverDashboard() {
   const { driver } = useDriverAuth();
-  const { driverProfile, stats, earnings, isOnline, toggleOnlineStatus, isLoading } = useDriverStore();
+  const { driverProfile, stats, earnings, isOnline, toggleOnlineStatus, refreshTrackingPermission, isLoading } = useDriverStore();
+  const { ensureDriverLocationPermission, disclosureModal } = useDriverLocationConsent();
   const { isVerified, verificationStatus, status: verification } = useDriverVerification();
 
   const VERIFICATION_BANNER_COPY: Record<string, { title: string; body: string }> = {
@@ -101,7 +103,18 @@ export default function DriverDashboard() {
       );
       return;
     }
-    void toggleOnlineStatus();
+    if (isOnline) {
+      void toggleOnlineStatus();
+      return;
+    }
+    // Location disclosure and prompts come before going online. Whatever the driver
+    // answers, they can still go online — without "Allow all the time" location is
+    // only shared while Pantra is open.
+    void (async () => {
+      await ensureDriverLocationPermission();
+      refreshTrackingPermission();
+      await toggleOnlineStatus();
+    })();
   };
   const videoUri = useVideoConfig('driver_dashboard');
   const player = useVideoPlayer(videoUri, (p) => { p.loop = true; p.muted = true; p.playbackRate = 0.7; p.play(); });
@@ -369,6 +382,7 @@ export default function DriverDashboard() {
           </ShimmerGroup>
       </ScrollView>
     </SafeAreaView>
+      {disclosureModal}
     </View>
   );
 }

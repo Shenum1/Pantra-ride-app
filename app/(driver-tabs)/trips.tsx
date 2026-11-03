@@ -63,7 +63,9 @@ export default function DriverTrips() {
     (async () => {
       if (Platform.OS === 'web') return;
 
-      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+      // Check only: drivers are asked through the location disclosure when they go online
+      // (app/(driver-tabs)/dashboard.tsx), never with a bare system prompt.
+      const { status } = await ExpoLocation.getForegroundPermissionsAsync();
       setLocationPermission(status === 'granted');
 
       if (status === 'granted') {
@@ -79,7 +81,9 @@ export default function DriverTrips() {
         }
       }
     })();
-  }, []);
+    // Re-checked on going online, which is when the driver may have just granted access.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOnline]);
 
   useEffect(() => {
     if (Platform.OS === 'web' || !locationPermission || !isOnline) return;
@@ -295,6 +299,7 @@ export default function DriverTrips() {
           </View>
         ) : (
           <Map
+            askForLocation={false}
             fullScreen
             showDrivers={false}
             initialRegion={userLocation || undefined}

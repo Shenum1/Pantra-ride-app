@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import Toast from 'react-native-toast-message';
 import { DeviceSecurityService } from '@/lib/device-security-service';
 import { StorageService } from '@/lib/storage-service';
+import { stopDriverBackgroundTracking } from '@/lib/driver-background-location';
 
 export interface User {
   id: string;
@@ -221,6 +222,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   };
 
   const logout = async () => {
+    // A rider account can also be a driver: stop any driver location service first.
+    await stopDriverBackgroundTracking();
     await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
     await AsyncStorage.removeItem('driver_auth_user');
     setUser(null);

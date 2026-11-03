@@ -9,7 +9,7 @@ Anything marked **TBD (ask owner)** is a business decision the code can't answer
 
 ## 0. Fix before submitting
 
-Google reviewers open the app. Status as of 2026-10-30:
+Google reviewers open the app. Status as of 2026-11-03:
 
 **Fixed in code** (needs a new native build, so `version` is now 1.0.3):
 1. ✅ **Emergency button** (`app/safety.tsx`): now really dials 112 (Nigeria's emergency
@@ -21,11 +21,11 @@ Google reviewers open the app. Status as of 2026-10-30:
    riders across 100+ cities", "Awards"), the "RideApp" name, the fake "2.1.0" version, the pop-up
    rows and the social buttons that did nothing are removed.
 3. ✅ **Language screen** removed (it listed 13 languages, but the app is English only).
-4. ✅ **Unused permissions removed and blocked** (app.json `blockedPermissions`):
-   `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE_LOCATION`, `SCHEDULE_EXACT_ALARM`,
-   `RECORD_AUDIO`. Driver tracking only ever used foreground `watchPositionAsync`, so nothing
-   changes for drivers. No background-location or exact-alarm declaration forms are needed now.
-   After the build, check the final list in Play Console → App bundle explorer → Permissions.
+4. ✅ **Permissions**: exact alarm and microphone are blocked (`blockedPermissions`).
+   **Background location is now real** (2026-11-03): drivers get a foreground-service location
+   task (`lib/driver-background-location.ts`) after an in-app disclosure, so the bundle requests
+   `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION`. Fill in
+   the two declarations in section 3. Riders stay foreground-only.
 
 **Still open (owner)**:
 5. **Live tracking and chat**: DEVLOG (2026-10-08) says these don't work on production
@@ -33,14 +33,10 @@ Google reviewers open the app. Status as of 2026-10-30:
    or confirm they're already applied, before the description promises them.
 6. ✅ **Minimum age is 18+ everywhere**: the Terms already said 18, and the privacy policy's
    Children section now says "under 18" too (web and in-app).
-7. ✅ **Privacy policy wording**: now says drivers' location is collected "while they are online
-   or on a trip and the Application is open", and that background access isn't requested
-   (`public/privacy-policy.html`, `app/privacy-policy.tsx`). Redeploy the web app so the
-   public page updates.
-   **Known limit:** while a driver is in Google Maps (the Navigate button), Pantra is in the
-   background and the rider's map stops updating. Fixing that means building real background
-   tracking. That needs an Android foreground service, a disclosure screen, and Play's
-   background-location declaration with a demo video.
+7. ✅ **Privacy policy wording** (updated 2026-11-03): drivers' location is collected "while they are
+   online or on a trip, including when the Application is in the background or closed", with a
+   notification shown while this happens. Riders' location is only collected while the app is open.
+   Redeploy the web app so the public page updates.
 8. **AdMob IDs**: `app.config.js` uses Google's *test* AdMob app ID when
    `EXPO_PUBLIC_ADMOB_ANDROID_APP_ID` isn't set. Make sure the production EAS environment
    has the real ID.
@@ -203,25 +199,30 @@ No health features
 **Yes, uses advertising ID**. Use: **Advertising or marketing** (AdMob). `expo-tracking-transparency` adds the `AD_ID` permission.
 
 ### Sensitive permission declarations
-Play shows these after you upload a bundle that requests them. Background location
-and exact alarm are now blocked (section 0, item 4), so neither form should appear. The text
-below is kept for later, in case real background tracking is built.
+These appear after you upload a bundle built from this branch or later.
 
-**Location permissions (background location)**. Appears if the bundle requests `ACCESS_BACKGROUND_LOCATION`.
-- Feature that uses it: *Drivers' live location during a trip*
+**Location permissions (background location)**
+- Feature that uses it: *Drivers' live location while online or on a trip*
 - Description:
   ```
-  When a driver is online or on a trip, Pantra shares the driver's location with the rider, so the rider can see the driver approaching and follow the trip. Drivers often switch to another navigation app or lock the screen while driving, so location is needed in the background. Background location stops when the driver goes offline or the trip ends, and is never collected for riders in the background.
+  When a driver is online or on a trip, Pantra shares the driver's location so nearby ride requests can be matched to them and the rider can see the driver approaching and follow the trip. Drivers usually switch to a navigation app such as Google Maps or lock the screen while driving, so location is needed while Pantra is in the background. Tracking runs as a foreground service with a visible notification, and stops when the driver goes offline, the trip ends, or they log out. Before any location permission is requested, drivers see an in-app disclosure and can deny it and still use the app. Riders' location is never collected in the background.
   ```
-- Video: a 30-second or shorter screen recording on a real device: driver goes online → in-app
-  prominent disclosure → permission prompt → driver switches to another app → rider's
-  screen shows the driver's car still moving. The app must show its own prominent disclosure
-  screen *before* the system "Allow all the time" prompt. None exists yet.
+- Video (30 seconds or less, real Android device, driver account):
+  1. Dashboard → tap **Go Online** → the "Location access" disclosure appears.
+  2. Tap **Accept & Continue** → system location prompt → "Allow all the time" explainer → settings page → choose **Allow all the time** → back to Pantra.
+  3. Minimise Pantra → the "You're online" notification is visible.
+  4. Accept a ride → tap **Navigate** → Google Maps opens → notification reads "Trip in Progress"; on a second phone the rider's map shows the car moving.
+  5. Complete the trip and go offline → the notification disappears.
+  Upload it to YouTube as **Unlisted** and paste the link.
 
 **Foreground service (location type)**. Required for Android 14+ targets.
-- Type: `FOREGROUND_SERVICE_LOCATION`
-- Use: *Navigation / location sharing for an active trip*. The service runs while a driver is
-  online or on a trip and shows an ongoing notification. Same video as above.
+- Type: **Location**
+- Task: *Navigation / location sharing for an active trip, and dispatch matching while online*.
+- Description:
+  ```
+  The location foreground service runs only while a driver is online or on a trip, so riders can follow the driver in real time while the driver uses a navigation app. It shows a persistent notification ("You're online" or "Trip in Progress") and is stopped as soon as the driver goes offline, finishes the trip, or logs out. Stopping it early would freeze the rider's view of an active trip.
+  ```
+- Video: the same video as above.
 
 **Exact alarm**: blocked, so no declaration is needed.
 
