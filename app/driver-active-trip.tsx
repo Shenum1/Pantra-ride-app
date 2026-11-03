@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -26,6 +26,7 @@ import Map from '@/components/Map';
 import Colors from '@/constants/colors';
 import { Skeleton, SkeletonLine, ShimmerGroup } from '@/components/skeletons';
 import { useDriverStore } from '@/hooks/useDriverStore';
+import { useDriverLocationConsent } from '@/hooks/useDriverLocationConsent';
 import { useDriverAuth } from '@/hooks/useDriverAuthStore';
 import { MessagingService } from '@/lib/messaging-service';
 import { GoogleMapsService } from '@/lib/google-maps-service';
@@ -36,7 +37,11 @@ import { Location } from '@/types';
 type DriverTripStatus = 'heading_to_pickup' | 'at_pickup' | 'in_progress';
 
 export default function DriverActiveTrip() {
-  const { currentRide, updateRideStatus, updateLocation, pointsLookupFailed, retryPointsLookup } = useDriverStore();
+  const { currentRide, updateRideStatus, updateLocation, pointsLookupFailed, retryPointsLookup, refreshTrackingPermission } =
+    useDriverStore();
+  const { ensureDriverLocationPermission, disclosureModal } = useDriverLocationConsent();
+  // This effect re-runs on profile updates; ask at most once per visit to the screen.
+  const askedForLocationRef = useRef(false);
   const { driver } = useDriverAuth();
   const [driverLocation, setDriverLocation] = useState<Location | null>(null);
   const [driverLocationError, setDriverLocationError] = useState<string | null>(null);
@@ -92,7 +97,15 @@ export default function DriverActiveTrip() {
         return;
       }
 
-      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
+      // Asking goes through the disclosure flow (normally already done when going online).
+      let { status } = await ExpoLocation.getForegroundPermissionsAsync();
+      if (status !== 'granted' && !askedForLocationRef.current) {
+        askedForLocationRef.current = true;
+        await ensureDriverLocationPermission();
+        refreshTrackingPermission();
+        ({ status } = await ExpoLocation.getForegroundPermissionsAsync());
+      }
+      if (!active) return;
       if (status !== 'granted') {
         setDriverLocation(null);
         setDriverLocationError('Location permission denied');
@@ -142,7 +155,7 @@ export default function DriverActiveTrip() {
         navigator.geolocation.clearWatch(webWatchId);
       }
     };
-  }, [currentRide, updateLocation]);
+  }, [currentRide, updateLocation, ensureDriverLocationPermission, refreshTrackingPermission]);
 
   useEffect(() => {
     if (!currentRide) {
@@ -373,6 +386,11 @@ export default function DriverActiveTrip() {
       return;
     }
 
+    // Pantra goes to the background while Google Maps is open; without "Allow all the
+    // time" the rider's map stops updating. Offer it (after the disclosure) if missing.
+    await ensureDriverLocationPermission();
+    refreshTrackingPermission();
+
     const googleMapsUrl = GoogleMapsService.getExternalDirectionsUrl(driverLocation, mapDestination);
     const appleMapsUrl = `http://maps.apple.com/?daddr=${mapDestination.latitude},${mapDestination.longitude}&dirflg=d`;
 
@@ -483,6 +501,7 @@ export default function DriverActiveTrip() {
 
       <View style={styles.mapContainer}>
         <Map
+          askForLocation={false}
           fullScreen={true}
           initialRegion={mapRegion}
           showRoute={true}
@@ -606,6 +625,7 @@ export default function DriverActiveTrip() {
           <Text style={styles.cancelTripButtonText}>Cancel Trip</Text>
         </Pressable>
       </View>
+      {disclosureModal}
     </View>
   );
 }

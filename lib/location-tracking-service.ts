@@ -22,7 +22,7 @@ export class LocationTrackingService {
         return false;
       }
 
-      // Foreground only: background location is blocked in app.json (no background task exists).
+      // Foreground only. Driver background location lives in lib/driver-background-location.ts.
       return true;
     } catch (error) {
       console.error('Error requesting location permissions:', error);

@@ -7,6 +7,7 @@ import { FirebaseDriverService } from '@/lib/firebase-driver-service';
 import { GoogleAuthService, GoogleSignInResult } from '@/lib/google-auth-service';
 import { supabase } from '@/lib/supabase';
 import { StorageService } from '@/lib/storage-service';
+import { stopDriverBackgroundTracking } from '@/lib/driver-background-location';
 
 export type Driver = DriverRow;
 
@@ -125,6 +126,8 @@ export const [DriverAuthProvider, useDriverAuth] = createContextHook(() => {
   }, []);
 
   const logout = useCallback(async () => {
+    // Before signing out: stops the location service and removes its notification.
+    await stopDriverBackgroundTracking();
     await AsyncStorage.removeItem(DRIVER_STORAGE_KEY);
     setDriver(null);
     try {

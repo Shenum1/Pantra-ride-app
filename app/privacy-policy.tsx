@@ -56,7 +56,7 @@ const SECTIONS: Section[] = [
   {
     title: 'Location Information',
     blocks: [
-      p("The Application collects your device's precise location to provide location-based features, improve the Application, and support related services. Drivers' location is collected while they are online or on a trip and the Application is open, so that riders can see the driver's position and trips can be completed. The Application does not request access to your location in the background."),
+      p("The Application collects your device's precise location to provide location-based features, improve the Application, and support related services. Drivers' location is collected while they are online or on a trip, including when the Application is in the background or closed, so that riders can see the driver's position and trips can be completed. A notification is shown while this happens, and it stops when the driver goes offline or the trip ends. Riders' location is only collected while the Application is open."),
       li('Geolocation Services: The Service Provider uses location data to provide location-based features, such as matching, navigation and fares.'),
       li('Analytics and Improvements: Aggregated location data may help the Service Provider understand usage patterns and improve performance.'),
       li('Third-Party Services: Location data may be shared with third-party services used to support Application functionality, subject to this privacy policy and applicable law.'),

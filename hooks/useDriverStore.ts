@@ -7,6 +7,12 @@ import { CashRidesPausedError, FirebaseDriverService } from '@/lib/firebase-driv
 import { CashCommissionStatus, DriverWalletService } from '@/lib/driver-wallet-service';
 import { NotificationService } from '@/lib/notification-service';
 import { trpcClient } from '@/lib/trpc';
+import {
+  getDriverLocationPermission,
+  startDriverBackgroundTracking,
+  stopDriverBackgroundTracking,
+} from '@/lib/driver-background-location';
+import { shouldTrack } from '@/lib/driver-location-policy';
 import { useDriverAuth } from './useDriverAuthStore';
 
 export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
@@ -367,30 +373,64 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     }
   }, [driverProfile]);
 
+  // Bumped after the driver answers the location disclosure/prompts, so the
+  // tracking effect below re-reads permissions (e.g. background was just granted mid-trip).
+  const [trackingPermissionVersion, setTrackingPermissionVersion] = useState(0);
+  const refreshTrackingPermission = useCallback(() => setTrackingPermissionVersion((v) => v + 1), []);
+
   // GPS tracking used to live only inside app/(driver-tabs)/trips.tsx's effects, so
   // drivers.location was never written unless the driver happened to have the Trips
   // screen mounted while online — e.g. toggling online from Dashboard and backgrounding
   // the app before visiting Trips left location permanently null, which silently made
   // getPendingRideRequests()/subscribeToRideRequests() return nothing (both bail out on
-  // !driver.location). Tracking here instead runs whenever the driver is online, app-wide.
+  // !driver.location). Tracking here instead runs app-wide while the driver is online or
+  // on a trip (accepting a ride sets isOnline=false, see shouldTrack).
+  //
+  // With "Allow all the time" it runs as a foreground service that keeps going while
+  // Pantra is minimised or closed; otherwise it falls back to watchPositionAsync while
+  // the app is open. Permissions are only checked here — asking happens through the
+  // disclosure flow (hooks/useDriverLocationConsent.tsx).
+  const hasCurrentRide = !!currentRide;
+  const tracking = Platform.OS !== 'web' && !!activeDriverId && shouldTrack({ isOnline, hasCurrentRide });
+
   useEffect(() => {
-    if (Platform.OS === 'web' || !activeDriverId || !isOnline) return;
+    if (!tracking || !activeDriverId) {
+      void stopDriverBackgroundTracking();
+      return;
+    }
 
     let cancelled = false;
     let subscription: ExpoLocation.LocationSubscription | null = null;
+    // Written with the auth driver id rather than updateLocation, whose identity changes on
+    // every profile update and would restart tracking (and its notification) each time.
+    const saveLocation = (latitude: number, longitude: number) => {
+      FirebaseDriverService.updateDriverLocation(activeDriverId, latitude, longitude).catch((error) => {
+        console.error('Error updating location:', error);
+      });
+    };
 
     (async () => {
-      const { status } = await ExpoLocation.requestForegroundPermissionsAsync();
-      if (status !== 'granted' || cancelled) return;
+      const mode = await getDriverLocationPermission();
+      if (cancelled) return;
+
+      if (mode === 'background') {
+        // Calling again while running only updates the notification (trip started/ended).
+        await startDriverBackgroundTracking(activeDriverId, hasCurrentRide);
+        return;
+      }
+
+      // No background access (any more): make sure no earlier service keeps running.
+      await stopDriverBackgroundTracking();
+      if (mode === 'none' || cancelled) return;
 
       const initial = await ExpoLocation.getCurrentPositionAsync({});
       if (cancelled) return;
-      void updateLocation(initial.coords.latitude, initial.coords.longitude);
+      saveLocation(initial.coords.latitude, initial.coords.longitude);
 
       subscription = await ExpoLocation.watchPositionAsync(
         { accuracy: ExpoLocation.Accuracy.High, timeInterval: 5000, distanceInterval: 10 },
         (location) => {
-          void updateLocation(location.coords.latitude, location.coords.longitude);
+          saveLocation(location.coords.latitude, location.coords.longitude);
         }
       );
       if (cancelled) subscription.remove();
@@ -400,7 +440,7 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
       cancelled = true;
       subscription?.remove();
     };
-  }, [activeDriverId, isOnline, updateLocation]);
+  }, [tracking, activeDriverId, hasCurrentRide, trackingPermissionVersion]);
 
   return useMemo(() => ({
     driverProfile,
@@ -420,6 +460,7 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     declineRideRequest,
     updateRideStatus,
     updateLocation,
+    refreshTrackingPermission,
     loadDriverData,
   }), [
     driverProfile,
@@ -439,6 +480,7 @@ export const [DriverStoreProvider, useDriverStore] = createContextHook(() => {
     declineRideRequest,
     updateRideStatus,
     updateLocation,
+    refreshTrackingPermission,
     loadDriverData,
   ]);
 });
