@@ -11,7 +11,7 @@ Anything marked **TBD (ask owner)** is a business decision the code can't answer
 
 Google reviewers open the app. Status as of 2026-11-05:
 
-**Fixed in code** (needs a new native build; `version` is now 1.0.4):
+**Fixed in code** (needs a new native build; `version` is now 1.0.5):
 1. ✅ **Emergency button** (`app/safety.tsx`): now really dials 112 (Nigeria's emergency
    number) instead of showing a fake "Calling 911..." pop-up. The toggles and rows that saved a
    setting but did nothing (Share Trip Details, Emergency Contacts, RideCheck, Trusted
@@ -22,10 +22,14 @@ Google reviewers open the app. Status as of 2026-11-05:
    rows and the social buttons that did nothing are removed.
 3. ✅ **Language screen** removed (it listed 13 languages, but the app is English only).
 4. ✅ **Permissions**: exact alarm and microphone are blocked (`blockedPermissions`).
-   **Background location is now real** (2026-11-03): drivers get a foreground-service location
-   task (`lib/driver-background-location.ts`) after an in-app disclosure, so the bundle requests
-   `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION`. Fill in
-   the two declarations in section 3. Riders stay foreground-only.4b. ✅ **Hidden health/fitness permission removed** (2026-11-05): Play flagged the app as having
+   **Background location is switched off for the first release** (2026-11-05). It was built
+   in 1.0.3/1.0.4, but it needs the background-location and foreground-service declarations
+   (with a video), which blocked the closed-testing release. From 1.0.5,
+   `DRIVER_BACKGROUND_LOCATION_ENABLED = false` (`lib/driver-location-policy.ts`), and app.json
+   no longer requests `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE` or
+   `FOREGROUND_SERVICE_LOCATION` (it blocks them). Drivers and riders are tracked only while the
+   app is open, so neither declaration is needed. To turn it back on later, see section 6.
+4b. ✅ **Hidden health/fitness permission removed** (2026-11-05): Play flagged the app as having
    health/fitness features because the unused `expo-sensors` library (from the original Expo
    template) added `android.permission.ACTIVITY_RECOGNITION` to the merged manifest. Every build
    up to 1.0.3 (15) has it. `expo-sensors` is removed and `ACTIVITY_RECOGNITION` is blocked in
@@ -38,10 +42,10 @@ Google reviewers open the app. Status as of 2026-11-05:
    or confirm they're already applied, before the description promises them.
 6. ✅ **Minimum age is 18+ everywhere**: the Terms already said 18, and the privacy policy's
    Children section now says "under 18" too (web and in-app).
-7. ✅ **Privacy policy wording** (updated 2026-11-03): drivers' location is collected "while they are
-   online or on a trip, including when the Application is in the background or closed", with a
-   notification shown while this happens. Riders' location is only collected while the app is open.
-   Redeploy the web app so the public page updates.
+7. ✅ **Privacy policy wording** (restored 2026-11-05 to the PR #10 text): drivers' location is
+   collected "while they are online or on a trip and the Application is open", and "the
+   Application does not request access to your location in the background". The policy version
+   stays 1.1, so no one has to accept again. The web app redeploys when this is merged to main.
 8. **AdMob IDs**: `app.config.js` uses Google's *test* AdMob app ID when
    `EXPO_PUBLIC_ADMOB_ANDROID_APP_ID` isn't set. Make sure the production EAS environment
    has the real ID.
@@ -207,7 +211,12 @@ removed, and that the app has no health or fitness features.
 **Yes, uses advertising ID**. Use: **Advertising or marketing** (AdMob). `expo-tracking-transparency` adds the `AD_ID` permission.
 
 ### Sensitive permission declarations
-These appear after you upload a bundle built from this branch or later.
+**Not needed for 1.0.5.** It doesn't request background location or foreground-service permissions,
+so neither declaration applies. If Preview still shows the two errors, make sure no active
+release on any track (internal, closed) is still 1.0.3 or 1.0.4. If the foreground-service
+question still appears, answer that the app doesn't use foreground service permissions.
+
+The texts below are saved for the update that turns background location back on (section 6).
 
 **Location permissions (background location)**
 - Feature that uses it: *Drivers' live location while online or on a trip*
@@ -298,7 +307,7 @@ Flutterwave, NDPR in the policy). Suggest **Nigeria only** at launch.
 
 **Pricing**: Free.
 
-**Release name**: `1.0.3`, plus the versionCode the EAS build assigns
+**Release name**: `1.0.5`, plus the versionCode the EAS build assigns (17)
 
 **Release notes (en-US, max 500)**:
 ```
@@ -312,6 +321,25 @@ Welcome to Pantra!
 
 ---
 
+## 6. Turning background location back on (later update)
+The code is all still there (`lib/driver-background-location.ts`, the disclosure modal, the
+consent flow). Turn it on in one branch:
+1. `lib/driver-location-policy.ts`: set `DRIVER_BACKGROUND_LOCATION_ENABLED = true`.
+2. `app.json`:
+   - Add `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION`
+     back to `android.permissions`.
+   - Remove them from `blockedPermissions`.
+   - Set the expo-location plugin's `isAndroidBackgroundLocationEnabled` and
+     `isAndroidForegroundServiceEnabled` to `true`.
+   - The unit test `testing/unit/driver-location-policy.test.ts` fails if these and step 1 don't match.
+3. Privacy policy (`public/privacy-policy.html` and `app/privacy-policy.tsx`): restore the background
+   wording from commit `18d7b67` ("...including when the Application is in the background or
+   closed... A notification is shown while this happens...").
+4. Bump `version` (native change) and build a new release.
+5. In Play Console, fill in both declarations from section 3 with the video, then upload.
+
+---
+
 ## Open questions for the owner
 1. Launch cities and countries (listing copy and countries field)
 2. Public contact email (pantrateam@ or pylifekelvin@) and whether the phone number is shown
@@ -319,4 +347,4 @@ Welcome to Pantra!
 4. Personal or organisation developer account (closed-testing rule)
 5. ~~Final age~~: 18+ (done)
 6. Financial features answer: "none" (recommended) or "stored-value wallet"
-7. Build background tracking so the rider's map keeps updating while the driver uses Google Maps? (later release)
+7. When to turn background tracking back on, so the rider's map keeps updating while the driver uses Google Maps (section 6)
