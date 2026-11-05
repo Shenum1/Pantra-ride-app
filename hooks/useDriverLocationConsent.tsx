@@ -5,6 +5,7 @@ import LocationDisclosureModal from '@/components/LocationDisclosureModal';
 import { getDriverLocationPermission } from '@/lib/driver-background-location';
 import {
   BACKGROUND_PERMISSION_EXPLAINER,
+  DRIVER_BACKGROUND_LOCATION_ENABLED,
   DriverTrackingMode,
   LocationPermissionStatus,
   trackingMode,
@@ -15,6 +16,10 @@ import {
 // only if that was granted — the background ("Allow all the time") prompt.
 // Denying at any step still lets the driver work with whatever access they
 // have; the driver store falls back to foreground-only tracking.
+//
+// While DRIVER_BACKGROUND_LOCATION_ENABLED is false, only the normal foreground
+// prompt is shown: the disclosure says "even when the app is closed", which
+// would not be true.
 //
 // Render `disclosureModal` in the calling screen.
 export function useDriverLocationConsent() {
@@ -32,6 +37,17 @@ export function useDriverLocationConsent() {
 
     const current = await getDriverLocationPermission();
     if (current === 'background') return current;
+
+    if (!DRIVER_BACKGROUND_LOCATION_ENABLED) {
+      if (current === 'foreground') return current;
+      try {
+        const foreground = await Location.requestForegroundPermissionsAsync();
+        return trackingMode(foreground.status as LocationPermissionStatus, 'denied');
+      } catch (error) {
+        console.error('Error requesting location permission:', error);
+        return getDriverLocationPermission();
+      }
+    }
 
     const accepted = await new Promise<boolean>((resolve) => {
       resolverRef.current = resolve;

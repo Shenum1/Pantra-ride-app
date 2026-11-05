@@ -3,6 +3,14 @@
 // and shared by lib/driver-background-location.ts, hooks/useDriverStore.ts and
 // the disclosure modal.
 
+// Background location is switched off for the first Play release so it needs no
+// background-location or foreground-service declaration. Drivers are tracked
+// only while the app is open. Must match app.json: true only when
+// ACCESS_BACKGROUND_LOCATION and FOREGROUND_SERVICE_LOCATION are in
+// android.permissions (checked by testing/unit/driver-location-policy.test.ts).
+// Steps to turn it back on: docs/play-store-listing.md, "Turning background location back on".
+export const DRIVER_BACKGROUND_LOCATION_ENABLED = false;
+
 // Google Play's prominent disclosure for background location. Shown to drivers
 // before any native location prompt — keep the wording exactly as approved.
 export const LOCATION_DISCLOSURE_TEXT =

@@ -1,10 +1,34 @@
 import { describe, expect, it } from 'vitest';
+import appJson from '../../app.json';
 import {
+  DRIVER_BACKGROUND_LOCATION_ENABLED,
   LOCATION_DISCLOSURE_TEXT,
   notificationCopy,
   shouldTrack,
   trackingMode,
 } from '@/lib/driver-location-policy';
+
+describe('DRIVER_BACKGROUND_LOCATION_ENABLED', () => {
+  // Play requires declarations for whatever the manifest asks for, so the code
+  // switch and app.json must be flipped together.
+  const { permissions, blockedPermissions } = appJson.expo.android;
+  const backgroundPermissions = ['ACCESS_BACKGROUND_LOCATION', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_LOCATION'];
+  const plugin = appJson.expo.plugins.find(
+    (entry) => Array.isArray(entry) && entry[0] === 'expo-location'
+  ) as unknown as [string, Record<string, unknown>] | undefined;
+
+  it('matches the background permissions requested in app.json', () => {
+    for (const permission of backgroundPermissions) {
+      expect(permissions.includes(permission)).toBe(DRIVER_BACKGROUND_LOCATION_ENABLED);
+      expect(blockedPermissions.includes(`android.permission.${permission}`)).toBe(!DRIVER_BACKGROUND_LOCATION_ENABLED);
+    }
+  });
+
+  it('matches the expo-location plugin flags', () => {
+    expect(plugin?.[1].isAndroidBackgroundLocationEnabled).toBe(DRIVER_BACKGROUND_LOCATION_ENABLED);
+    expect(plugin?.[1].isAndroidForegroundServiceEnabled).toBe(DRIVER_BACKGROUND_LOCATION_ENABLED);
+  });
+});
 
 describe('shouldTrack', () => {
   it('tracks while the driver is online and waiting for rides', () => {

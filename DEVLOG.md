@@ -103,6 +103,26 @@ _Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to
 
 > Entries from 2026-08-01 to 2026-10-06 were written on 2026-10-06 from the git history (the log had not been updated since 2026-07-31). Commit hashes are listed so details can be checked with `git show <hash>`.
 
+### 2026-11-05 — Background location switched off for the first Play release (pending: build 1.0.5, replace 1.0.3/1.0.4 on every Play track, device test)
+
+- **Why.** The closed-testing release was blocked by two Play Console errors: undeclared sensitive permissions (`ACCESS_BACKGROUND_LOCATION`) and the missing foreground-service declaration. Both need a demo video. The owner chose to reach production first and add background location in a later update.
+- **Done.**
+  - New switch `DRIVER_BACKGROUND_LOCATION_ENABLED = false` in `lib/driver-location-policy.ts`.
+  - When it's off, `getDriverLocationPermission` never reports `'background'`, so the driver store uses its existing `watchPositionAsync` fallback.
+  - The consent flow shows only the normal foreground prompt, with no disclosure modal and no "Allow all the time" step.
+  - app.json no longer requests `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE` or `FOREGROUND_SERVICE_LOCATION`, and the expo-location plugin flags are `false`. All three are also in `blockedPermissions`, because an old nested `expo-location` 15.1.1 under `@teovilla/react-native-web-maps` declares `FOREGROUND_SERVICE`.
+  - Privacy policy location sentence restored to the PR #10 text, "while ... the Application is open". Policy version stays 1.1.
+  - `version` 1.0.5.
+  - A unit test checks that the switch matches app.json.
+  - Steps to turn it back on: `docs/play-store-listing.md` section 6.
+- **Effect.** A driver's location updates only while Pantra is on screen. After tapping Navigate (Google Maps) or locking the phone, the rider's map holds the last position until the driver returns.
+- **Checks:**
+  - Introspect shows the three permissions as `tools:node: remove`, version 1.0.5.
+  - The library-manifest scan finds `FOREGROUND_SERVICE` only in the nested `expo-location` copy, which is blocked.
+  - 819 tests pass.
+  - tsc shows only the 5 known stale-route errors.
+  - Not device-tested yet.
+
 ### 2026-11-05 — Removed hidden ACTIVITY_RECOGNITION permission (Play health/fitness rejection) (pending: build 1.0.4, replace old builds on all Play tracks)
 
 - **Why.** Google Play rejected the app as having health/fitness features. Cause: `expo-sensors` (in `package.json` since the initial template, never imported) declares `android.permission.ACTIVITY_RECOGNITION` in its own library manifest, which Gradle merges into the AAB. Every Android build up to 1.0.3 (15) had it.

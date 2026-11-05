@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { FirebaseDriverService } from './firebase-driver-service';
 import {
+  DRIVER_BACKGROUND_LOCATION_ENABLED,
   DriverTrackingMode,
   LocationPermissionStatus,
   notificationCopy,
@@ -46,6 +47,8 @@ export async function getDriverLocationPermission(): Promise<DriverTrackingMode>
   try {
     const foreground = await Location.getForegroundPermissionsAsync();
     if (foreground.status !== 'granted') return 'none';
+    // Switched off: never report 'background', so the driver store never starts the service.
+    if (!DRIVER_BACKGROUND_LOCATION_ENABLED) return trackingMode(foreground.status as LocationPermissionStatus, 'denied');
     const background = await Location.getBackgroundPermissionsAsync();
     return trackingMode(foreground.status as LocationPermissionStatus, background.status as LocationPermissionStatus);
   } catch (error) {
