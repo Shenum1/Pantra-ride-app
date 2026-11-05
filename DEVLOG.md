@@ -103,6 +103,13 @@ _Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to
 
 > Entries from 2026-08-01 to 2026-10-06 were written on 2026-10-06 from the git history (the log had not been updated since 2026-07-31). Commit hashes are listed so details can be checked with `git show <hash>`.
 
+### 2026-11-05 — Removed hidden ACTIVITY_RECOGNITION permission (Play health/fitness rejection) (pending: build 1.0.4, replace old builds on all Play tracks)
+
+- **Why.** Google Play rejected the app as having health/fitness features. Cause: `expo-sensors` (in `package.json` since the initial template, never imported) declares `android.permission.ACTIVITY_RECOGNITION` in its own library manifest, which Gradle merges into the AAB. Every Android build up to 1.0.3 (15) had it.
+- **Done.** `expo-sensors` removed (`bun remove`); `ACTIVITY_RECOGNITION` added to `android.blockedPermissions` so no future library can add it back; `version` 1.0.4 (native change).
+- **Lesson.** `expo config --type introspect` only shows permissions from config plugins, not ones merged from library manifests at build time. To check those, scan `node_modules/**/android/src/main/AndroidManifest.xml`, and after a build check Play Console → App bundle explorer → Permissions (that also covers Google Play services libraries).
+- **Checks:** library-manifest scan finds no `ACTIVITY_RECOGNITION`/`BODY_SENSORS`; introspect shows `ACTIVITY_RECOGNITION [remove]`; 817 tests pass.
+
 ### 2026-11-03 — Driver background location with Play disclosure (pending: new native build, device test, Play declarations)
 
 - **Why.** The rider's map froze while a driver used Google Maps (Navigate), because tracking only ran with Pantra open. Tracking also stopped during every trip: accepting a ride sets `drivers.isOnline=false`, and the store only tracked while online.

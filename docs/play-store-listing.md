@@ -9,9 +9,9 @@ Anything marked **TBD (ask owner)** is a business decision the code can't answer
 
 ## 0. Fix before submitting
 
-Google reviewers open the app. Status as of 2026-11-03:
+Google reviewers open the app. Status as of 2026-11-05:
 
-**Fixed in code** (needs a new native build, so `version` is now 1.0.3):
+**Fixed in code** (needs a new native build; `version` is now 1.0.4):
 1. ✅ **Emergency button** (`app/safety.tsx`): now really dials 112 (Nigeria's emergency
    number) instead of showing a fake "Calling 911..." pop-up. The toggles and rows that saved a
    setting but did nothing (Share Trip Details, Emergency Contacts, RideCheck, Trusted
@@ -25,7 +25,12 @@ Google reviewers open the app. Status as of 2026-11-03:
    **Background location is now real** (2026-11-03): drivers get a foreground-service location
    task (`lib/driver-background-location.ts`) after an in-app disclosure, so the bundle requests
    `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE` and `FOREGROUND_SERVICE_LOCATION`. Fill in
-   the two declarations in section 3. Riders stay foreground-only.
+   the two declarations in section 3. Riders stay foreground-only.4b. ✅ **Hidden health/fitness permission removed** (2026-11-05): Play flagged the app as having
+   health/fitness features because the unused `expo-sensors` library (from the original Expo
+   template) added `android.permission.ACTIVITY_RECOGNITION` to the merged manifest. Every build
+   up to 1.0.3 (15) has it. `expo-sensors` is removed and `ACTIVITY_RECOGNITION` is blocked in
+   app.json. After building 1.0.4, check Play Console → App bundle explorer → Permissions, and
+   replace the older builds on **every** track (Play checks all active releases).
 
 **Still open (owner)**:
 5. **Live tracking and chat**: DEVLOG (2026-10-08) says these don't work on production
@@ -193,7 +198,10 @@ and driver payouts are earnings for a service. **TBD (owner, check)**: if Google
 the closest category is "Digital wallet / stored value". Keep the explanation above ready.
 
 ### Health apps
-No health features
+No health features. Builds up to 1.0.3 (15) contained `ACTIVITY_RECOGNITION` (a physical-activity
+permission added by the unused `expo-sensors` library), which made Play flag health/fitness.
+It's removed from 1.0.4. If Play asks, explain that it came from an unused library and was
+removed, and that the app has no health or fitness features.
 
 ### Advertising ID
 **Yes, uses advertising ID**. Use: **Advertising or marketing** (AdMob). `expo-tracking-transparency` adds the `AD_ID` permission.
