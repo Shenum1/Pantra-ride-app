@@ -111,4 +111,108 @@ describe('GoogleMapsService', () => {
     expect(diagnostic.success).toBe(true);
     expect(diagnostic.apis.staticMap).toBe(true);
   });
+
+  function jsonResponse(body: unknown) {
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+
+  it('autocompletes with one request per keystroke, carrying the session token and origin', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'unit-test-key';
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      status: 'OK',
+      predictions: [
+        {
+          place_id: 'banex',
+          description: 'Banex Plaza, Wuse 2, Abuja, Nigeria',
+          structured_formatting: { main_text: 'Banex Plaza', secondary_text: 'Wuse 2, Abuja, Nigeria' },
+          types: ['shopping_mall', 'establishment'],
+          distance_meters: 2380,
+        },
+        {
+          place_id: 'garki-hospital',
+          description: 'Garki Hospital, Garki, Abuja, Nigeria',
+          structured_formatting: { main_text: 'Garki Hospital', secondary_text: 'Garki, Abuja, Nigeria' },
+          types: ['hospital'],
+          distance_meters: 6100,
+        },
+      ],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GoogleMapsService } = await import('@/lib/google-maps-service');
+
+    const results = await GoogleMapsService.autocomplete('Ban', { latitude: 9.06, longitude: 7.47 }, 'session-123');
+
+    // Previously: 1 autocomplete + up to 8 Place Details calls per keystroke.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain('/place/autocomplete/json');
+    expect(url).toContain('sessiontoken=session-123');
+    expect(url).toContain('origin=9.06,7.47');
+    expect(url).toContain('components=country:ng');
+    expect(results).toEqual([
+      expect.objectContaining({ placeId: 'banex', name: 'Banex Plaza', address: 'Wuse 2, Abuja', distanceMeters: 2380, types: ['shopping_mall', 'establishment'] }),
+      expect.objectContaining({ placeId: 'garki-hospital', name: 'Garki Hospital', address: 'Garki, Abuja', distanceMeters: 6100 }),
+    ]);
+    expect(results[0].location).toBeUndefined();
+  });
+
+  it('omits origin when the rider location is unknown, so no misleading distances', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'unit-test-key';
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      status: 'OK',
+      predictions: [{ place_id: 'p1', description: 'Kubwa, Abuja', structured_formatting: { main_text: 'Kubwa', secondary_text: 'Abuja' } }],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GoogleMapsService } = await import('@/lib/google-maps-service');
+
+    const results = await GoogleMapsService.autocomplete('Kubwa');
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).not.toContain('origin=');
+    expect(url).not.toContain('sessiontoken=');
+    expect(results[0].distanceMeters).toBeUndefined();
+  });
+
+  it('falls back to text search rows, which carry coordinates and distance', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'unit-test-key';
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 'ZERO_RESULTS', predictions: [] }))
+      .mockResolvedValueOnce(jsonResponse({
+        status: 'OK',
+        results: [{ place_id: 'jabi', name: 'Jabi Lake Mall', formatted_address: 'Bala Sokoto Way, Jabi, Abuja, Nigeria', geometry: { location: { lat: 9.07, lng: 7.42 } } }],
+      })));
+    const { GoogleMapsService } = await import('@/lib/google-maps-service');
+
+    const results = await GoogleMapsService.autocomplete('Jabi Lake', { latitude: 9.06, longitude: 7.47 }, 'session-123');
+
+    expect(results).toHaveLength(1);
+    expect(results[0].location).toMatchObject({ latitude: 9.07, longitude: 7.42 });
+    expect(results[0].distanceMeters).toBeGreaterThan(5000);
+  });
+
+  it('closes the Places session with the same token on Place Details', async () => {
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY = 'unit-test-key';
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      status: 'OK',
+      result: { place_id: 'banex', name: 'Banex Plaza', formatted_address: 'Aminu Kano Cres, Wuse 2, Abuja, Nigeria', geometry: { location: { lat: 9.0788, lng: 7.4702 } } },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { GoogleMapsService } = await import('@/lib/google-maps-service');
+
+    const place = await GoogleMapsService.getPlaceDetails('banex', 'session-123');
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('sessiontoken=session-123');
+    expect(place?.location).toMatchObject({ latitude: 9.0788, longitude: 7.4702 });
+  });
+
+  it('keeps the place name in the stored pickup/dropoff label', async () => {
+    const { formatPlaceLabel } = await import('@/lib/google-maps-service');
+
+    expect(formatPlaceLabel('Banex Plaza', 'Wuse 2, Abuja')).toBe('Banex Plaza, Wuse 2, Abuja');
+    expect(formatPlaceLabel('Ahmadu Bello Way', 'Abuja')).toBe('Ahmadu Bello Way, Abuja');
+    // Text Search addresses often already start with the name.
+    expect(formatPlaceLabel('Kubwa', 'Kubwa, Abuja')).toBe('Kubwa, Abuja');
+    expect(formatPlaceLabel('', 'Garki, Abuja')).toBe('Garki, Abuja');
+    expect(formatPlaceLabel('Jabi Lake Mall', '')).toBe('Jabi Lake Mall');
+  });
 });

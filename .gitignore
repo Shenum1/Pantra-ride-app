@@ -54,3 +54,6 @@ core
 node_modules
 .expo
 package-lock.json
+
+# Map style comparison images (scripts/compare-map-styles.ts)
+testing/artifacts/map-styles/

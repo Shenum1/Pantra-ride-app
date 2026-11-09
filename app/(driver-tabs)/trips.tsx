@@ -28,6 +28,9 @@ import * as ExpoLocation from 'expo-location';
 import { RideRequestForDriver } from '@/types';
 import { CashRidesPausedError } from '@/lib/firebase-driver-service';
 
+// Height of the collapsed ride-request sheet, as a share of the screen.
+const COLLAPSED_SHEET_RATIO = 0.15;
+
 export default function DriverTrips() {
   const { userLocation, setUserLocation } = useLocation();
   const {
@@ -57,7 +60,13 @@ export default function DriverTrips() {
     });
   };
 
-  const snapPoints = useMemo(() => ['15%', '87%'], []);
+  const snapPoints = useMemo(() => [`${COLLAPSED_SHEET_RATIO * 100}%`, '87%'], []);
+  // The collapsed request sheet covers the bottom of the map.
+  const [mapHeight, setMapHeight] = useState<number | null>(null);
+  const mapPadding = useMemo(
+    () => (mapHeight === null ? undefined : { top: 0, bottom: Math.round(mapHeight * COLLAPSED_SHEET_RATIO) }),
+    [mapHeight]
+  );
 
   useEffect(() => {
     (async () => {
@@ -290,7 +299,7 @@ export default function DriverTrips() {
   return (
     <SafeAreaView style={styles.container}>
       {/* Map Area */}
-      <View style={styles.mapContainer}>
+      <View style={styles.mapContainer} onLayout={(event) => setMapHeight(event.nativeEvent.layout.height)}>
         {Platform.OS === 'web' ? (
           <View style={styles.mapPlaceholder}>
             <MapPin size={40} color={Colors.light.primary} />
@@ -303,6 +312,7 @@ export default function DriverTrips() {
             fullScreen
             showDrivers={false}
             initialRegion={userLocation || undefined}
+            mapPadding={mapPadding}
           />
         )}
       </View>

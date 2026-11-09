@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import React, { useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View, Pressable, Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -24,6 +24,10 @@ export default function HomeScreen() {
   const [initialMapRegion, setInitialMapRegion] = useState<Location | undefined>(undefined);
   const [showWeather, setShowWeather] = useState(false);
   const insets = useSafeAreaInsets();
+  // Bottom edges of the floating search row and the location error banner,
+  // so the map's buttons and centred content stay clear of them.
+  const [searchRowBottom, setSearchRowBottom] = useState<number | null>(null);
+  const [errorBannerBottom, setErrorBannerBottom] = useState<number | null>(null);
   const weatherAnimation = React.useRef(new Animated.Value(0)).current;
   const hasRedirectedToRide = useRef<boolean>(false);
 
@@ -51,6 +55,18 @@ export default function HomeScreen() {
       void fetchWeather(userLocation);
     }
   }, [userLocation, fetchWeather]);
+
+  const showLocationError = !isLoading && !userLocation && !!locationError;
+  const mapPadding = useMemo(() => (
+    searchRowBottom === null
+      ? undefined
+      : {
+          top: Math.max(searchRowBottom, showLocationError ? errorBannerBottom ?? 0 : 0),
+          // Floating tab bar: 56 tall, at least 20 above the screen edge
+          // (app/(tabs)/_layout.tsx).
+          bottom: Math.max(20, insets.bottom) + 56,
+        }
+  ), [errorBannerBottom, insets.bottom, searchRowBottom, showLocationError]);
 
   if (isLoading) {
     return (
@@ -96,18 +112,25 @@ export default function HomeScreen() {
           showDrivers={false}
           fullScreen={true}
           preferStaticMap={false}
+          mapPadding={mapPadding}
         />
       </View>
-      
 
-      
+
+
       {/* Floating Search Button */}
-      <View style={[
-        styles.floatingControls,
-        {
-          paddingTop: insets.top + 20,
-        }
-      ]}>
+      <View
+        style={[
+          styles.floatingControls,
+          {
+            paddingTop: insets.top + 20,
+          }
+        ]}
+        onLayout={(event) => {
+          const { y, height } = event.nativeEvent.layout;
+          setSearchRowBottom(Math.round(y + height));
+        }}
+      >
         <Pressable
           style={[
             styles.searchButton,
@@ -139,8 +162,14 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {!isLoading && !userLocation && locationError && (
-        <View style={[styles.locationErrorBanner, { top: insets.top + 84, backgroundColor: colors.card, borderColor: colors.border }]}>
+      {showLocationError && (
+        <View
+          style={[styles.locationErrorBanner, { top: insets.top + 84, backgroundColor: colors.card, borderColor: colors.border }]}
+          onLayout={(event) => {
+            const { y, height } = event.nativeEvent.layout;
+            setErrorBannerBottom(Math.round(y + height));
+          }}
+        >
           <Text style={[styles.locationErrorText, { color: colors.textSecondary }]}>{locationError}</Text>
           <Pressable
             onPress={() => (isLocationSharingOff ? router.push("/privacy") : void retryLocation())}

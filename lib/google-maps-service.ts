@@ -2,6 +2,7 @@ import { Location } from '@/types';
 import { Platform } from 'react-native';
 import { NIGERIA_DEFAULT_COORDS } from '@/constants/nigeria-region';
 import { MAP_COLORS, PANTRA_STATIC_MAP_STYLE_PARAMS } from '@/constants/map-style';
+import { distanceMeters } from '@/lib/map-geometry';
 
 function buildGoogleMapsProxyUrl(url: string): string {
   const googleUrl = new URL(url);
@@ -57,6 +58,9 @@ interface GooglePrediction {
   place_id: string;
   description: string;
   structured_formatting?: { main_text?: string; secondary_text?: string };
+  types?: string[];
+  // Only present when the request carried an `origin`.
+  distance_meters?: number;
 }
 
 interface GoogleApiResponse<T> {
@@ -141,9 +145,33 @@ export interface AutocompleteResult {
   id: string;
   description: string;
   placeId: string;
-  location: Location;
   name: string;
   address: string;
+  types: string[];
+  distanceMeters?: number;
+  // Set only on Text Search fallback rows, which already carry coordinates.
+  // Prediction rows resolve theirs with getPlaceDetails when tapped, so a
+  // search costs one Details call instead of one per suggestion.
+  location?: Location;
+}
+
+// The label stored as a pickup/dropoff address. Autocomplete puts the place
+// name in `name` and only its area in `address` ("Banex Plaza" / "Wuse 2,
+// Abuja"), so storing the address alone loses the landmark the rider chose.
+export function formatPlaceLabel(name: string, address: string): string {
+  const trimmedName = name.trim();
+  const trimmedAddress = address.trim();
+  if (!trimmedName) return trimmedAddress;
+  if (!trimmedAddress) return trimmedName;
+  if (trimmedAddress.toLowerCase().includes(trimmedName.toLowerCase())) return trimmedAddress;
+  return `${trimmedName}, ${trimmedAddress}`;
+}
+
+export function formatDistanceMeters(meters: number): string {
+  if (meters < 1000) {
+    return `${Math.round(meters)} m`;
+  }
+  return `${(meters / 1000).toFixed(1)} km`;
 }
 
 interface DiagnosticResult {
@@ -225,8 +253,8 @@ function encodeStaticMarkers(markers: Array<{ location: Location; color: string;
     .join('');
 }
 
-// A wider white casing drawn under the brand-colored route so the line stays
-// legible against the muted road colors.
+// A wider dark-blue casing drawn under the brand-colored route so the line
+// stays legible against the white roads.
 function encodeStaticRoute(polyline: string): string {
   const encoded = encodeURIComponent(polyline);
   const casing = `&path=color:0x${MAP_COLORS.routeCasing.slice(1)}ff|weight:9|enc:${encoded}`;
@@ -273,7 +301,7 @@ export class GoogleMapsService {
     const height = Math.min(params.height ?? 900, 1200);
     const markerParams = encodeStaticMarkers((params.markers ?? []).map((marker) => ({
       location: marker.location,
-      color: `0x${(marker.type === 'dropoff' ? MAP_COLORS.dropoff : marker.type === 'driver' ? MAP_COLORS.label : MAP_COLORS.pickup).slice(1)}`,
+      color: `0x${(marker.type === 'dropoff' ? MAP_COLORS.dropoff : marker.type === 'driver' ? MAP_COLORS.vehicle : MAP_COLORS.pickup).slice(1)}`,
       label: marker.type === 'dropoff' ? 'D' : marker.type === 'pickup' ? 'P' : undefined,
     })));
     const path = params.routePolyline ? encodeStaticRoute(params.routePolyline) : '';
@@ -315,34 +343,50 @@ export class GoogleMapsService {
     }
   }
 
-  static async autocomplete(input: string, location?: Location): Promise<AutocompleteResult[]> {
+  // Returns predictions only — no coordinates — so typing costs one request
+  // per keystroke. Pass the same `sessionToken` here and to getPlaceDetails
+  // for the chosen result, and Google bills the whole search as one session.
+  static async autocomplete(input: string, location?: Location, sessionToken?: string): Promise<AutocompleteResult[]> {
     const query = input.trim();
     if (query.length < 2) return [];
     if (!GOOGLE_MAPS_API_KEY) return [];
 
     try {
-      const loc = location ? `&location=${location.latitude},${location.longitude}&radius=50000&strictbounds=false` : `&location=${NIGERIA_DEFAULT_COORDS.latitude},${NIGERIA_DEFAULT_COORDS.longitude}&radius=50000&strictbounds=false`;
-      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&components=country:ng&language=en${loc}&key=${GOOGLE_MAPS_API_KEY}`;
+      const bias = location ?? NIGERIA_DEFAULT_COORDS;
+      const params = [
+        `input=${encodeURIComponent(query)}`,
+        'components=country:ng',
+        'language=en',
+        `location=${bias.latitude},${bias.longitude}`,
+        'radius=50000',
+        'strictbounds=false',
+        // Distances are only meaningful from the rider's real position.
+        location ? `origin=${location.latitude},${location.longitude}` : null,
+        sessionToken ? `sessiontoken=${encodeURIComponent(sessionToken)}` : null,
+      ].filter(Boolean).join('&');
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?${params}&key=${GOOGLE_MAPS_API_KEY}`;
       const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
       if (data.status && data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
         console.warn('Google autocomplete returned non-OK status:', data.status, data.error_message ?? 'No message');
       }
       const predictions: GooglePrediction[] = Array.isArray(data?.predictions) ? data.predictions : [];
-      const details = await Promise.all(predictions.slice(0, 8).map(async (prediction) => {
-        const place = await this.getPlaceDetails(prediction.place_id);
-        if (!place) return null;
-        return {
-          id: prediction.place_id,
-          description: prediction.description,
-          placeId: prediction.place_id,
-          location: place.location,
-          name: prediction.structured_formatting?.main_text ?? place.name,
-          address: stripNigeriaSuffix(prediction.structured_formatting?.secondary_text ?? place.address ?? ''),
-        };
+      const results: AutocompleteResult[] = predictions.slice(0, 8).map((prediction) => ({
+        id: prediction.place_id,
+        description: prediction.description,
+        placeId: prediction.place_id,
+        name: prediction.structured_formatting?.main_text ?? prediction.description,
+        address: stripNigeriaSuffix(prediction.structured_formatting?.secondary_text ?? ''),
+        types: prediction.types ?? [],
+        distanceMeters: typeof prediction.distance_meters === 'number' ? prediction.distance_meters : undefined,
       }));
-      const results = details.filter((item): item is AutocompleteResult => item !== null);
-      return results.length > 0 ? dedupeByAddress(results) : this.searchPlaces(query, location).then((places) => places.map(this.placeToAutocomplete));
+      if (results.length > 0) return dedupeByAddress(results);
+
+      const places = await this.searchPlaces(query, location);
+      return places.map((place) => ({
+        ...this.placeToAutocomplete(place),
+        distanceMeters: location ? distanceMeters(location, place.location) : undefined,
+      }));
     } catch (error) {
       console.error('Google autocomplete error:', error);
       return [];
@@ -396,18 +440,15 @@ export class GoogleMapsService {
   }
 
   static getDistanceLabel(origin: Location, destination: Location): string {
-    const meters = this.calculateDistance(origin, destination);
-    if (meters < 1000) {
-      return `${Math.round(meters)} m`;
-    }
-    return `${(meters / 1000).toFixed(1)} km`;
+    return formatDistanceMeters(this.calculateDistance(origin, destination));
   }
 
-  static async getPlaceDetails(placeId: string): Promise<PlaceResult | null> {
+  static async getPlaceDetails(placeId: string, sessionToken?: string): Promise<PlaceResult | null> {
     if (!GOOGLE_MAPS_API_KEY) return null;
 
     try {
-      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=place_id,name,formatted_address,geometry&key=${GOOGLE_MAPS_API_KEY}`;
+      const session = sessionToken ? `&sessiontoken=${encodeURIComponent(sessionToken)}` : '';
+      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=place_id,name,formatted_address,geometry${session}&key=${GOOGLE_MAPS_API_KEY}`;
       const response = await fetchGoogleMaps(url);
       const data = await response.json() as GoogleApiResponse<GooglePlaceResult>;
       if (data.status && data.status !== 'OK') {
@@ -492,7 +533,7 @@ export class GoogleMapsService {
   }
 
   private static placeToAutocomplete(place: PlaceResult): AutocompleteResult {
-    return { id: place.id, description: place.address, placeId: place.id, location: place.location, name: place.name, address: place.address };
+    return { id: place.id, description: place.address, placeId: place.id, location: place.location, name: place.name, address: place.address, types: [] };
   }
 
   private static getEstimatedDirections(origin: Location, destination: Location): DirectionsResult {
@@ -501,12 +542,7 @@ export class GoogleMapsService {
   }
 
   private static calculateDistance(origin: Location, destination: Location): number {
-    const radius = 6371000;
-    const dLat = (destination.latitude - origin.latitude) * Math.PI / 180;
-    const dLon = (destination.longitude - origin.longitude) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) ** 2
-      + Math.cos(origin.latitude * Math.PI / 180) * Math.cos(destination.latitude * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-    return radius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return distanceMeters(origin, destination);
   }
 
   private static decodePolyline(encoded: string): { latitude: number; longitude: number }[] {

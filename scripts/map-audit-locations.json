@@ -1,0 +1,56 @@
+[
+  {
+    "id": "wuse-2",
+    "query": "Wuse 2, Abuja",
+    "character": "Dense commercial centre",
+    "placeId": "ChIJ5cToN1YKThARBYA3I8rkngk",
+    "formattedAddress": "Wuse 2, Abuja, Federal Capital Territory",
+    "latitude": 9.078749,
+    "longitude": 7.470186
+  },
+  {
+    "id": "garki",
+    "query": "Garki, Abuja",
+    "character": "Dense mixed government/commercial",
+    "placeId": "ChIJafybDYQLThARF1RjN5wHIsM",
+    "formattedAddress": "Garki, Abuja, Federal Capital Territory",
+    "latitude": 9.031896,
+    "longitude": 7.482812
+  },
+  {
+    "id": "gwarinpa",
+    "query": "Gwarinpa, Abuja",
+    "character": "Planned residential estate",
+    "placeId": "ChIJ-4Bwh251ThARTt7Mavnjy6k",
+    "formattedAddress": "Gwarinpa Estate, Abuja 900108, Federal Capital Territory",
+    "latitude": 9.10989,
+    "longitude": 7.404241
+  },
+  {
+    "id": "kubwa",
+    "query": "Kubwa, Abuja",
+    "character": "Large residential satellite town",
+    "placeId": "ChIJEbbkyvHYTRARYrsZR3quaW4",
+    "formattedAddress": "Kubwa, Federal Capital Territory",
+    "latitude": 9.149075,
+    "longitude": 7.326806
+  },
+  {
+    "id": "lugbe",
+    "query": "Lugbe, Abuja",
+    "character": "Fast-growing fringe settlement",
+    "placeId": "ChIJG8cj5UxyThAR53ghI0j75Nk",
+    "formattedAddress": "Lugbe 900107, Federal Capital Territory",
+    "latitude": 8.964086,
+    "longitude": 7.381371
+  },
+  {
+    "id": "mararaba",
+    "query": "Mararaba, Nasarawa",
+    "character": "Less-developed settlement, limited road data expected",
+    "placeId": "ChIJuXDMg6sIThARrwQEBqC1En8",
+    "formattedAddress": "Mararaba, Ado 961105, Nasarawa",
+    "latitude": 9.026682,
+    "longitude": 7.607355
+  }
+]

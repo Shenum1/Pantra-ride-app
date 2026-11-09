@@ -78,7 +78,7 @@ _Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to
 | AI admin agent API | ✅ | `/api/v1/agent-admin`. Read tools run immediately; write tools wait for an admin to approve them in the Agent queue. |
 | Background videos | ✅ | Login/signup videos are managed from admin-web's Content page. |
 | Push notifications | 🔄 | Remote push to drivers for new ride requests; rider trip updates are local notifications. |
-| Maps, Discover, Weather | 🔄 | Google Places/Directions work, with a custom map style. Static Maps & Geocoding APIs may still need enabling in Google Cloud. |
+| Maps, Discover, Weather | 🔄 | Google Places, Directions and Static Maps work (`bun run test:maps`, 2026-11-09). Map style, markers and live-trip camera reworked 2026-11-09, not yet device-tested. Geocoding API may still need enabling in Google Cloud (weather city name only). |
 
 ### Platform
 
@@ -102,6 +102,47 @@ _Last reviewed 2026-10-06. ✅ working · 🔄 partial / not yet verified end to
 ## Activity Log
 
 > Entries from 2026-08-01 to 2026-10-06 were written on 2026-10-06 from the git history (the log had not been updated since 2026-07-31). Commit hashes are listed so details can be checked with `git show <hash>`.
+
+### 2026-11-09 — Map experience: style, landmarks, markers, live-trip camera, search (pending: Android device test, OTA)
+
+- **Why.** Riders and drivers found the map bland, with few street names and no landmarks. The audit found three causes.
+  - **Our style hid the detail.** `constants/map-style.ts` turned off every POI, every map icon and every local street name, and drew minor roads almost the colour of the land. Google's own data for Abuja is dense; see `docs/MAP_COVERAGE.md`.
+  - **The live-trip camera fought itself.** Both trip screens rebuilt the map's region from every driver update, so the camera jumped back to the driver every 3–4 s, against the route fit.
+  - **Directions was called on every location update.** The moving car was the route's start point, so each update (about 15–20 a minute per trip) made a new Directions request and a route refit.
+- **Done (owner decisions: JSON style in code, not a Cloud Map ID; custom markers; Android-only testing; "set pickup on map" deferred; Abuja-only audit).**
+  - **Style.** New palette and rules in `constants/map-style.ts`:
+    - warm off-white land, white roads with edges, soft amber highways, a dark-blue route casing;
+    - POIs, icons, street and neighbourhood names on; bus stops and transit lines off.
+    - Built-up areas keep the land colour, because Google draws towns and buildings as one feature and a fill floods whole towns.
+    - The Static Maps style (web map) is now generated from the same rules (`toStaticMapStyleParams`).
+  - **MapView options:** no 3D buildings, no indoor maps, no Android map toolbar, no camera jump on marker tap. The loading colour matches the land, so there is no dark flash on load.
+  - **Removed the "Google Maps" badge.** The SDK already draws the required logo.
+  - **Markers.** `components/MapMarkers.tsx`:
+    - pickup is a blue dot, destination a dark square;
+    - the driver is a dark disc showing a car until it moves, then an arrow along its direction of travel;
+    - the driver glides between updates on Android;
+    - each marker stops redrawing once it has drawn (battery).
+  - **Camera.** New `Map` props:
+    - `mapPadding`: the size of each screen's overlays, so content, buttons and Google's logo stay clear of headers and sheets. Measured on ride-progress, ride-confirmation and home; fixed on the driver screens.
+    - `tracking`: frames driver plus pickup or destination once, again when the target changes, and otherwise only when the driver nears the screen edge.
+    - A pan or pinch hands control to the user until recenter.
+  - **Route refresh.** A route starting at the moving driver is keyed on its destination. Directions is refetched only when the driver is more than 50 m off the route or the route is 60 s old, never more than once per 10 s. In between, the driven part is trimmed locally. A failed refresh mid-trip keeps the current route rather than drawing a straight line. Helpers are in `lib/map-geometry.ts`.
+  - **Search.**
+    - Autocomplete makes one request per keystroke (previously up to 9, with a Place Details call per suggestion). Details are fetched only for the chosen row.
+    - One Places session token covers the whole search.
+    - Rows show a category icon and the distance from the rider.
+    - Saved pickup/dropoff labels keep the place name ("Banex Plaza, Wuse 2, Abuja"; previously just "Wuse 2, Abuja").
+    - "Use current location" stores the real address instead of the text "Current Location".
+  - **Current location.** Reverse-geocoded addresses are formatted cleanly (`lib/address-format.ts`), with no more `" , Abuja"`. The rider's one-shot fix uses high accuracy.
+- **Audit tool.** `scripts/compare-map-styles.ts` renders Google's unstyled map and the Pantra style at the same points and zooms. **Data gap found:** in Mararaba, Google has the road layout but almost no street names; landmarks are present.
+- **Checks:**
+  - 854 tests pass (35 new). The style tests fail on the old style file.
+  - tsc shows only the 5 known stale-route errors.
+  - No new lint warnings in the changed files.
+  - `bun run test:maps` passes all four APIs.
+  - Before/after Static Maps images were reviewed for all six areas.
+  - **Not tested on a device**: no Android device or emulator image was available. iOS was not tested at all.
+- **Ships by OTA**: JavaScript only, runtime 1.0.5.
 
 ### 2026-11-05 — Background location switched off for the first Play release (pending: build 1.0.5, replace 1.0.3/1.0.4 on every Play track, device test)
 

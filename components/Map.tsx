@@ -1,16 +1,18 @@
-import { Car, Compass, MapPin, Navigation } from 'lucide-react-native';
+import { Compass, MapPin, Navigation } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { Camera, Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
+import MapView, { Camera, Details, EdgePadding, LatLng, Marker, Polyline, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 import * as ExpoLocation from 'expo-location';
 
 import Colors from '@/constants/colors';
 import { MAP_COLORS, PANTRA_MAP_STYLE } from '@/constants/map-style';
 import { NIGERIA_DEFAULT_REGION } from '@/constants/nigeria-region';
+import { PointMarker, VehicleMarker } from '@/components/MapMarkers';
 import { Skeleton } from '@/components/skeletons';
 import { useLocation } from '@/hooks/useLocationStore';
 import { useRide } from '@/hooks/useRideStore';
 import { GoogleMapsService } from '@/lib/google-maps-service';
+import { distanceMeters, isInsidePaddedBounds, shouldRefetchMovingRoute, trimPolylineFrom } from '@/lib/map-geometry';
 import { Location } from '@/types';
 
 interface CustomMarker {
@@ -19,6 +21,12 @@ interface CustomMarker {
   title?: string;
   description?: string;
   type?: 'driver' | 'pickup' | 'dropoff';
+}
+
+// Live-trip camera: keep the moving vehicle and where it is heading in view.
+export interface MapTracking {
+  vehicle: Location | null;
+  target: Location | null;
 }
 
 interface MapProps {
@@ -36,6 +44,14 @@ interface MapProps {
   // false on driver screens: drivers must see the location disclosure
   // (hooks/useDriverLocationConsent.tsx) before any system prompt, so the map only checks.
   askForLocation?: boolean;
+  // Space covered by the screen's own overlays (headers, cards, bottom
+  // sheets). The map centres content and places Google's logo inside the
+  // remaining area, and its floating buttons sit just below `top`.
+  mapPadding?: Partial<EdgePadding>;
+  // When set, the camera follows the vehicle instead of `initialRegion`, and
+  // a route starting at the vehicle is refreshed sparingly instead of on
+  // every position update.
+  tracking?: MapTracking;
 }
 
 const EMPTY_MARKERS: CustomMarker[] = [];
@@ -44,6 +60,35 @@ const DEFAULT_DELTA = {
   latitudeDelta: 0.01,
   longitudeDelta: 0.01,
 };
+
+// Used only by screens that don't pass mapPadding.
+const LEGACY_FIT_PADDING = {
+  fullScreen: { top: 160, right: 48, bottom: 320, left: 48 },
+  inline: { top: 100, right: 48, bottom: 100, left: 48 },
+};
+const DEFAULT_CONTROLS_TOP = 86;
+const CONTROLS_GAP = 12;
+const CONTROL_SPACING = 56;
+// Extra room around fitted content, on top of the overlay padding.
+// react-native-maps' fitToCoordinates edgePadding replaces mapPadding for the
+// fit, so both are added together.
+const FIT_MARGIN = 40;
+const RECENTER_ZOOM = 16;
+// Closer than this, fitting two points would zoom to the maximum.
+const CLOSE_POINTS_METERS = 30;
+const MIN_HEADING_CHANGE_DEGREES = 3;
+
+function toLatLng(location: Location): LatLng {
+  return { latitude: location.latitude, longitude: location.longitude };
+}
+
+function coordinateKey(location: Location) {
+  return `${location.latitude.toFixed(5)}:${location.longitude.toFixed(5)}`;
+}
+
+function isSameCoordinate(a: Location | null | undefined, b: Location | null | undefined) {
+  return Boolean(a && b && a.latitude === b.latitude && a.longitude === b.longitude);
+}
 
 function buildRouteKey(pickup: Location | null, dropoff: Location | null) {
   if (!pickup || !dropoff) {
@@ -69,6 +114,10 @@ function hasMeaningfulRegionChange(current: Location | undefined, next: Region) 
     Math.abs((current.latitudeDelta ?? DEFAULT_DELTA.latitudeDelta) - next.latitudeDelta) > 0.001 ||
     Math.abs((current.longitudeDelta ?? DEFAULT_DELTA.longitudeDelta) - next.longitudeDelta) > 0.001
   );
+}
+
+function headingDifference(a: number, b: number) {
+  return Math.abs(((b - a + 540) % 360) - 180);
 }
 
 function buildStaticMapUrl(params: {
@@ -100,11 +149,13 @@ const Map: React.FC<MapProps> = ({
   customMarkers,
   preferStaticMap = false,
   askForLocation = true,
+  mapPadding,
+  tracking,
 }) => {
   const { userLocation, pickupLocation, dropoffLocation, routeInfo: sharedRouteInfo } = useLocation();
   const { nearbyDrivers } = useRide();
   const [currentRegion, setCurrentRegion] = useState<Location | undefined>(undefined);
-  const [routeCoordinates, setRouteCoordinates] = useState<Array<{ latitude: number; longitude: number }>>([]);
+  const [routeCoordinates, setRouteCoordinates] = useState<LatLng[]>([]);
   const [routeInfo, setRouteInfo] = useState<{ distance: number; duration: number } | null>(null);
   const [routePolyline, setRoutePolyline] = useState<string>('');
   const [isLoadingRoute, setIsLoadingRoute] = useState<boolean>(false);
@@ -118,14 +169,55 @@ const Map: React.FC<MapProps> = ({
   const [staticMapFailed, setStaticMapFailed] = useState<boolean>(false);
   const mapRef = useRef<MapView | null>(null);
   const headingSubscription = useRef<ExpoLocation.LocationSubscription | null>(null);
+  const lastHeadingRef = useRef<number>(0);
   const routeRequestKeyRef = useRef<string | null>(null);
+  const routeCoordinatesRef = useRef<LatLng[]>([]);
+  const routeFetchInFlightRef = useRef<boolean>(false);
+  const lastRouteFetchAtRef = useRef<number>(0);
   const fittedRouteKeyRef = useRef<string | null>(null);
+  const trackingFitKeyRef = useRef<string | null>(null);
   const lastAnimatedRegionKeyRef = useRef<string | null>(null);
   const mapLoadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Read inside async route callbacks, which must not re-run when it changes.
+  const userInteractedRef = useRef<boolean>(false);
+  userInteractedRef.current = userInteracted;
 
   const activeRouteStart = routeStartLocation ?? pickupLocation;
   const activeRouteEnd = routeEndLocation ?? dropoffLocation;
   const activeMarkers = customMarkers ?? EMPTY_MARKERS;
+  const trackingVehicle = tracking?.vehicle ?? null;
+  const trackingTarget = tracking?.target ?? null;
+  const isTracking = tracking !== undefined;
+  // A route that starts at the moving vehicle is keyed on its destination
+  // only; keying on the start would refetch Directions on every GPS update.
+  const isMovingRoute = Boolean(showRoute && trackingVehicle && isSameCoordinate(activeRouteStart, trackingVehicle));
+
+  const routeKey = useMemo(() => {
+    if (!showRoute || !activeRouteStart || !activeRouteEnd) {
+      return null;
+    }
+    return isMovingRoute ? `moving:${coordinateKey(activeRouteEnd)}` : buildRouteKey(activeRouteStart, activeRouteEnd);
+  }, [activeRouteEnd, activeRouteStart, isMovingRoute, showRoute]);
+
+  const fitEdgePadding = useMemo<EdgePadding>(() => {
+    if (!mapPadding) {
+      return fullScreen ? LEGACY_FIT_PADDING.fullScreen : LEGACY_FIT_PADDING.inline;
+    }
+    return {
+      top: (mapPadding.top ?? 0) + FIT_MARGIN,
+      right: (mapPadding.right ?? 0) + FIT_MARGIN,
+      bottom: (mapPadding.bottom ?? 0) + FIT_MARGIN,
+      left: (mapPadding.left ?? 0) + FIT_MARGIN,
+    };
+  }, [fullScreen, mapPadding]);
+
+  const nativeMapPadding = useMemo<EdgePadding | undefined>(() => (
+    mapPadding
+      ? { top: mapPadding.top ?? 0, right: mapPadding.right ?? 0, bottom: mapPadding.bottom ?? 0, left: mapPadding.left ?? 0 }
+      : undefined
+  ), [mapPadding]);
+
+  const controlsTop = mapPadding ? (mapPadding.top ?? 0) + CONTROLS_GAP : DEFAULT_CONTROLS_TOP;
 
   const staticMapMarkers = useMemo<CustomMarker[]>(() => {
     const markers: CustomMarker[] = [];
@@ -235,8 +327,10 @@ const Map: React.FC<MapProps> = ({
     };
   }, [mapRenderAttempt, preferStaticMap]);
 
+  // Screens without live tracking: move to `initialRegion` when it changes
+  // (e.g. the rider's location arrives), unless the rider has moved the map.
   useEffect(() => {
-    if (!mapRef.current || !resolvedInitialRegion || userInteracted) {
+    if (isTracking || !mapRef.current || !resolvedInitialRegion || userInteracted) {
       return;
     }
 
@@ -261,7 +355,7 @@ const Map: React.FC<MapProps> = ({
     lastAnimatedRegionKeyRef.current = regionKey;
     mapRef.current.animateToRegion(normalizedRegion, 250);
     setCurrentRegion(normalizedRegion);
-  }, [resolvedInitialRegion, userInteracted]);
+  }, [isTracking, resolvedInitialRegion, userInteracted]);
 
   useEffect(() => {
     if (Platform.OS === 'web' || !fullScreen) {
@@ -289,14 +383,19 @@ const Map: React.FC<MapProps> = ({
             return;
           }
 
-          if (headingData.trueHeading !== -1) {
-            setHeading(headingData.trueHeading);
+          const nextHeading = headingData.trueHeading !== -1 ? headingData.trueHeading : headingData.magHeading;
+          if (nextHeading === -1) {
             return;
           }
 
-          if (headingData.magHeading !== -1) {
-            setHeading(headingData.magHeading);
+          // The sensor reports many times a second; small changes would
+          // re-animate the camera continuously for no visible gain.
+          if (headingDifference(lastHeadingRef.current, nextHeading) < MIN_HEADING_CHANGE_DEGREES) {
+            return;
           }
+
+          lastHeadingRef.current = nextHeading;
+          setHeading(nextHeading);
         });
       } catch (error) {
         console.error('Error starting heading tracking:', error);
@@ -320,118 +419,215 @@ const Map: React.FC<MapProps> = ({
     onRouteInfoChange?.(info);
   }, [onRouteInfoChange]);
 
-  const fetchRoute = useCallback(async () => {
-    const routeKey = buildRouteKey(activeRouteStart, activeRouteEnd);
+  const applyRouteCoordinates = useCallback((coordinates: LatLng[]) => {
+    routeCoordinatesRef.current = coordinates;
+    setRouteCoordinates(coordinates);
+  }, []);
 
-    if (!showRoute || !activeRouteStart || !activeRouteEnd || !routeKey) {
-      routeRequestKeyRef.current = null;
-      fittedRouteKeyRef.current = null;
-      setRouteCoordinates([]);
-      setRoutePolyline('');
-      notifyRouteInfoChange(null);
+  const clearRoute = useCallback(() => {
+    routeRequestKeyRef.current = null;
+    fittedRouteKeyRef.current = null;
+    applyRouteCoordinates([]);
+    setRoutePolyline('');
+    notifyRouteInfoChange(null);
+  }, [applyRouteCoordinates, notifyRouteInfoChange]);
+
+  const fitRoute = useCallback((key: string, coordinates: LatLng[]) => {
+    if (userInteractedRef.current || !mapRef.current || fittedRouteKeyRef.current === key || coordinates.length === 0) {
       return;
     }
 
-    const isSharedPickupDropoffRoute = Boolean(
-      pickupLocation &&
-      dropoffLocation &&
-      activeRouteStart &&
-      activeRouteEnd &&
-      buildRouteKey(pickupLocation, dropoffLocation) === routeKey
-    );
+    fittedRouteKeyRef.current = key;
+    requestAnimationFrame(() => {
+      mapRef.current?.fitToCoordinates(coordinates, { edgePadding: fitEdgePadding, animated: true });
+    });
+  }, [fitEdgePadding]);
+
+  const requestRoute = useCallback(async (key: string, start: Location, end: Location, moving: boolean) => {
+    routeRequestKeyRef.current = key;
+    routeFetchInFlightRef.current = true;
+    lastRouteFetchAtRef.current = Date.now();
+    const hasDrawnRoute = routeCoordinatesRef.current.length > 0;
+    if (!hasDrawnRoute) {
+      setIsLoadingRoute(true);
+    }
+    console.log('Fetching map route for key:', key);
+
+    try {
+      let directions = await GoogleMapsService.getDirections(start, end);
+
+      if (!directions) {
+        console.log('Retrying map route fetch once after failure...');
+        directions = await GoogleMapsService.getDirections(start, end);
+      }
+
+      // Superseded by a newer destination while this request was in flight.
+      if (routeRequestKeyRef.current !== key) {
+        return;
+      }
+
+      // Mid-trip, a failed or straight-line estimate must not replace the
+      // real road route already on screen; it is retried on the next refresh.
+      if (moving && hasDrawnRoute && (!directions || directions.isEstimate)) {
+        console.log('Keeping current route; refresh failed for key:', key);
+        return;
+      }
+
+      if (!directions) {
+        console.error('Route fetch still failed after retry');
+        clearRoute();
+        return;
+      }
+
+      applyRouteCoordinates(directions.coordinates);
+      setRoutePolyline(directions.polyline ?? '');
+      notifyRouteInfoChange({
+        distance: directions.distance,
+        duration: directions.duration,
+      });
+
+      // Moving routes are framed by the tracking camera instead.
+      if (!moving) {
+        fitRoute(key, directions.coordinates);
+      }
+    } catch (error) {
+      console.error('Error fetching route:', error);
+      if (!(moving && hasDrawnRoute)) {
+        clearRoute();
+      }
+    } finally {
+      routeFetchInFlightRef.current = false;
+      setIsLoadingRoute(false);
+    }
+  }, [applyRouteCoordinates, clearRoute, fitRoute, notifyRouteInfoChange]);
+
+  useEffect(() => {
+    if (!routeKey || !activeRouteStart || !activeRouteEnd) {
+      if (routeRequestKeyRef.current !== null || routeCoordinatesRef.current.length > 0) {
+        clearRoute();
+      }
+      return;
+    }
+
+    if (isMovingRoute) {
+      if (routeRequestKeyRef.current === routeKey) {
+        if (routeFetchInFlightRef.current) {
+          return;
+        }
+
+        const needsRefetch = shouldRefetchMovingRoute({
+          vehicle: activeRouteStart,
+          polyline: routeCoordinatesRef.current,
+          lastFetchAt: lastRouteFetchAtRef.current,
+          now: Date.now(),
+        });
+
+        if (!needsRefetch) {
+          // Still on the drawn route: drop the part already driven.
+          if (routeCoordinatesRef.current.length >= 2) {
+            applyRouteCoordinates(trimPolylineFrom(activeRouteStart, routeCoordinatesRef.current));
+          }
+          return;
+        }
+      }
+
+      void requestRoute(routeKey, activeRouteStart, activeRouteEnd, true);
+      return;
+    }
+
+    const isSharedPickupDropoffRoute = buildRouteKey(pickupLocation, dropoffLocation) === routeKey;
 
     if (isSharedPickupDropoffRoute && sharedRouteInfo?.coordinates?.length) {
+      if (routeRequestKeyRef.current === routeKey && routeCoordinatesRef.current === sharedRouteInfo.coordinates) {
+        return;
+      }
       console.log('Using shared route info from location store for key:', routeKey);
       routeRequestKeyRef.current = routeKey;
-      setRouteCoordinates(sharedRouteInfo.coordinates);
+      applyRouteCoordinates(sharedRouteInfo.coordinates);
       setRoutePolyline(sharedRouteInfo.polyline ?? '');
       notifyRouteInfoChange({
         distance: sharedRouteInfo.distance,
         duration: sharedRouteInfo.duration,
       });
-
-      if (!userInteracted && mapRef.current && fittedRouteKeyRef.current !== routeKey) {
-        fittedRouteKeyRef.current = routeKey;
-        requestAnimationFrame(() => {
-          mapRef.current?.fitToCoordinates(sharedRouteInfo.coordinates, {
-            edgePadding: {
-              top: fullScreen ? 160 : 100,
-              right: 48,
-              bottom: fullScreen ? 320 : 100,
-              left: 48,
-            },
-            animated: true,
-          });
-        });
-      }
+      fitRoute(routeKey, sharedRouteInfo.coordinates);
       return;
     }
 
     if (routeRequestKeyRef.current === routeKey) {
-      console.log('Skipping duplicate map route fetch for key:', routeKey);
       return;
     }
 
-    routeRequestKeyRef.current = routeKey;
-    setIsLoadingRoute(true);
-    console.log('Fetching map route for key:', routeKey);
+    void requestRoute(routeKey, activeRouteStart, activeRouteEnd, false);
+  }, [activeRouteEnd, activeRouteStart, applyRouteCoordinates, clearRoute, dropoffLocation, fitRoute, isMovingRoute, notifyRouteInfoChange, pickupLocation, requestRoute, routeKey, sharedRouteInfo]);
 
-    try {
-      let directions = await GoogleMapsService.getDirections(activeRouteStart, activeRouteEnd);
-
-      if (!directions) {
-        console.log('Retrying map route fetch once after failure...');
-        directions = await GoogleMapsService.getDirections(activeRouteStart, activeRouteEnd);
-      }
-
-      if (!directions) {
-        console.error('Route fetch still failed after retry');
-        setRouteCoordinates([]);
-        setRoutePolyline('');
-        notifyRouteInfoChange(null);
-        fittedRouteKeyRef.current = null;
-        return;
-      }
-
-      const info = {
-        distance: directions.distance,
-        duration: directions.duration,
-      };
-
-      setRouteCoordinates(directions.coordinates);
-      setRoutePolyline(directions.polyline ?? '');
-      notifyRouteInfoChange(info);
-
-      if (!userInteracted && mapRef.current && fittedRouteKeyRef.current !== routeKey && directions.coordinates.length > 0) {
-        fittedRouteKeyRef.current = routeKey;
-        requestAnimationFrame(() => {
-          mapRef.current?.fitToCoordinates(directions.coordinates, {
-            edgePadding: {
-              top: fullScreen ? 160 : 100,
-              right: 48,
-              bottom: fullScreen ? 320 : 100,
-              left: 48,
-            },
-            animated: true,
-          });
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching route:', error);
-      setRouteCoordinates([]);
-      setRoutePolyline('');
-      notifyRouteInfoChange(null);
-      fittedRouteKeyRef.current = null;
-    } finally {
-      setIsLoadingRoute(false);
+  const fitCameraTo = useCallback((points: Location[]) => {
+    const map = mapRef.current;
+    if (!map || points.length === 0) {
+      return;
     }
-  }, [activeRouteEnd, activeRouteStart, dropoffLocation, fullScreen, notifyRouteInfoChange, pickupLocation, sharedRouteInfo, showRoute, userInteracted]);
 
+    const [first] = points;
+    const spread = Math.max(0, ...points.slice(1).map((point) => distanceMeters(first, point)));
+
+    if (spread < CLOSE_POINTS_METERS) {
+      map.animateCamera({ center: toLatLng(first), zoom: RECENTER_ZOOM, heading: 0, pitch: 0 }, { duration: 500 });
+      return;
+    }
+
+    map.fitToCoordinates(points.map(toLatLng), { edgePadding: fitEdgePadding, animated: true });
+  }, [fitEdgePadding]);
+
+  const trackingPoints = useMemo(
+    () => [trackingVehicle, trackingTarget].filter((point): point is Location => point !== null),
+    [trackingTarget, trackingVehicle]
+  );
+
+  // Live-trip camera. Frames vehicle + target when the map is ready and when
+  // the target changes (pickup -> destination). Otherwise it stays still and
+  // only re-frames when the vehicle nears the edge of the screen. Any user
+  // gesture hands control to the user until they press recenter.
   useEffect(() => {
-    void fetchRoute();
-  }, [fetchRoute]);
+    if (!isTracking || !hasMapLoaded || userInteracted || compassEnabled || trackingPoints.length === 0) {
+      return;
+    }
 
-  const handleRegionChangeComplete = useCallback((nextRegion: Region) => {
+    const frameKey = `${trackingTarget ? coordinateKey(trackingTarget) : 'none'}|${trackingVehicle ? 'vehicle' : 'no-vehicle'}`;
+    if (trackingFitKeyRef.current !== frameKey) {
+      trackingFitKeyRef.current = frameKey;
+      fitCameraTo(trackingPoints);
+      return;
+    }
+
+    if (!trackingVehicle || !mapRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+    mapRef.current.getMapBoundaries()
+      .then((bounds) => {
+        if (!cancelled && !isInsidePaddedBounds(trackingVehicle, bounds)) {
+          fitCameraTo(trackingPoints);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [compassEnabled, fitCameraTo, hasMapLoaded, isTracking, trackingPoints, trackingTarget, trackingVehicle, userInteracted]);
+
+  const markUserInteracted = useCallback(() => {
+    userInteractedRef.current = true;
+    setUserInteracted(true);
+    setFollowUserLocation(false);
+  }, []);
+
+  const handleRegionChangeComplete = useCallback((nextRegion: Region, details?: Details) => {
+    // Catches pinch-zoom and rotate as well as drags (onPanDrag).
+    if (details?.isGesture) {
+      markUserInteracted();
+    }
+
     if (!hasMeaningfulRegionChange(currentRegion, nextRegion)) {
       return;
     }
@@ -445,19 +641,31 @@ const Map: React.FC<MapProps> = ({
 
     setCurrentRegion(normalizedRegion);
     onRegionChange?.(normalizedRegion);
-  }, [currentRegion, onRegionChange]);
+  }, [currentRegion, markUserInteracted, onRegionChange]);
 
   const toggleCompass = useCallback(() => {
     setCompassEnabled((prev: boolean) => {
       if (prev) {
         setHeading(0);
+        lastHeadingRef.current = 0;
       }
       return !prev;
     });
   }, []);
 
   const recenterMap = useCallback(() => {
-    if (!userLocation || !mapRef.current) {
+    if (!mapRef.current) {
+      return;
+    }
+
+    if (isTracking && !compassEnabled && trackingPoints.length > 0) {
+      userInteractedRef.current = false;
+      setUserInteracted(false);
+      fitCameraTo(trackingPoints);
+      return;
+    }
+
+    if (!userLocation) {
       return;
     }
 
@@ -469,7 +677,7 @@ const Map: React.FC<MapProps> = ({
       pitch: compassEnabled ? 45 : 0,
       heading: compassEnabled ? heading : 0,
       altitude: 1000,
-      zoom: 15,
+      zoom: RECENTER_ZOOM,
     };
 
     mapRef.current.animateCamera(camera, { duration: 300 });
@@ -480,8 +688,9 @@ const Map: React.FC<MapProps> = ({
       longitudeDelta: DEFAULT_DELTA.longitudeDelta,
     });
     setFollowUserLocation(true);
+    userInteractedRef.current = false;
     setUserInteracted(false);
-  }, [compassEnabled, heading, userLocation]);
+  }, [compassEnabled, fitCameraTo, heading, isTracking, trackingPoints, userLocation]);
 
   useEffect(() => {
     if (!compassEnabled || !followUserLocation || !userLocation || !mapRef.current || Platform.OS === 'web') {
@@ -502,6 +711,44 @@ const Map: React.FC<MapProps> = ({
     mapRef.current.animateCamera(camera, { duration: 100 });
   }, [compassEnabled, followUserLocation, heading, userLocation]);
 
+  const renderMarker = (marker: CustomMarker) => {
+    const coordinate = toLatLng(marker.location);
+
+    if (marker.type === 'driver') {
+      return (
+        <VehicleMarker
+          key={marker.id}
+          coordinate={coordinate}
+          title={marker.title}
+          description={marker.description}
+          testID={`map-marker-${marker.id}`}
+        />
+      );
+    }
+
+    if (marker.type === 'pickup' || marker.type === 'dropoff') {
+      return (
+        <PointMarker
+          key={marker.id}
+          kind={marker.type}
+          coordinate={coordinate}
+          title={marker.title}
+          description={marker.description}
+          testID={`map-marker-${marker.id}`}
+        />
+      );
+    }
+
+    return (
+      <Marker
+        key={marker.id}
+        coordinate={coordinate}
+        title={marker.title}
+        description={marker.description}
+      />
+    );
+  };
+
   return (
     <View style={[fullScreen ? styles.fullScreenContainer : styles.container, style]} testID="map-container">
       {!fullScreen && (
@@ -517,7 +764,18 @@ const Map: React.FC<MapProps> = ({
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
             style={styles.map}
+            // Code-defined JSON style (constants/map-style.ts). Don't add a
+            // googleMapId alongside it: with a Map ID the SDK ignores this.
             customMapStyle={PANTRA_MAP_STYLE}
+            mapType="standard"
+            showsBuildings={false}
+            showsIndoors={false}
+            showsIndoorLevelPicker={false}
+            showsTraffic={false}
+            toolbarEnabled={false}
+            moveOnMarkerPress={false}
+            loadingBackgroundColor={MAP_COLORS.land}
+            mapPadding={nativeMapPadding}
             initialRegion={resolvedInitialRegion as Region}
             showsUserLocation={Boolean(userLocation)}
             showsMyLocationButton={false}
@@ -527,26 +785,16 @@ const Map: React.FC<MapProps> = ({
               setUseCleanFallback(false);
             }}
             onRegionChangeComplete={handleRegionChangeComplete}
-            onPanDrag={() => {
-              setUserInteracted(true);
-              setFollowUserLocation(false);
-            }}
+            onPanDrag={markUserInteracted}
             testID="google-native-map"
           >
             {showRoute && routeCoordinates.length > 0 ? (
               <>
-                <Polyline coordinates={routeCoordinates} strokeWidth={9} strokeColor={MAP_COLORS.routeCasing} />
-                <Polyline coordinates={routeCoordinates} strokeWidth={5} strokeColor={MAP_COLORS.route} />
+                <Polyline coordinates={routeCoordinates} strokeWidth={9} strokeColor={MAP_COLORS.routeCasing} lineCap="round" lineJoin="round" />
+                <Polyline coordinates={routeCoordinates} strokeWidth={5} strokeColor={MAP_COLORS.route} lineCap="round" lineJoin="round" />
               </>
             ) : null}
-            {staticMapMarkers.map((marker) => (
-              <Marker
-                key={marker.id}
-                coordinate={{ latitude: marker.location.latitude, longitude: marker.location.longitude }}
-                title={marker.title}
-                description={marker.description}
-              />
-            ))}
+            {staticMapMarkers.map(renderMarker)}
           </MapView>
         ) : shouldRenderStaticMap ? (
           <View style={styles.webMapFrame} testID="google-static-map">
@@ -585,7 +833,7 @@ const Map: React.FC<MapProps> = ({
         {fullScreen && Platform.OS !== 'web' && !preferStaticMap && (
           <>
             <Pressable
-              style={[styles.compassButton, compassEnabled && styles.compassButtonActive]}
+              style={[styles.mapControl, { top: controlsTop }, compassEnabled && styles.compassButtonActive]}
               onPress={toggleCompass}
               testID="map-compass-toggle"
             >
@@ -593,7 +841,7 @@ const Map: React.FC<MapProps> = ({
             </Pressable>
 
             <Pressable
-              style={styles.recenterButton}
+              style={[styles.mapControl, { top: controlsTop + CONTROL_SPACING }]}
               onPress={recenterMap}
               testID="map-recenter-button"
             >
@@ -603,14 +851,8 @@ const Map: React.FC<MapProps> = ({
         )}
       </View>
 
-      {GoogleMapsService.hasApiKey && !shouldRenderCleanFallback ? (
-        <View style={styles.mapProviderBadge} testID="map-provider-badge">
-          <Text style={styles.mapProviderBadgeText}>Google Maps</Text>
-        </View>
-      ) : null}
-
       {isLoadingRoute && (
-        <View style={styles.loadingContainer}>
+        <View style={[styles.loadingContainer, mapPadding ? { top: (mapPadding.top ?? 0) + CONTROLS_GAP } : null]}>
           <Skeleton width={110} height={14} borderRadius={4} />
         </View>
       )}
@@ -670,7 +912,8 @@ const styles = StyleSheet.create({
   },
   fullScreenContainer: {
     flex: 1,
-    backgroundColor: '#0B1220',
+    // Matches the map's land colour so there is no dark flash before tiles draw.
+    backgroundColor: MAP_COLORS.land,
   },
   mapHeader: {
     paddingHorizontal: 16,
@@ -736,41 +979,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
   },
-  driverMarkerContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driverMarker: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.light.primary,
-    borderWidth: 2,
-    borderColor: Colors.light.white,
-  },
-  liveDriverMarker: {
-    backgroundColor: '#0F172A',
-    borderColor: '#BAE6FD',
-  },
-  mapProviderBadge: {
-    position: 'absolute',
-    top: 18,
-    left: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 999,
-    backgroundColor: 'rgba(8,15,28,0.86)',
-    borderWidth: 1,
-    borderColor: 'rgba(125,211,252,0.28)',
-  },
-  mapProviderBadgeText: {
-    color: '#E0F2FE',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
   loadingContainer: {
     position: 'absolute',
     top: 18,
@@ -782,17 +990,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.94)',
-  },
-  loadingFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  loadingText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.light.text,
   },
   routeInfo: {
     position: 'absolute',
@@ -840,10 +1037,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: Colors.light.secondary,
   },
-  compassButton: {
+  mapControl: {
     position: 'absolute',
     right: 18,
-    top: 86,
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -858,21 +1054,5 @@ const styles = StyleSheet.create({
   },
   compassButtonActive: {
     backgroundColor: Colors.light.primary,
-  },
-  recenterButton: {
-    position: 'absolute',
-    right: 18,
-    top: 142,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    shadowColor: '#000',
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
   },
 });

@@ -8,6 +8,7 @@ import { GoogleMapsService, DirectionsResult } from "@/lib/google-maps-service";
 import { useAuth } from "@/hooks/useAuthStore";
 import { usePrivacyStore } from "@/hooks/usePrivacyStore";
 import { resolveLocationAccess } from "@/lib/privacy-preferences";
+import { formatReverseGeocodedAddress } from "@/lib/address-format";
 
 export const LOCATION_SHARING_OFF_MESSAGE = "Location sharing is off — enter your pickup manually";
 
@@ -35,6 +36,9 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
   const [dropoffLocation, setDropoffLocation] = useState<LocationType | null>(null);
   const [pickupAddress, setPickupAddress] = useState<string>("");
   const [dropoffAddress, setDropoffAddress] = useState<string>("");
+  // Address of the device's own position, kept apart from pickupAddress so
+  // "Use current location" can restore it after the rider picked elsewhere.
+  const [currentAddress, setCurrentAddress] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -47,6 +51,7 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
   // rider already chose is left alone (it may belong to a ride in progress).
   const applySharingOff = useCallback(() => {
     setUserLocation(null);
+    setCurrentAddress(null);
     setLocationError(LOCATION_SHARING_OFF_MESSAGE);
     setIsLoading(false);
   }, []);
@@ -110,7 +115,9 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
         setHasPermission(status === "granted");
 
         if (status === "granted") {
-          const location = await Location.getCurrentPositionAsync({});
+          // High accuracy: this fix becomes the pickup point, and the
+          // default (balanced) fix is often 50–100 m off in dense areas.
+          const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
           if (sharingTurnedOff()) {
             applySharingOff();
             return;
@@ -131,11 +138,9 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
             longitude: location.coords.longitude,
           });
 
-          if (addresses && addresses.length > 0) {
-            const address = addresses[0];
-            const formattedAddress = `${address.street || ""} ${address.name || ""}, ${address.city || ""}`;
-            setPickupAddress(formattedAddress);
-          }
+          const formattedAddress = addresses?.[0] ? formatReverseGeocodedAddress(addresses[0]) : null;
+          setCurrentAddress(formattedAddress);
+          setPickupAddress(formattedAddress ?? "Current location");
         } else {
           // No default location — surface the denial explicitly instead of
           // silently booking off a fake coordinate.
@@ -266,6 +271,7 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
     dropoffLocation,
     pickupAddress,
     dropoffAddress,
+    currentAddress,
     isLoading,
     hasPermission,
     locationError,
@@ -288,6 +294,7 @@ export const [LocationProvider, useLocation] = createContextHook(() => {
     dropoffLocation,
     pickupAddress,
     dropoffAddress,
+    currentAddress,
     isLoading,
     hasPermission,
     locationError,
