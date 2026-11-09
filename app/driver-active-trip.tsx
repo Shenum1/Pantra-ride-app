@@ -36,6 +36,9 @@ import { Location } from '@/types';
 
 type DriverTripStatus = 'heading_to_pickup' | 'at_pickup' | 'in_progress';
 
+// The map sits between the header and the info card with nothing on top of it.
+const NO_OVERLAY_MAP_PADDING = { top: 0, right: 0, bottom: 0, left: 0 };
+
 export default function DriverActiveTrip() {
   const { currentRide, updateRideStatus, updateLocation, pointsLookupFailed, retryPointsLookup, refreshTrackingPermission } =
     useDriverStore();
@@ -221,20 +224,29 @@ export default function DriverActiveTrip() {
     return tripStatus === 'in_progress' ? currentRide.dropoffLocation : currentRide.pickupLocation;
   }, [currentRide, tripStatus]);
 
-  const mapRegion = useMemo<Location | undefined>(() => {
-    const focusPoint = driverLocation ?? mapDestination ?? undefined;
-
-    if (!focusPoint) {
-      return undefined;
+  // Only the first known point: the live camera (Map `tracking`) takes over
+  // once the map is up. Re-deriving this from every GPS fix made the camera
+  // jump back to the driver every few seconds.
+  const [mapRegion, setMapRegion] = useState<Location | undefined>(undefined);
+  useEffect(() => {
+    if (mapRegion) {
+      return;
     }
+    const focusPoint = driverLocation ?? mapDestination;
+    if (focusPoint) {
+      setMapRegion({
+        latitude: focusPoint.latitude,
+        longitude: focusPoint.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      });
+    }
+  }, [driverLocation, mapDestination, mapRegion]);
 
-    return {
-      latitude: focusPoint.latitude,
-      longitude: focusPoint.longitude,
-      latitudeDelta: 0.05,
-      longitudeDelta: 0.05,
-    };
-  }, [driverLocation, mapDestination]);
+  const mapTracking = useMemo(() => ({
+    vehicle: driverLocation,
+    target: mapDestination,
+  }), [driverLocation, mapDestination]);
 
   const customMarkers = useMemo(() => {
     if (!currentRide) {
@@ -510,6 +522,8 @@ export default function DriverActiveTrip() {
           customMarkers={customMarkers}
           showDrivers={false}
           onRouteInfoChange={setRouteInfo}
+          tracking={mapTracking}
+          mapPadding={NO_OVERLAY_MAP_PADDING}
         />
       </View>
 

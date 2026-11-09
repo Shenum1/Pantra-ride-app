@@ -1,6 +1,21 @@
-import { ArrowLeft, Clock, LocateFixed, MapPin, X } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Clock,
+  Fuel,
+  GraduationCap,
+  Hospital,
+  Landmark,
+  LocateFixed,
+  MapPin,
+  Pill,
+  Plane,
+  ShoppingBag,
+  Utensils,
+  X,
+} from "lucide-react-native";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -12,11 +27,18 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import * as Crypto from "expo-crypto";
 import Colors from "@/constants/colors";
 import { SkeletonRow, ShimmerGroup } from "@/components/skeletons";
 import { useLocation } from "@/hooks/useLocationStore";
 import { Location as LocationType } from "@/types";
-import { AutocompleteResult, GoogleMapsService, PlaceResult } from "@/lib/google-maps-service";
+import {
+  AutocompleteResult,
+  GoogleMapsService,
+  PlaceResult,
+  formatDistanceMeters,
+  formatPlaceLabel,
+} from "@/lib/google-maps-service";
 import { calculateFare, calculateAllTierFares } from "@/lib/fare-calculator";
 
 interface PlaceWithPrice extends PlaceResult {
@@ -30,6 +52,20 @@ interface PlaceWithPrice extends PlaceResult {
   }[];
 }
 
+// Category icon for an autocomplete row, from Google's place types, so riders
+// can tell a hospital from a street of the same name at a glance.
+function iconForPlaceTypes(types: string[]) {
+  const has = (...candidates: string[]) => candidates.some((type) => types.includes(type));
+  if (has('airport')) return Plane;
+  if (has('hospital', 'doctor', 'health')) return Hospital;
+  if (has('pharmacy', 'drugstore')) return Pill;
+  if (has('school', 'primary_school', 'secondary_school', 'university')) return GraduationCap;
+  if (has('gas_station')) return Fuel;
+  if (has('shopping_mall', 'supermarket', 'grocery_or_supermarket', 'store', 'clothing_store')) return ShoppingBag;
+  if (has('restaurant', 'cafe', 'bakery', 'meal_takeaway', 'food')) return Utensils;
+  if (has('bank', 'city_hall', 'courthouse', 'embassy', 'local_government_office')) return Landmark;
+  return MapPin;
+}
 
 export default function SearchScreen() {
   const router = useRouter();
@@ -39,6 +75,7 @@ export default function SearchScreen() {
     pickupLocation,
     pickupAddress,
     dropoffAddress,
+    currentAddress,
     locationError,
     isLocationSharingOff,
     retryLocation,
@@ -74,6 +111,11 @@ export default function SearchScreen() {
   const [fadeAnim] = useState(new Animated.Value(0));
   const hasHandledPrefilledDestination = useRef<boolean>(false);
   const activeSearchRequestRef = useRef<number>(0);
+  // One Places session per search: created on the first autocomplete request,
+  // closed by the Place Details call for the chosen row, then cleared.
+  const sessionTokenRef = useRef<string | null>(null);
+  const [resolvingPlaceId, setResolvingPlaceId] = useState<string | null>(null);
+  const [failedPlaceId, setFailedPlaceId] = useState<string | null>(null);
   const nearbyCategories = GoogleMapsService.getNearbyCategories();
 
   const loadRecentLocations = useCallback(async () => {
@@ -111,16 +153,18 @@ export default function SearchScreen() {
     // ride-confirmation.tsx recompute price/route after either a pickup or a
     // destination edit, not just on the very first navigation into it.
     clearRoute();
+    sessionTokenRef.current = null;
+    const label = formatPlaceLabel(item.name, item.address);
 
     if (activeField === 'pickup') {
       setPickupLocation(item.location);
-      setPickupAddress(item.address || item.name);
+      setPickupAddress(label);
     } else {
       setDropoffLocation(item.location);
-      setDropoffAddress(item.address || item.name);
+      setDropoffAddress(label);
     }
 
-    await saveRecentLocation(item.location, item.address || item.name);
+    await saveRecentLocation(item.location, label);
 
     if (isEditMode) {
       // Reached from an already-mounted ride-confirmation screen to edit a field —
@@ -142,33 +186,49 @@ export default function SearchScreen() {
     Keyboard.dismiss();
     clearRoute();
     setPickupLocation(userLocation);
-    setPickupAddress('Current Location');
+    setPickupAddress(currentAddress ?? 'Current location');
 
     if (isEditMode) {
       router.back();
     } else {
       switchActiveField('dropoff');
     }
-  }, [userLocation, clearRoute, setPickupLocation, setPickupAddress, isEditMode, router, switchActiveField]);
+  }, [userLocation, currentAddress, clearRoute, setPickupLocation, setPickupAddress, isEditMode, router, switchActiveField]);
 
   const handleAutocompleteSelect = useCallback(async (item: AutocompleteResult) => {
-    console.log('Selected autocomplete:', item);
-    setIsSearching(true);
+    if (resolvingPlaceId) return;
+    console.log('Selected autocomplete:', item.placeId);
     Keyboard.dismiss();
+    setFailedPlaceId(null);
 
     try {
+      let location = item.location;
+      let address = item.address;
+
+      if (!location) {
+        setResolvingPlaceId(item.placeId);
+        const details = await GoogleMapsService.getPlaceDetails(item.placeId, sessionTokenRef.current ?? undefined);
+        if (!details) {
+          setFailedPlaceId(item.placeId);
+          return;
+        }
+        location = details.location;
+        address = address || details.address;
+      }
+
       await handleLocationSelect({
         id: item.placeId,
         name: item.name,
-        address: item.address,
-        location: item.location,
+        address,
+        location,
       });
     } catch (error) {
       console.error('Error selecting autocomplete location:', error);
+      setFailedPlaceId(item.placeId);
     } finally {
-      setIsSearching(false);
+      setResolvingPlaceId(null);
     }
-  }, [handleLocationSelect]);
+  }, [handleLocationSelect, resolvingPlaceId]);
 
   useEffect(() => {
     void loadRecentLocations();
@@ -224,7 +284,10 @@ export default function SearchScreen() {
           setIsSearching(true);
           try {
             if (useAutocomplete) {
-              const suggestions = await GoogleMapsService.autocomplete(searchQuery, userLocation || undefined);
+              if (!sessionTokenRef.current) {
+                sessionTokenRef.current = Crypto.randomUUID();
+              }
+              const suggestions = await GoogleMapsService.autocomplete(searchQuery, userLocation || undefined, sessionTokenRef.current);
 
               if (activeSearchRequestRef.current !== requestId) {
                 return;
@@ -323,24 +386,43 @@ export default function SearchScreen() {
     setSearchQuery(query);
   }, []);
 
-  const renderAutocompleteItem = ({ item }: { item: AutocompleteResult }) => (
-    <Pressable
-      style={({ pressed }) => [
-        styles.locationItem,
-        pressed && styles.locationItemPressed,
-      ]}
-      onPress={() => handleAutocompleteSelect(item)}
-      testID={`search-autocomplete-${item.id}`}
-    >
-      <View style={styles.locationIconContainer}>
-        <MapPin size={20} color={Colors.light.primary} />
-      </View>
-      <View style={styles.locationInfo}>
-        <Text style={styles.locationName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.locationAddress} numberOfLines={2}>{item.address}</Text>
-      </View>
-    </Pressable>
-  );
+  const renderAutocompleteItem = ({ item }: { item: AutocompleteResult }) => {
+    const Icon = iconForPlaceTypes(item.types);
+    const isResolving = resolvingPlaceId === item.placeId;
+    const hasFailed = failedPlaceId === item.placeId;
+
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.locationItem,
+          pressed && styles.locationItemPressed,
+        ]}
+        onPress={() => handleAutocompleteSelect(item)}
+        disabled={resolvingPlaceId !== null}
+        testID={`search-autocomplete-${item.id}`}
+      >
+        <View style={styles.locationIconContainer}>
+          <Icon size={20} color={Colors.light.primary} />
+        </View>
+        <View style={styles.locationInfo}>
+          <Text style={styles.locationName} numberOfLines={1}>{item.name}</Text>
+          {item.address ? (
+            <Text style={styles.locationAddress} numberOfLines={2}>{item.address}</Text>
+          ) : null}
+          {hasFailed ? (
+            <Text style={styles.selectErrorText} testID={`search-autocomplete-error-${item.id}`}>
+              Couldn&apos;t load that place. Try again.
+            </Text>
+          ) : null}
+        </View>
+        {isResolving ? (
+          <ActivityIndicator size="small" color={Colors.light.primary} />
+        ) : item.distanceMeters !== undefined ? (
+          <Text style={styles.rowDistanceText}>{formatDistanceMeters(item.distanceMeters)}</Text>
+        ) : null}
+      </Pressable>
+    );
+  };
 
   const renderLocationItem = ({ item }: { item: PlaceWithPrice }) => (
     <Pressable
@@ -513,6 +595,7 @@ export default function SearchScreen() {
               <FlatList
                 data={autocompleteSuggestions}
                 renderItem={renderAutocompleteItem}
+                extraData={`${resolvingPlaceId}:${failedPlaceId}`}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContent}
                 keyboardShouldPersistTaps="handled"
@@ -553,7 +636,7 @@ export default function SearchScreen() {
                       </View>
                       <View style={styles.locationInfo}>
                         <Text style={styles.locationName} numberOfLines={1}>Use current location</Text>
-                        <Text style={styles.locationAddress} numberOfLines={1}>{pickupAddress || 'Current Location'}</Text>
+                        <Text style={styles.locationAddress} numberOfLines={1}>{currentAddress ?? 'Your device location'}</Text>
                       </View>
                     </Pressable>
                   )}
@@ -790,6 +873,16 @@ const styles = StyleSheet.create({
   locationAddress: {
     fontSize: 13,
     color: Colors.light.gray,
+    marginTop: 4,
+  },
+  rowDistanceText: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    fontVariant: ["tabular-nums"],
+  },
+  selectErrorText: {
+    fontSize: 13,
+    color: Colors.light.error,
     marginTop: 4,
   },
   distanceContainer: {

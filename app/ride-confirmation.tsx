@@ -150,6 +150,15 @@ export default function RideConfirmationScreen() {
     };
   }, [dropoffLocation, pickupLocation]);
 
+  // Fit the route between the top controls and the collapsed booking sheet.
+  const [topOverlayBottom, setTopOverlayBottom] = useState<number | null>(null);
+  const [bottomOverlayHeight, setBottomOverlayHeight] = useState<number | null>(null);
+  const mapPadding = useMemo(() => (
+    topOverlayBottom !== null && bottomOverlayHeight !== null
+      ? { top: topOverlayBottom, bottom: Math.max(0, bottomOverlayHeight - COLLAPSED_OFFSET) }
+      : undefined
+  ), [bottomOverlayHeight, topOverlayBottom]);
+
   const routeSourceLabel = useMemo(() => {
     if (!routeInfo) {
       return 'Preparing direction';
@@ -307,9 +316,17 @@ export default function RideConfirmationScreen() {
         showDrivers={false}
         showRoute={true}
         fullScreen={true}
+        mapPadding={mapPadding}
       />
 
-      <View style={styles.topOverlay} pointerEvents="box-none">
+      <View
+        style={styles.topOverlay}
+        pointerEvents="box-none"
+        onLayout={(event) => {
+          const { y, height } = event.nativeEvent.layout;
+          setTopOverlayBottom(Math.round(y + height));
+        }}
+      >
         <SafeAreaView edges={['top']}>
           <View style={styles.topRow}>
             <Pressable style={styles.iconButton} onPress={handleCancel} testID="ride-map-close-button">
@@ -323,7 +340,12 @@ export default function RideConfirmationScreen() {
         </SafeAreaView>
       </View>
 
-      <SafeAreaView edges={['bottom']} style={styles.bottomOverlay} pointerEvents="box-none">
+      <SafeAreaView
+        edges={['bottom']}
+        style={styles.bottomOverlay}
+        pointerEvents="box-none"
+        onLayout={(event) => setBottomOverlayHeight(Math.round(event.nativeEvent.layout.height))}
+      >
         <Animated.View
           style={[styles.sheet, { transform: [{ translateY: sheetOffset }] }]}
           {...panResponder.panHandlers}

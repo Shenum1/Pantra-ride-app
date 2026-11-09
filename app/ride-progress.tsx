@@ -511,20 +511,38 @@ export default function RideProgressScreen() {
     return markers;
   }, [assignedDriver?.name, driverLocation, resolvedDropoffAddress, resolvedDropoffLocation, resolvedPickupAddress, resolvedPickupLocation, stage]);
 
-  const mapRegion = useMemo<Location | undefined>(() => {
-    const focusPoint = driverLocation ?? resolvedPickupLocation ?? undefined;
-
-    if (!focusPoint) {
-      return undefined;
+  // Only the first known point: the live camera (Map `tracking`) takes over
+  // once the map is up. Re-deriving this from every driver update made the
+  // camera jump back to the driver every few seconds.
+  const [mapRegion, setMapRegion] = useState<Location | undefined>(undefined);
+  useEffect(() => {
+    if (mapRegion) {
+      return;
     }
+    const focusPoint = driverLocation ?? resolvedPickupLocation;
+    if (focusPoint) {
+      setMapRegion({
+        latitude: focusPoint.latitude,
+        longitude: focusPoint.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      });
+    }
+  }, [driverLocation, mapRegion, resolvedPickupLocation]);
 
-    return {
-      latitude: focusPoint.latitude,
-      longitude: focusPoint.longitude,
-      latitudeDelta: 0.05,
-      longitudeDelta: 0.05,
-    };
-  }, [driverLocation, resolvedPickupLocation]);
+  const mapTracking = useMemo(() => ({
+    vehicle: driverLocation,
+    target: stage === 'trip_in_progress' ? resolvedDropoffLocation : resolvedPickupLocation,
+  }), [driverLocation, resolvedDropoffLocation, resolvedPickupLocation, stage]);
+
+  // Keep map content clear of the top card and the collapsed trip sheet.
+  const [topOverlayBottom, setTopOverlayBottom] = useState<number | null>(null);
+  const [bottomOverlayHeight, setBottomOverlayHeight] = useState<number | null>(null);
+  const mapPadding = useMemo(() => (
+    topOverlayBottom !== null && bottomOverlayHeight !== null
+      ? { top: topOverlayBottom, bottom: Math.max(0, bottomOverlayHeight - COLLAPSED_OFFSET) }
+      : undefined
+  ), [bottomOverlayHeight, topOverlayBottom]);
 
   const stageTitle = useMemo(() => getStageTitle(stage), [stage]);
 
@@ -649,9 +667,18 @@ export default function RideProgressScreen() {
         routeStartLocation={routeStartLocation}
         routeEndLocation={routeEndLocation}
         customMarkers={customMarkers}
+        tracking={mapTracking}
+        mapPadding={mapPadding}
       />
 
-      <SafeAreaView edges={['top']} style={styles.topContainer}>
+      <SafeAreaView
+        edges={['top']}
+        style={styles.topContainer}
+        onLayout={(event) => {
+          const { y, height } = event.nativeEvent.layout;
+          setTopOverlayBottom(Math.round(y + height));
+        }}
+      >
         <View style={styles.topCard}>
           <View style={styles.topCardHeader}>
             <Pressable style={styles.closeButton} onPress={() => router.back()} testID="ride-progress-close-button">
@@ -667,7 +694,12 @@ export default function RideProgressScreen() {
         </View>
       </SafeAreaView>
 
-      <SafeAreaView edges={['bottom']} style={styles.bottomOverlay} pointerEvents="box-none">
+      <SafeAreaView
+        edges={['bottom']}
+        style={styles.bottomOverlay}
+        pointerEvents="box-none"
+        onLayout={(event) => setBottomOverlayHeight(Math.round(event.nativeEvent.layout.height))}
+      >
         <Animated.View
           style={[styles.sheet, { transform: [{ translateY: sheetOffset }] }]}
           {...panResponder.panHandlers}
