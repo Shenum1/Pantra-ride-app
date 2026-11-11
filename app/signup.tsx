@@ -150,7 +150,14 @@ export default function SignupScreen() {
       // Cached locally until the account has a session (after the email
       // code), then recorded server-side by PolicyAcceptanceGate.
       await acceptTerms(['terms', 'privacy'], email);
-      await signup(name, email, phone, password, profileImage);
+      const { needsEmailConfirmation } = await signup(name, email, phone, password, profileImage);
+      if (!needsEmailConfirmation) {
+        // "Confirm email" is off in Supabase: the rider is already signed in.
+        // The phone number was collected on this form, so go straight home.
+        console.log('Signup: Account created and signed in');
+        router.replace('/(tabs)/home');
+        return;
+      }
       console.log('Signup: Account created, awaiting email verification');
       router.replace({ pathname: '/verify-email', params: { email: email.trim().toLowerCase() } });
       Toast.show({

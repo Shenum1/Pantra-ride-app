@@ -52,6 +52,16 @@ export class AuthService {
     return user;
   }
 
+  // True when the current session belongs to `userId`. Right after signUp,
+  // Supabase only returns a session when the project doesn't require email
+  // confirmation (Authentication → Email → "Confirm email" off). A leftover
+  // session from an earlier login stays in place while confirmation is
+  // pending, so the ids must match — "a session exists" isn't enough.
+  static async hasSessionFor(userId: string): Promise<boolean> {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user.id === userId;
+  }
+
   static async signInWithEmail(email: string, password: string) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw new Error(error.message);

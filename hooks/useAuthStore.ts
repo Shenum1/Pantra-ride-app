@@ -27,7 +27,10 @@ export interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (name: string, email: string, phone: string, password: string, profileImage?: string) => Promise<void>;
+  // needsEmailConfirmation: Supabase requires the emailed code before the
+  // account can sign in. False when "Confirm email" is off in Supabase — the
+  // rider is already signed in.
+  signup: (name: string, email: string, phone: string, password: string, profileImage?: string) => Promise<{ needsEmailConfirmation: boolean }>;
   loginWithGoogle: () => Promise<{ hasPhone: boolean }>;
   completeGoogleSignIn: (result: GoogleSignInResult) => Promise<{ hasPhone: boolean }>;
   logout: () => Promise<void>;
@@ -211,7 +214,11 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         profileImage: storedProfileImage, authProvider: 'email',
       };
       await saveUser(userData);
-      Toast.show({ type: 'success', text1: 'Account Created!', text2: 'Welcome to the platform', position: 'top' });
+      const needsEmailConfirmation = !(await AuthService.hasSessionFor(supabaseUser.id));
+      if (!needsEmailConfirmation) {
+        Toast.show({ type: 'success', text1: 'Account Created!', text2: 'Welcome to the platform', position: 'top' });
+      }
+      return { needsEmailConfirmation };
     } catch (error: any) {
       const msg = error.message || 'Signup failed. Please try again.';
       Toast.show({ type: 'error', text1: 'Signup Failed', text2: msg, position: 'top', visibilityTime: 4000 });
